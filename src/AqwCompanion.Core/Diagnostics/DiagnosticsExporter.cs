@@ -18,26 +18,71 @@ public sealed class DiagnosticsExporter(SnapshotRedactor redactor)
 
     public string Export(DiagnosticsRequest request)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(request.OutputPath))!);
+        var outputPath = Path.GetFullPath(request.OutputPath);
+        var tempPath = outputPath + ".tmp";
+        var logs = RecentLogs(request.LogDirectory).ToList();
+        RejectOutputThatIsALog(logs, outputPath, tempPath);
 
-        using var file = new FileStream(request.OutputPath, FileMode.Create, FileAccess.Write);
-        using var zip = new ZipArchive(file, ZipArchiveMode.Create);
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
 
-        var snapshot = request.IncludeSnapshot ? request.FailingSnapshot : null;
-
-        WriteText(zip, "info.txt", BuildInfo(request, snapshot));
-
-        foreach (var logFile in RecentLogs(request.LogDirectory))
+        try
         {
-            WriteText(zip, $"logs/{Path.GetFileName(logFile)}", redactor.Redact(ReadShared(logFile)));
+            using (var file = new FileStream(tempPath, FileMode.Create, FileAccess.Write))
+            using (var zip = new ZipArchive(file, ZipArchiveMode.Create))
+            {
+                var snapshot = request.IncludeSnapshot ? request.FailingSnapshot : null;
+
+                WriteText(zip, "info.txt", BuildInfo(request, snapshot));
+
+                foreach (var logFile in logs)
+                {
+                    WriteText(zip, $"logs/{Path.GetFileName(logFile)}", redactor.Redact(ReadShared(logFile)));
+                }
+
+                if (snapshot is not null)
+                {
+                    WriteText(zip, "snapshot.txt", redactor.Redact(snapshot.Payload));
+                }
+            }
+
+            File.Move(tempPath, outputPath, overwrite: true);
         }
-
-        if (snapshot is not null)
+        catch
         {
-            WriteText(zip, "snapshot.txt", redactor.Redact(snapshot.Payload));
+            TryDelete(tempPath);
+            throw;
         }
 
         return request.OutputPath;
+    }
+
+    private static void RejectOutputThatIsALog(IEnumerable<string> logs, string outputPath, string tempPath)
+    {
+        var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        foreach (var log in logs.Select(Path.GetFullPath))
+        {
+            if (string.Equals(log, outputPath, comparison) || string.Equals(log, tempPath, comparison))
+            {
+                throw new ArgumentException("The output path must not be one of the log files being exported.", nameof(outputPath));
+            }
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     private static string BuildInfo(DiagnosticsRequest request, PageSnapshot? snapshot)

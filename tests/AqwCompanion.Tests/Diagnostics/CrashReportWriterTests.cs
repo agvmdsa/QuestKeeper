@@ -21,4 +21,32 @@ public sealed class CrashReportWriterTests : IDisposable
         Assert.Contains("kaboom", text);
         Assert.Contains("InvalidOperationException", text);
     }
+
+    [Fact]
+    public void Write_redacts_sensitive_values_in_the_exception_by_default()
+    {
+        var now = new DateTimeOffset(2026, 11, 4, 13, 14, 15, 123, TimeSpan.Zero);
+        var exception = new InvalidOperationException("failed for owner@example.com with token=abc123 on page");
+
+        var path = CrashReportWriter.Write(exception, _dir, "2.0.0", now);
+
+        var text = File.ReadAllText(path);
+        Assert.DoesNotContain("owner@example.com", text);
+        Assert.DoesNotContain("abc123", text);
+        Assert.Contains("InvalidOperationException", text);
+        Assert.Contains(SnapshotRedactor.Mask, text);
+    }
+
+    [Fact]
+    public void Write_uses_the_supplied_redactor()
+    {
+        var now = new DateTimeOffset(2026, 11, 4, 13, 14, 15, 123, TimeSpan.Zero);
+        var exception = new InvalidOperationException("player Zephyrion crashed");
+
+        var path = CrashReportWriter.Write(exception, _dir, "2.0.0", now, new SnapshotRedactor(["Zephyrion"]));
+
+        var text = File.ReadAllText(path);
+        Assert.DoesNotContain("Zephyrion", text);
+        Assert.Contains("InvalidOperationException", text);
+    }
 }

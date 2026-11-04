@@ -20,20 +20,30 @@ public sealed class IngestionService<T>(
 
         if (result.Outcome == ParseOutcome.Ok)
         {
-            var count = result.Diagnostics.ItemCount;
-            var last = await store.GetLastCountAsync(ct);
+            try
+            {
+                var count = result.Diagnostics.ItemCount;
+                var last = await store.GetLastCountAsync(ct);
 
-            if (last is >= DropMinPrevious && count < last.Value * DropThreshold)
-            {
-                result = ParseResult<T>.Suspicious(
-                    result.Data,
-                    $"item count dropped from {last.Value} to {count}",
-                    result.Diagnostics);
+                if (last is >= DropMinPrevious && count < last.Value * DropThreshold)
+                {
+                    result = ParseResult<T>.Suspicious(
+                        result.Data,
+                        $"item count dropped from {last.Value} to {count}",
+                        result.Diagnostics);
+                }
+                else
+                {
+                    await store.SaveAsync(result.Data!, count, ct);
+                    persisted = true;
+                }
             }
-            else
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                await store.SaveAsync(result.Data!, count, ct);
-                persisted = true;
+                result = ParseResult<T>.Failed(
+                    $"persistence failed: {ex.GetType().Name}: {ex.Message}",
+                    result.Diagnostics);
+                error = ex;
             }
         }
 

@@ -152,4 +152,46 @@ public class IngestionServiceTests
         Assert.Empty(store.Saved);
         Assert.NotNull(failures.Latest);
     }
+
+    [Fact]
+    public async Task Store_failure_reading_last_count_becomes_failed_result_and_is_logged()
+    {
+        var (service, store, failures, log) = Build(_ => ParseResult<List<string>>.Ok(["a", "b", "c"], Diag));
+        store.ThrowOnGetLast = new IOException("disk gone");
+
+        var result = await service.IngestAsync(Snapshot());
+
+        AssertPersistenceFailure(result, store, failures, log, "disk gone");
+    }
+
+    [Fact]
+    public async Task Store_failure_saving_becomes_failed_result_and_is_logged()
+    {
+        var (service, store, failures, log) = Build(_ => ParseResult<List<string>>.Ok(["a", "b", "c"], Diag));
+        store.ThrowOnSave = new IOException("disk full");
+
+        var result = await service.IngestAsync(Snapshot());
+
+        AssertPersistenceFailure(result, store, failures, log, "disk full");
+    }
+
+    private static void AssertPersistenceFailure(
+        IngestionResult<List<string>> result,
+        InMemoryStore<List<string>> store,
+        FailedSnapshotBuffer failures,
+        ListLogger<IngestionService<List<string>>> log,
+        string message)
+    {
+        Assert.Equal(ParseOutcome.Failed, result.Parse.Outcome);
+        Assert.False(result.Persisted);
+        Assert.Contains("persistence failed", result.Parse.Reason);
+        Assert.Contains(message, result.Parse.Reason);
+        Assert.Empty(store.Saved);
+        Assert.NotNull(failures.Latest);
+        var entry = Assert.Single(log.Entries);
+        Assert.Equal(LogLevel.Error, entry.Level);
+        Assert.IsType<IOException>(entry.Exception);
+        Assert.Equal(ParseOutcome.Failed, entry.Properties["Outcome"]);
+        Assert.Equal(false, entry.Properties["Persisted"]);
+    }
 }

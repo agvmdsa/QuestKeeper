@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/AqwCompanion.App/AqwCompanion.App.csproj" />
     <Project Path="src/AqwCompanion.Core/AqwCompanion.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">

@@ -1,0 +1,12 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:AqwCompanion.App.ViewModels"
+             x:Class="AqwCompanion.App.Views.WikiView"
+             x:DataType="vm:WikiViewModel">
+  <StackPanel Margin="16" Spacing="12">
+    <TextBox Text="{Binding AddressInput}" Watermark="Address" />
+    <Button Content="Go" Command="{Binding GoCommand}" />
+    <TextBlock Text="{Binding CurrentUrl}" />
+    <TextBlock Opacity="0.6" Text="The integrated browser is not available yet." />
+  </StackPanel>
+</UserControl>

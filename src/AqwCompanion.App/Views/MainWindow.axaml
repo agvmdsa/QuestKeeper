@@ -1,0 +1,21 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:AqwCompanion.App.ViewModels"
+        xmlns:views="using:AqwCompanion.App.Views"
+        x:Class="AqwCompanion.App.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="{Binding Title}"
+        Icon="/Assets/app.png"
+        Width="1100" Height="720">
+  <TabControl x:Name="Tabs">
+    <TabItem Header="Wiki">
+      <views:WikiView DataContext="{Binding Wiki}" />
+    </TabItem>
+    <TabItem Header="Tracker">
+      <TextBlock Margin="16" Text="Tracker: coming soon" />
+    </TabItem>
+    <TabItem Header="Diagnostics">
+      <views:DiagnosticsView DataContext="{Binding Diagnostics}" />
+    </TabItem>
+  </TabControl>
+</Window>

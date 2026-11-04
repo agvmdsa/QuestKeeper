@@ -112,4 +112,47 @@ public sealed class DiagnosticsExporterTests : IDisposable
         using var zip = ZipFile.OpenRead(_output);
         Assert.Equal("still writing", ReadEntry(zip, "logs/log-open.txt"));
     }
+
+    [Fact]
+    public void Successful_export_leaves_no_temp_file()
+    {
+        File.WriteAllText(Path.Combine(_logs, "log-1.txt"), "entry");
+        var exporter = new DiagnosticsExporter(new SnapshotRedactor());
+
+        exporter.Export(new DiagnosticsRequest(_logs, "1.0.0", _output, null, IncludeSnapshot: false));
+
+        Assert.True(File.Exists(_output));
+        Assert.False(File.Exists(_output + ".tmp"));
+    }
+
+    [Fact]
+    public void Failed_export_propagates_leaves_no_temp_file_and_keeps_previous_zip()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_output)!);
+        var previous = "previous good export"u8.ToArray();
+        File.WriteAllBytes(_output, previous);
+        // A log held with an exclusive lock makes reading it throw mid-export (Windows and macOS).
+        using var locked = new FileStream(
+            Path.Combine(_logs, "locked.txt"), FileMode.Create, FileAccess.Write, FileShare.None);
+        var exporter = new DiagnosticsExporter(new SnapshotRedactor());
+
+        Assert.ThrowsAny<Exception>(() =>
+            exporter.Export(new DiagnosticsRequest(_logs, "1.0.0", _output, null, IncludeSnapshot: false)));
+
+        Assert.False(File.Exists(_output + ".tmp"));
+        Assert.Equal(previous, File.ReadAllBytes(_output));
+    }
+
+    [Fact]
+    public void Export_refuses_to_overwrite_a_log_file_it_is_exporting()
+    {
+        var log = Path.Combine(_logs, "log-1.txt");
+        File.WriteAllText(log, "precious log");
+        var exporter = new DiagnosticsExporter(new SnapshotRedactor());
+
+        Assert.Throws<ArgumentException>(() =>
+            exporter.Export(new DiagnosticsRequest(_logs, "1.0.0", log, null, IncludeSnapshot: false)));
+
+        Assert.Equal("precious log", File.ReadAllText(log));
+    }
 }

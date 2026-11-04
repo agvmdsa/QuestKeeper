@@ -10,15 +10,8 @@ internal static class Program
     {
         var paths = AppPaths.ForCurrentUser(AppInfo.ExeName);
 
-        Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.Information()
-            .Enrich.WithProperty("AppVersion", AppInfo.Version)
-            .WriteTo.File(
-                Path.Combine(paths.LogDirectory, "log-.txt"),
-                rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: 14,
-                shared: true)
-            .CreateLogger();
+        Log.Logger = LoggingSetup.CreateLogger(paths, AppInfo.Version);
+        Log.Information("Starting {Product} {Version}", AppInfo.ProductName, AppInfo.Version);
 
         CrashHandler.Install(paths.CrashDirectory, AppInfo.Version);
 

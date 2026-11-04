@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using AqwCompanion.Core.Diagnostics;
 using Serilog;
 
@@ -5,6 +6,8 @@ namespace AqwCompanion.App;
 
 public static class CrashHandler
 {
+    private static readonly ConditionalWeakTable<Exception, object> Reported = new();
+
     public static void Install(string crashDirectory, string appVersion)
     {
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
@@ -18,16 +21,34 @@ public static class CrashHandler
         TaskScheduler.UnobservedTaskException += (_, e) => Report(e.Exception, crashDirectory, appVersion);
     }
 
+    /// <summary>
+    /// Logs and writes one crash report per exception instance. Best effort: never throws,
+    /// so it cannot mask the exception being reported.
+    /// </summary>
     public static void Report(Exception exception, string crashDirectory, string appVersion)
     {
-        Log.Fatal(exception, "Unhandled exception");
+        if (!Reported.TryAdd(exception, new object()))
+        {
+            return;
+        }
+
         try
         {
+            Log.Fatal(exception, "Unhandled exception");
             CrashReportWriter.Write(exception, crashDirectory, appVersion, DateTimeOffset.Now);
         }
-        catch (Exception writeError) when (writeError is IOException or UnauthorizedAccessException)
+#pragma warning disable CA1031 // Crash path: nothing may escape the reporter.
+        catch (Exception writeError)
         {
-            Log.Error(writeError, "Could not write crash report");
+            try
+            {
+                Log.Error(writeError, "Could not write crash report");
+            }
+            catch (Exception)
+            {
+                // Logging itself failed; there is nowhere left to report to.
+            }
         }
+#pragma warning restore CA1031
     }
 }

@@ -1,0 +1,60 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: AqwCompanion
+  AVALONIA_TELEMETRY_OPTOUT: '1'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # MinVer derives the version from this tag
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Test
+        run: dotnet test AqwCompanion.slnx -c Release
+
+      - name: Publish (win-x64, single-file, self-contained)
+        run: >
+          dotnet publish src/AqwCompanion.App -c Release -r win-x64 --self-contained
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true -o out/publish
+
+      # --- Code signing placeholder -------------------------------------------------
+      # Sign out/publish/${{ env.APP_NAME }}.exe here BEFORE packaging once a signing
+      # option is chosen (Azure Trusted Signing, OV/EV certificate, or SignPath).
+      # Decide the final product/publisher name first: it is embedded in the certificate.
+      # -------------------------------------------------------------------------------
+
+      - name: Package
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          Remove-Item out/publish/*.pdb -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $zip = "dist/$($env:APP_NAME)-$($env:TAG)-win-x64.zip"
+          Compress-Archive -Path out/publish/* -DestinationPath $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  $(Split-Path $zip -Leaf)" | Out-File -Encoding ascii dist/SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create $env:TAG dist/* --title $env:TAG --generate-notes

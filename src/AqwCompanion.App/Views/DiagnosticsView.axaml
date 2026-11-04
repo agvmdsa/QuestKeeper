@@ -7,7 +7,7 @@
     <TextBlock Text="Logs are stored in:" />
     <SelectableTextBlock Text="{Binding LogDirectory}" />
     <CheckBox IsChecked="{Binding IncludeSnapshot}"
-              Content="Include the raw page snapshot of the last failed capture (redacted)" />
+              Content="Include the raw page snapshot of the last failed capture (best-effort redaction; review before sharing)" />
     <Button Content="Export diagnostics" Command="{Binding ExportCommand}" />
     <TextBlock Text="{Binding Status}" TextWrapping="Wrap" />
   </StackPanel>

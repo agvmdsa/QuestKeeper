@@ -73,6 +73,31 @@ public sealed class ViewModelTests : IDisposable
     }
 
     [Fact]
+    public void Diagnostics_export_reports_a_non_io_failure_instead_of_throwing()
+    {
+        var vm = new DiagnosticsViewModel(
+            new AppPaths("bad\0root"), new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer());
+
+        var ex = Record.Exception(() => vm.ExportCommand.Execute(null));
+
+        Assert.Null(ex);
+        Assert.StartsWith("Export failed:", vm.Status);
+    }
+
+    [Fact]
+    public void Diagnostics_export_reports_an_io_failure_when_the_export_directory_is_a_file()
+    {
+        Directory.CreateDirectory(_paths.Root);
+        File.WriteAllText(_paths.ExportDirectory, "not a directory");
+        var vm = new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer());
+
+        var ex = Record.Exception(() => vm.ExportCommand.Execute(null));
+
+        Assert.Null(ex);
+        Assert.StartsWith("Export failed:", vm.Status);
+    }
+
+    [Fact]
     public void Diagnostics_exposes_the_log_directory()
     {
         var vm = new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer());

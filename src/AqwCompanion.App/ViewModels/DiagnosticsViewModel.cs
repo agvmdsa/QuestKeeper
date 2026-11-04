@@ -2,6 +2,7 @@ using AqwCompanion.Core.Diagnostics;
 using AqwCompanion.Core.Ingestion;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Serilog;
 
 namespace AqwCompanion.App.ViewModels;
 
@@ -21,15 +22,16 @@ public partial class DiagnosticsViewModel(
     [RelayCommand]
     private void Export()
     {
-        var output = Path.Combine(paths.ExportDirectory, $"diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
         try
         {
+            var output = Path.Combine(paths.ExportDirectory, $"diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
             exporter.Export(new DiagnosticsRequest(
                 paths.LogDirectory, AppInfo.Version, output, failures.Latest, IncludeSnapshot));
             Status = $"Exported to {output}";
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            Log.Error(ex, "Diagnostics export failed");
             Status = $"Export failed: {ex.Message}";
         }
     }

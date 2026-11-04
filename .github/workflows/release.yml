@@ -21,6 +21,16 @@ jobs:
         with:
           fetch-depth: 0   # MinVer derives the version from this tag
 
+      - name: Validate release tag
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ($env:TAG -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
+            Write-Error "Tag '$($env:TAG)' is not a valid release tag (expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease)."
+            exit 1
+          }
+
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
@@ -50,11 +60,19 @@ jobs:
           $zip = "dist/$($env:APP_NAME)-$($env:TAG)-win-x64.zip"
           Compress-Archive -Path out/publish/* -DestinationPath $zip
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-          "$hash  $(Split-Path $zip -Leaf)" | Out-File -Encoding ascii dist/SHA256SUMS.txt
+          $name = Split-Path $zip -Leaf
+          # Write with LF endings and no BOM so `sha256sum -c` works on macOS/Linux.
+          [IO.File]::WriteAllText((Join-Path $PWD 'dist/SHA256SUMS.txt'), "$hash  $name`n")
 
       - name: Create GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
-        run: gh release create $env:TAG dist/* --title $env:TAG --generate-notes
+        run: |
+          # pwsh does not glob-expand arguments for native commands, so pass an explicit list.
+          $files = Get-ChildItem dist -File | ForEach-Object FullName
+          $flags = @()
+          if ($env:TAG.Contains('-')) { $flags += '--prerelease' }
+          gh release create $env:TAG @files --title $env:TAG --generate-notes @flags
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

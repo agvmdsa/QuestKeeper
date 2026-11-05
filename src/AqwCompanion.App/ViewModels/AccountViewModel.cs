@@ -1,3 +1,4 @@
+using System.Globalization;
 using AqwCompanion.App.Equipment;
 using AqwCompanion.App.SignIn;
 using AqwCompanion.Core.Aqw;
@@ -31,12 +32,16 @@ public partial class AccountViewModel : ObservableObject
     private string _status = SignedOutMessage;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsConnected), nameof(NeedsSignIn), nameof(Headline))]
+    [NotifyPropertyChangedFor(nameof(IsConnected), nameof(NeedsSignIn), nameof(Headline), nameof(ConnectionSummary))]
     private string? _characterName;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasEquipment))]
+    [NotifyPropertyChangedFor(nameof(HasEquipment), nameof(ConnectionSummary), nameof(EquippedPreviewSlots))]
+    [NotifyCanExecuteChangedFor(nameof(OpenEquippedDetailsCommand))]
     private CharacterEquipment? _equipment;
+
+    [ObservableProperty]
+    private bool _isSidebarOpen;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasEquipmentStatus))]
@@ -55,9 +60,57 @@ public partial class AccountViewModel : ObservableObject
 
     public bool IsConnected => CharacterName is not null;
 
+    /// <summary>The first few standard slots, shown on the dashboard card.</summary>
+    public IEnumerable<EquipmentSlot> EquippedPreviewSlots => Equipment?.StandardSlots.Take(5) ?? [];
+
+    public string SidebarTitle => "Equipped";
+
+    /// <summary>The top bar text: "name · Lv level · faction"; level and faction appear once the character page is read.</summary>
+    public string ConnectionSummary
+    {
+        get
+        {
+            if (CharacterName is null)
+            {
+                return string.Empty;
+            }
+
+            var parts = new List<string>(3) { CharacterName };
+            if (Equipment is { } equipment && string.Equals(equipment.Name, CharacterName, StringComparison.OrdinalIgnoreCase))
+            {
+                if (equipment.Level is { } level)
+                {
+                    parts.Add(string.Create(CultureInfo.InvariantCulture, $"Lv {level}"));
+                }
+
+                if (!string.IsNullOrWhiteSpace(equipment.Faction))
+                {
+                    parts.Add(equipment.Faction);
+                }
+            }
+
+            return string.Join(" \u00B7 ", parts);
+        }
+    }
+
     public bool NeedsSignIn => !IsConnected;
 
     public string Headline => CharacterName is null ? NotConnectedText : $"Connected as {CharacterName}";
+
+    /// <summary>Opens the equipped details sidebar; only possible while there is equipment to show.</summary>
+    [RelayCommand(CanExecute = nameof(HasEquipment))]
+    private void OpenEquippedDetails() => IsSidebarOpen = true;
+
+    [RelayCommand]
+    private void CloseSidebar() => IsSidebarOpen = false;
+
+    partial void OnEquipmentChanged(CharacterEquipment? value)
+    {
+        if (value is null)
+        {
+            IsSidebarOpen = false;
+        }
+    }
 
     /// <summary>First sign-in: the browser is shown so the user can sign in themselves.</summary>
     [RelayCommand]

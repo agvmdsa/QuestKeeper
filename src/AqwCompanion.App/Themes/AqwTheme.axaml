@@ -1,0 +1,48 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    AQW-flavoured dark palette, adapted from the colors of the AQW account site (parchment, plum, dark brown, gold).
+    Contrast on the surfaces (WCAG): AqwText on AqwSurface 14.4:1, on AqwWindowBackground 16.1:1, on AqwHeader 14.5:1;
+    AqwTextMuted on AqwSurface 8.9:1; AqwAccent (gold) on AqwSurface 7.4:1; AqwAccentText (dark) on AqwAccent 8.3:1;
+    AqwDangerText on AqwSurface 6.4:1; AqwSuccessText on AqwSurface 13.4:1.
+  -->
+  <Color x:Key="AqwWindowBackgroundColor">#24100D</Color>
+  <Color x:Key="AqwSurfaceColor">#381612</Color>
+  <Color x:Key="AqwSurfaceRaisedColor">#4A201A</Color>
+  <Color x:Key="AqwBorderColor">#5A2D24</Color>
+  <Color x:Key="AqwTextColor">#FEF1C5</Color>
+  <Color x:Key="AqwTextBrightColor">#FFFDF7</Color>
+  <Color x:Key="AqwTextMutedColor">#CDBF96</Color>
+  <Color x:Key="AqwTextSecondaryColor">#D1C49E</Color>
+  <Color x:Key="AqwHeaderColor">#3B0C30</Color>
+  <Color x:Key="AqwHeaderHoverColor">#320A29</Color>
+  <Color x:Key="AqwMagentaColor">#7B1964</Color>
+  <Color x:Key="AqwAccentColor">#F69A07</Color>
+  <Color x:Key="AqwAccentHoverColor">#FAB84F</Color>
+  <Color x:Key="AqwAccentTextColor">#24100D</Color>
+  <Color x:Key="AqwDangerColor">#B80F0A</Color>
+  <Color x:Key="AqwDangerTextColor">#FF7A70</Color>
+  <Color x:Key="AqwSuccessColor">#197419</Color>
+  <Color x:Key="AqwSuccessTextColor">#C7F6B6</Color>
+  <Color x:Key="AqwScrimColor">#99000000</Color>
+
+  <SolidColorBrush x:Key="AqwWindowBackground" Color="{StaticResource AqwWindowBackgroundColor}" />
+  <SolidColorBrush x:Key="AqwSurface" Color="{StaticResource AqwSurfaceColor}" />
+  <SolidColorBrush x:Key="AqwSurfaceRaised" Color="{StaticResource AqwSurfaceRaisedColor}" />
+  <SolidColorBrush x:Key="AqwBorder" Color="{StaticResource AqwBorderColor}" />
+  <SolidColorBrush x:Key="AqwText" Color="{StaticResource AqwTextColor}" />
+  <SolidColorBrush x:Key="AqwTextBright" Color="{StaticResource AqwTextBrightColor}" />
+  <SolidColorBrush x:Key="AqwTextMuted" Color="{StaticResource AqwTextMutedColor}" />
+  <SolidColorBrush x:Key="AqwTextSecondary" Color="{StaticResource AqwTextSecondaryColor}" />
+  <SolidColorBrush x:Key="AqwHeader" Color="{StaticResource AqwHeaderColor}" />
+  <SolidColorBrush x:Key="AqwHeaderHover" Color="{StaticResource AqwHeaderHoverColor}" />
+  <SolidColorBrush x:Key="AqwMagenta" Color="{StaticResource AqwMagentaColor}" />
+  <SolidColorBrush x:Key="AqwAccent" Color="{StaticResource AqwAccentColor}" />
+  <SolidColorBrush x:Key="AqwAccentHover" Color="{StaticResource AqwAccentHoverColor}" />
+  <SolidColorBrush x:Key="AqwAccentText" Color="{StaticResource AqwAccentTextColor}" />
+  <SolidColorBrush x:Key="AqwDanger" Color="{StaticResource AqwDangerColor}" />
+  <SolidColorBrush x:Key="AqwDangerText" Color="{StaticResource AqwDangerTextColor}" />
+  <SolidColorBrush x:Key="AqwSuccess" Color="{StaticResource AqwSuccessColor}" />
+  <SolidColorBrush x:Key="AqwSuccessText" Color="{StaticResource AqwSuccessTextColor}" />
+  <SolidColorBrush x:Key="AqwScrim" Color="{StaticResource AqwScrimColor}" />
+</ResourceDictionary>

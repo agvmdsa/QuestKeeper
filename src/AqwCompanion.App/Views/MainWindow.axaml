@@ -8,6 +8,9 @@
         Icon="/Assets/app.png"
         Width="1100" Height="720">
   <TabControl x:Name="Tabs">
+    <TabItem Header="Account">
+      <views:AccountView DataContext="{Binding Account}" />
+    </TabItem>
     <TabItem Header="Wiki">
       <views:WikiView DataContext="{Binding Wiki}" />
     </TabItem>

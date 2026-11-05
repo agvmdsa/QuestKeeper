@@ -7,6 +7,6 @@
     <TextBox Text="{Binding AddressInput}" Watermark="Address" />
     <Button Content="Go" Command="{Binding GoCommand}" />
     <TextBlock Text="{Binding CurrentUrl}" />
-    <TextBlock Opacity="0.6" Text="The integrated browser is not available yet." />
+    <TextBlock Foreground="{DynamicResource AqwTextMuted}" Text="The integrated browser is not available yet." />
   </StackPanel>
 </UserControl>

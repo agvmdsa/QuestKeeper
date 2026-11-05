@@ -1,4 +1,6 @@
+using System.Net;
 using AqwCompanion.App.Browser;
+using AqwCompanion.App.Equipment;
 using AqwCompanion.App.SignIn;
 using AqwCompanion.App.ViewModels;
 using AqwCompanion.Core.Aqw;
@@ -26,6 +28,12 @@ public static class CompositionRoot
         services.AddSingleton<IPageParser<AccountIdentity>, AccountHomeParser>();
         services.AddSingleton<IResultStore<AccountIdentity>, LatestResultStore<AccountIdentity>>();
         services.AddSingleton<IngestionService<AccountIdentity>>();
+        services.AddSingleton<IPageParser<CharacterEquipment>, CharacterEquipmentParser>();
+        services.AddSingleton<IResultStore<CharacterEquipment>, LatestResultStore<CharacterEquipment>>();
+        services.AddSingleton<IngestionService<CharacterEquipment>>();
+        services.AddSingleton<IPageFetcher>(sp => new AccountPageFetcher(
+            CreateHttpClient(), AppInfo.Version, sp.GetRequiredService<ILogger<AccountPageFetcher>>()));
+        services.AddSingleton<ICharacterEquipmentLoader, CharacterEquipmentLoader>();
         services.AddSingleton<IDelay, TaskDelay>();
         services.AddSingleton<ISignInDialog, SignInDialog>();
         services.AddSingleton<AccountViewModel>();
@@ -39,4 +47,16 @@ public static class CompositionRoot
             ValidateScopes = true,
         });
     }
+
+    /// <summary>One long-lived client: no cookies, no automatic redirects (the fetcher validates each hop).</summary>
+    private static HttpClient CreateHttpClient() =>
+        new(new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            UseCookies = false,
+            AutomaticDecompression = DecompressionMethods.All,
+        })
+        {
+            Timeout = AccountPageFetcher.Timeout,
+        };
 }

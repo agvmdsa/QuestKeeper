@@ -1,21 +1,67 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:AqwCompanion.App.ViewModels"
+             xmlns:aqw="using:AqwCompanion.Core.Aqw"
              x:Class="AqwCompanion.App.Views.AccountView"
              x:DataType="vm:AccountViewModel">
-  <Border Margin="16" Padding="20" MaxWidth="520" HorizontalAlignment="Left" VerticalAlignment="Top"
-          BorderThickness="1" BorderBrush="#40808080" CornerRadius="8">
-    <StackPanel Spacing="12">
-      <TextBlock x:Name="Headline" Text="{Binding Headline}" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" />
-      <TextBlock x:Name="StatusLine" Text="{Binding Status}" TextWrapping="Wrap" />
-      <Button x:Name="SignInButton" Content="Sign in" Command="{Binding SignInCommand}"
-              IsVisible="{Binding NeedsSignIn}" HorizontalAlignment="Left"
-              AutomationProperties.Name="Sign in to account.aq.com" />
-      <Button x:Name="RefreshButton" Content="Refresh" Command="{Binding RefreshCommand}"
-              IsVisible="{Binding IsConnected}" HorizontalAlignment="Left"
-              AutomationProperties.Name="Refresh the character name from account.aq.com" />
-      <TextBlock Opacity="0.6" TextWrapping="Wrap"
-                 Text="You sign in yourself on account.aq.com. The app never sees your password; it only reads your character name from the account home page." />
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="16" Spacing="16" MaxWidth="520" HorizontalAlignment="Left">
+      <Border Padding="20" BorderThickness="1" BorderBrush="#40808080" CornerRadius="8">
+        <StackPanel Spacing="12">
+          <TextBlock x:Name="Headline" Text="{Binding Headline}" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" />
+          <TextBlock x:Name="StatusLine" Text="{Binding Status}" TextWrapping="Wrap" />
+          <Button x:Name="SignInButton" Content="Sign in" Command="{Binding SignInCommand}"
+                  IsVisible="{Binding NeedsSignIn}" HorizontalAlignment="Left"
+                  AutomationProperties.Name="Sign in to account.aq.com" />
+          <Button x:Name="RefreshButton" Content="Refresh" Command="{Binding RefreshCommand}"
+                  IsVisible="{Binding IsConnected}" HorizontalAlignment="Left"
+                  AutomationProperties.Name="Refresh the character name from account.aq.com" />
+          <TextBlock Opacity="0.6" TextWrapping="Wrap"
+                     Text="You sign in yourself on account.aq.com. The app does not read or store your password. It reads your character name from the account home page, then loads your public character page to list what you have equipped." />
+        </StackPanel>
+      </Border>
+
+      <Border x:Name="EquippedPanel" Padding="20" BorderThickness="1" BorderBrush="#40808080" CornerRadius="8"
+              IsVisible="{Binding IsConnected}">
+        <StackPanel Spacing="12">
+          <TextBlock Text="Equipped" FontSize="20" FontWeight="Bold" />
+          <TextBlock x:Name="EquipmentStatusLine" Text="{Binding EquipmentStatus}" TextWrapping="Wrap"
+                     IsVisible="{Binding HasEquipmentStatus}" />
+
+          <StackPanel Spacing="12" IsVisible="{Binding HasEquipment}">
+            <StackPanel Spacing="2">
+              <TextBlock x:Name="EquipmentTitle" Text="{Binding Equipment.Title}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding Equipment.Summary}" Opacity="0.7" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <ItemsControl x:Name="StandardSlotList" ItemsSource="{Binding Equipment.StandardSlots}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="aqw:EquipmentSlot">
+                  <Grid ColumnDefinitions="130,*" Margin="0,3">
+                    <TextBlock Grid.Column="0" Text="{Binding Label}" Opacity="0.7" />
+                    <TextBlock Grid.Column="1" Text="{Binding ItemName}" TextWrapping="Wrap" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <StackPanel Spacing="6" IsVisible="{Binding Equipment.HasCustomSlots}">
+              <Separator />
+              <TextBlock Text="Custom appearance" FontWeight="SemiBold" />
+              <ItemsControl x:Name="CustomSlotList" ItemsSource="{Binding Equipment.CustomSlots}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="aqw:EquipmentSlot">
+                    <Grid ColumnDefinitions="130,*" Margin="0,3">
+                      <TextBlock Grid.Column="0" Text="{Binding Label}" Opacity="0.7" />
+                      <TextBlock Grid.Column="1" Text="{Binding ItemName}" TextWrapping="Wrap" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </StackPanel>
+        </StackPanel>
+      </Border>
     </StackPanel>
-  </Border>
+  </ScrollViewer>
 </UserControl>

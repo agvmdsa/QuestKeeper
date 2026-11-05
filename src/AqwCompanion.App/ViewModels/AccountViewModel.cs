@@ -1,4 +1,6 @@
+using AqwCompanion.App.Equipment;
 using AqwCompanion.App.SignIn;
+using AqwCompanion.Core.Aqw;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Serilog;
@@ -16,9 +18,14 @@ public partial class AccountViewModel : ObservableObject
     public const string ReadMessage = "Character name read from the account home page.";
     public const string CancelledMessage = "Cancelled. Nothing was changed.";
     public const string FailedFallbackMessage = "The character name could not be updated.";
+    public const string EquipmentLoadingText = "Loading equipment...";
+    public const string EquipmentUnavailableText = "Could not load the character page. Try Refresh again.";
+    public const string EquipmentNotFoundText = "No equipment found on the character page.";
 
     private readonly ISignInDialog _dialog;
+    private readonly ICharacterEquipmentLoader? _equipmentLoader;
     private bool _dialogOpen;
+    private CancellationTokenSource? _equipmentLoad;
 
     [ObservableProperty]
     private string _status = SignedOutMessage;
@@ -27,7 +34,24 @@ public partial class AccountViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsConnected), nameof(NeedsSignIn), nameof(Headline))]
     private string? _characterName;
 
-    public AccountViewModel(ISignInDialog dialog) => _dialog = dialog;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasEquipment))]
+    private CharacterEquipment? _equipment;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasEquipmentStatus))]
+    private string _equipmentStatus = string.Empty;
+
+    /// <param name="equipmentLoader">Reads the equipped items once the name is known; without it the panel stays empty.</param>
+    public AccountViewModel(ISignInDialog dialog, ICharacterEquipmentLoader? equipmentLoader = null)
+    {
+        _dialog = dialog;
+        _equipmentLoader = equipmentLoader;
+    }
+
+    public bool HasEquipment => Equipment is not null;
+
+    public bool HasEquipmentStatus => EquipmentStatus.Length > 0;
 
     public bool IsConnected => CharacterName is not null;
 
@@ -51,18 +75,87 @@ public partial class AccountViewModel : ObservableObject
         }
 
         _dialogOpen = true;
+        SignInResult result;
         try
         {
-            Apply(await _dialog.ShowAsync(mode));
+            result = await _dialog.ShowAsync(mode);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             Log.Error(ex, "The sign-in window failed");
-            Apply(SignInResult.Failed($"Could not open the sign-in window: {ex.Message}"));
+            result = SignInResult.Failed($"Could not open the sign-in window: {ex.Message}");
         }
         finally
         {
             _dialogOpen = false;
+        }
+
+        Apply(result);
+        if (result is { Outcome: SignInOutcome.Connected, CharacterName: { } name })
+        {
+            await LoadEquipmentAsync(name);
+        }
+    }
+
+    /// <summary>Reads the public character page. Runs after the dialog is closed, never throws, newest call wins.</summary>
+    private async Task LoadEquipmentAsync(string name)
+    {
+        if (_equipmentLoader is null)
+        {
+            return;
+        }
+
+        _equipmentLoad?.Cancel();
+        using var load = new CancellationTokenSource();
+        _equipmentLoad = load;
+
+        if (!string.Equals(Equipment?.Name, name, StringComparison.OrdinalIgnoreCase))
+        {
+            Equipment = null;
+        }
+
+        EquipmentStatus = EquipmentLoadingText;
+        try
+        {
+            var loaded = await _equipmentLoader.LoadAsync(name, load.Token);
+            if (load.IsCancellationRequested)
+            {
+                return;
+            }
+
+            switch (loaded.Status)
+            {
+                case EquipmentLoadStatus.Loaded:
+                    Equipment = loaded.Equipment;
+                    EquipmentStatus = string.Empty;
+                    break;
+                case EquipmentLoadStatus.NotFound:
+                    Equipment = null;
+                    EquipmentStatus = EquipmentNotFoundText;
+                    break;
+                default:
+                    EquipmentStatus = EquipmentUnavailableText;
+                    break;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer load; that one owns the status text.
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Log.Error("Showing the character equipment failed: {ExceptionType}", ex.GetType().Name);
+            if (!load.IsCancellationRequested)
+            {
+                EquipmentStatus = EquipmentUnavailableText;
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_equipmentLoad, load))
+            {
+                _equipmentLoad = null;
+            }
         }
     }
 

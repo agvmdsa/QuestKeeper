@@ -1,5 +1,4 @@
-using AqwCompanion.Core.Aqw;
-using AqwCompanion.Core.Ingestion;
+using AqwCompanion.App.SignIn;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Serilog;
@@ -7,143 +6,81 @@ using Serilog;
 namespace AqwCompanion.App.ViewModels;
 
 /// <summary>
-/// Reads the character name once the user, signed in by themselves, is on the account home page.
-/// It only reacts to completed navigations; it never fills forms, clicks or navigates on its own.
+/// The Account tab: a card that says whether the character name is known and opens the sign-in window.
+/// The browser lives only in that window; this view model just applies what the window reports.
 /// </summary>
 public partial class AccountViewModel : ObservableObject
 {
-    public const string SignedOutMessage = "Not signed in. Click Sign in to open account.aq.com.";
-    public const string WaitingMessage = "Waiting for sign-in...";
-    public const string ReadingMessage = "Reading the character name...";
+    public const string NotConnectedText = "Not connected";
+    public const string SignedOutMessage = "Sign in to let the app read your character name from account.aq.com.";
     public const string ReadMessage = "Character name read from the account home page.";
-    public const string ReadFailedMessage =
-        "The character name could not be read from this page. To help diagnose it, open Diagnostics, tick "
-        + "\"Include the raw page snapshot of the last failed capture\" and export. "
-        + "Redaction is best-effort: review the zip before sharing it.";
-    public const string ReadTimedOutMessage = "The page took too long to read. Try again.";
+    public const string CancelledMessage = "Cancelled. Nothing was changed.";
+    public const string FailedFallbackMessage = "The character name could not be updated.";
 
-    internal static readonly TimeSpan DefaultReadTimeout = TimeSpan.FromSeconds(10);
-
-    private readonly IBrowserHost _host;
-    private readonly IngestionService<AccountIdentity> _ingestion;
-    private readonly TimeSpan _readTimeout;
-    private bool _reading;
-    private bool _rerun;
-
-    [ObservableProperty]
-    private bool _isBrowserOpen;
+    private readonly ISignInDialog _dialog;
+    private bool _dialogOpen;
 
     [ObservableProperty]
     private string _status = SignedOutMessage;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasCharacter), nameof(CharacterText))]
+    [NotifyPropertyChangedFor(nameof(IsConnected), nameof(NeedsSignIn), nameof(Headline))]
     private string? _characterName;
 
-    /// <summary>True when the shown name was read earlier and the browser has since left the home page.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CharacterText))]
-    private bool _isCharacterStale;
+    public AccountViewModel(ISignInDialog dialog) => _dialog = dialog;
 
-    /// <param name="readTimeout">How long one page read may take; defaults to 10 seconds.</param>
-    public AccountViewModel(
-        IBrowserHost host,
-        IngestionService<AccountIdentity> ingestion,
-        TimeSpan? readTimeout = null)
-    {
-        _host = host;
-        _ingestion = ingestion;
-        _readTimeout = readTimeout ?? DefaultReadTimeout;
-        _host.NavigationCompleted += async (_, e) => await HandleNavigationAsync(e.Url);
-    }
+    public bool IsConnected => CharacterName is not null;
 
-    public IBrowserHost Browser => _host;
+    public bool NeedsSignIn => !IsConnected;
 
-    public bool HasCharacter => CharacterName is not null;
+    public string Headline => CharacterName is null ? NotConnectedText : $"Connected as {CharacterName}";
 
-    public string CharacterText => CharacterName is null
-        ? string.Empty
-        : $"{(IsCharacterStale ? "Last read" : "Character")}: {CharacterName}";
-
+    /// <summary>First sign-in: the browser is shown so the user can sign in themselves.</summary>
     [RelayCommand]
-    private void SignIn() => OpenHome();
+    private Task SignInAsync() => ShowAsync(SignInMode.Full);
 
+    /// <summary>Reads the name again with the existing session; only a small progress window is shown.</summary>
     [RelayCommand]
-    private void OpenHome()
-    {
-        Status = WaitingMessage;
-        _host.Navigate(AqwUrls.Home);
-        IsBrowserOpen = true;
-    }
+    private Task RefreshAsync() => ShowAsync(SignInMode.Compact);
 
-    /// <summary>Never throws: every failure ends up in <see cref="Status"/>.</summary>
-    public async Task HandleNavigationAsync(string url)
+    private async Task ShowAsync(SignInMode mode)
     {
-        if (!AqwUrls.IsAccountHome(url))
+        if (_dialogOpen)
         {
-            // The page is no longer the home page, so a pending re-read would read the wrong page.
-            _rerun = false;
-            IsCharacterStale = CharacterName is not null;
-            Status = WaitingMessage;
             return;
         }
 
-        if (_reading)
-        {
-            // Remember it: the page may have changed since the running read started.
-            _rerun = true;
-            return;
-        }
-
-        _reading = true;
+        _dialogOpen = true;
         try
         {
-            do
-            {
-                _rerun = false;
-                await ReadOnceAsync();
-            }
-            while (_rerun);
-        }
-        finally
-        {
-            _reading = false;
-            _rerun = false;
-        }
-    }
-
-    private async Task ReadOnceAsync()
-    {
-        Status = ReadingMessage;
-        try
-        {
-            using var timeout = new CancellationTokenSource(_readTimeout);
-            var snapshot = await _host.CaptureAsync(timeout.Token).WaitAsync(timeout.Token);
-            var result = await _ingestion.IngestAsync(snapshot);
-            if (result.Parse.Outcome == ParseOutcome.Ok && result.Parse.Data is { } identity)
-            {
-                CharacterName = identity.CharacterName;
-                IsCharacterStale = false;
-                Status = ReadMessage;
-            }
-            else
-            {
-                CharacterName = null;
-                IsCharacterStale = false;
-                Status = ReadFailedMessage;
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            Log.Warning("Reading the account home page timed out after {Timeout}", _readTimeout);
-            IsCharacterStale = CharacterName is not null;
-            Status = ReadTimedOutMessage;
+            Apply(await _dialog.ShowAsync(mode));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            Log.Error(ex, "Capturing the account home page failed");
-            IsCharacterStale = CharacterName is not null;
-            Status = $"Could not capture the page: {ex.Message}";
+            Log.Error(ex, "The sign-in window failed");
+            Apply(SignInResult.Failed($"Could not open the sign-in window: {ex.Message}"));
+        }
+        finally
+        {
+            _dialogOpen = false;
+        }
+    }
+
+    private void Apply(SignInResult result)
+    {
+        switch (result.Outcome)
+        {
+            case SignInOutcome.Connected when result.CharacterName is { } name:
+                CharacterName = name;
+                Status = ReadMessage;
+                break;
+            case SignInOutcome.Cancelled:
+                Status = CancelledMessage;
+                break;
+            default:
+                // A failed refresh keeps the last name that was read; only the status changes.
+                Status = result.Message ?? FailedFallbackMessage;
+                break;
         }
     }
 }

@@ -2,6 +2,7 @@ using AqwCompanion.App.Browser;
 using AqwCompanion.Core.Aqw;
 using AqwCompanion.Core.Ingestion;
 using AqwCompanion.Tests.TestDoubles;
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 
 namespace AqwCompanion.Tests.Desktop;
@@ -115,11 +116,26 @@ public class WebViewBrowserHostTests
         await _ui.RunOnUiThread(() => host.HandleNavigationCompleted(true, new Uri(AqwUrls.Home)));
         var raised = 0;
         host.NavigationCompleted += (_, _) => raised++;
+        var failed = 0;
+        host.NavigationFailed += (_, _) => failed++;
 
         await _ui.RunOnUiThread(() => host.HandleNavigationCompleted(false, new Uri("https://account.aq.com/Login")));
 
         Assert.Equal(0, raised);
+        Assert.Equal(1, failed);
         Assert.Equal(AqwUrls.Home, host.CurrentUrl);
+    }
+
+    [Fact]
+    public async Task A_successful_navigation_raises_no_failure()
+    {
+        var (host, _) = await ReadyHostAsync();
+        var failed = 0;
+        host.NavigationFailed += (_, _) => failed++;
+
+        await _ui.RunOnUiThread(() => host.HandleNavigationCompleted(true, new Uri(AqwUrls.Home)));
+
+        Assert.Equal(0, failed);
     }
 
     [Fact]
@@ -205,6 +221,149 @@ public class WebViewBrowserHostTests
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => host.CaptureAsync(cts.Token));
+    }
+
+    [Fact]
+    public async Task Navigate_before_the_adapter_exists_waits_and_opens_once_it_is_created()
+    {
+        var opened = new List<Uri>();
+        var host = new WebViewBrowserHost(_ui);
+        host.UseNavigator(opened.Add);
+
+        host.Navigate(AqwUrls.Home);
+
+        Assert.Empty(opened);
+        Assert.Equal(AqwUrls.Home, host.PendingUrl);
+
+        await _ui.RunOnUiThread(host.HandleAdapterCreated);
+
+        Assert.Equal(new Uri(AqwUrls.Home), Assert.Single(opened));
+        Assert.Null(host.PendingUrl);
+    }
+
+    [Fact]
+    public async Task Navigate_once_the_adapter_is_ready_opens_the_address_directly()
+    {
+        var opened = new List<Uri>();
+        var host = new WebViewBrowserHost(_ui);
+        host.UseNavigator(opened.Add);
+        await _ui.RunOnUiThread(host.HandleAdapterCreated);
+
+        host.Navigate(AqwUrls.Home);
+
+        Assert.Equal(new Uri(AqwUrls.Home), Assert.Single(opened));
+        Assert.Null(host.PendingUrl);
+    }
+
+    [Fact]
+    public async Task The_adapter_being_recreated_does_not_navigate_again()
+    {
+        var opened = new List<Uri>();
+        var host = new WebViewBrowserHost(_ui);
+        host.UseNavigator(opened.Add);
+        host.Navigate(AqwUrls.Home);
+        await _ui.RunOnUiThread(host.HandleAdapterCreated);
+        await _ui.RunOnUiThread(host.HandleAdapterDestroyed);
+
+        await _ui.RunOnUiThread(host.HandleAdapterCreated);
+
+        Assert.Single(opened);
+    }
+
+    [Fact]
+    public void Detach_without_a_control_is_harmless()
+    {
+        var host = new WebViewBrowserHost(_ui);
+
+        var error = Record.Exception(host.Detach);
+
+        Assert.Null(error);
+        Assert.False(host.IsAttached);
+    }
+
+    [Fact]
+    public async Task Callbacks_queued_before_detach_are_dropped()
+    {
+        var (host, _) = await ReadyHostAsync();
+        var raised = 0;
+        host.NavigationCompleted += (_, _) => raised++;
+        using var hold = new ManualResetEventSlim();
+        var blocker = _ui.RunOnUiThread(hold.Wait);
+        await Task.Run(() => host.HandleNavigationCompleted(true, new Uri(AqwUrls.Home)));
+
+        host.Detach();
+        hold.Set();
+        await blocker;
+        await _ui.Flush();
+
+        Assert.Equal(0, raised);
+        Assert.Null(host.CurrentUrl);
+    }
+
+    [AvaloniaFact]
+    public void Attach_can_be_repeated_for_a_new_control_after_detach()
+    {
+        var host = new WebViewBrowserHost();
+        var first = new NativeWebView();
+        var second = new NativeWebView();
+        var third = new NativeWebView();
+
+        host.Attach(first);
+        Assert.True(host.IsAttached);
+        host.Attach(first);
+        Assert.True(host.IsAttached);
+
+        host.Detach();
+        Assert.False(host.IsAttached);
+
+        host.Attach(second);
+        Assert.True(host.IsAttached);
+
+        // Attaching over a control that is still attached replaces it.
+        host.Attach(third);
+        Assert.True(host.IsAttached);
+        host.Detach();
+        Assert.False(host.IsAttached);
+    }
+
+    [AvaloniaFact]
+    public async Task Detach_clears_the_pending_address_and_all_page_state()
+    {
+        var host = new WebViewBrowserHost();
+        host.Navigate(AqwUrls.Home);
+        host.Attach(new NativeWebView());
+        Assert.Equal(AqwUrls.Home, host.PendingUrl);
+        host.HandleAdapterCreated();
+        host.HandleNavigationCompleted(true, new Uri(AqwUrls.Home));
+        Assert.True(host.IsAdapterReady);
+        Assert.NotNull(host.CurrentUrl);
+
+        host.Detach();
+
+        Assert.False(host.IsAdapterReady);
+        Assert.Null(host.CurrentUrl);
+        Assert.Null(host.PendingUrl);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => host.CaptureAsync());
+    }
+
+    [AvaloniaFact]
+    public async Task A_new_control_starts_from_scratch_and_applies_a_navigation_requested_before_it_exists()
+    {
+        var host = new WebViewBrowserHost();
+        host.Attach(new NativeWebView());
+        host.HandleAdapterCreated();
+        host.HandleNavigationCompleted(true, new Uri(AqwUrls.Home));
+        host.Detach();
+
+        host.Navigate(AqwUrls.Home);
+        host.Attach(new NativeWebView());
+        var opened = new List<Uri>();
+        host.UseNavigator(opened.Add);
+        host.HandleAdapterCreated();
+        await Task.Yield();
+
+        Assert.Equal(new Uri(AqwUrls.Home), Assert.Single(opened));
+        Assert.Null(host.CurrentUrl);
     }
 
     [AvaloniaFact]

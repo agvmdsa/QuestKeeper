@@ -1,4 +1,5 @@
 using AqwCompanion.App.Browser;
+using AqwCompanion.App.SignIn;
 using AqwCompanion.App.ViewModels;
 using AqwCompanion.Core.Aqw;
 using AqwCompanion.Core.Diagnostics;
@@ -25,9 +26,9 @@ public static class CompositionRoot
         services.AddSingleton<IPageParser<AccountIdentity>, AccountHomeParser>();
         services.AddSingleton<IResultStore<AccountIdentity>, LatestResultStore<AccountIdentity>>();
         services.AddSingleton<IngestionService<AccountIdentity>>();
-        services.AddSingleton(sp => new AccountViewModel(
-            sp.GetRequiredService<WebViewBrowserHost>(),
-            sp.GetRequiredService<IngestionService<AccountIdentity>>()));
+        services.AddSingleton<IDelay, TaskDelay>();
+        services.AddSingleton<ISignInDialog, SignInDialog>();
+        services.AddSingleton<AccountViewModel>();
         services.AddSingleton<WikiViewModel>();
         services.AddSingleton<DiagnosticsViewModel>();
         services.AddSingleton<MainViewModel>();

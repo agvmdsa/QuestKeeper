@@ -1,5 +1,6 @@
 using AqwCompanion.App;
 using AqwCompanion.App.Browser;
+using AqwCompanion.App.SignIn;
 using AqwCompanion.App.ViewModels;
 using AqwCompanion.Core.Aqw;
 using AqwCompanion.Core.Ingestion;
@@ -33,6 +34,18 @@ public class CompositionRootTests
 
         Assert.NotNull(services.GetRequiredService<IngestionService<AccountIdentity>>());
         Assert.NotNull(services.GetRequiredService<ILogger<IngestionService<AccountIdentity>>>());
+        Assert.False(services.GetRequiredService<WebViewBrowserHost>().IsAttached);
+    }
+
+    [Fact]
+    public void Container_resolves_the_sign_in_dialog_without_opening_a_window_or_a_browser()
+    {
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
+
+        using var services = CompositionRoot.Build(paths);
+
+        Assert.IsType<SignInDialog>(services.GetRequiredService<ISignInDialog>());
+        Assert.IsType<TaskDelay>(services.GetRequiredService<IDelay>());
         Assert.False(services.GetRequiredService<WebViewBrowserHost>().IsAttached);
     }
 

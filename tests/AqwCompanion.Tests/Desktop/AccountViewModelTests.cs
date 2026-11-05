@@ -1,244 +1,157 @@
-using AqwCompanion.App;
+using AqwCompanion.App.SignIn;
 using AqwCompanion.App.ViewModels;
-using AqwCompanion.Core.Aqw;
-using AqwCompanion.Core.Ingestion;
 using AqwCompanion.Tests.TestDoubles;
 
 namespace AqwCompanion.Tests.Desktop;
 
 public class AccountViewModelTests
 {
-    private const string LoginUrl = "https://account.aq.com/Login";
+    private readonly FakeSignInDialog _dialog = new();
 
-    private readonly FakeBrowserHost _host = new();
-    private readonly FailedSnapshotBuffer _failures = new();
-    private readonly LatestResultStore<AccountIdentity> _store = new();
+    private AccountViewModel Build() => new(_dialog);
 
-    private AccountViewModel Build(TimeSpan? readTimeout = null) =>
-        new(_host, new IngestionService<AccountIdentity>(
-            new AccountHomeParser(), _store, _failures, new ListLogger<IngestionService<AccountIdentity>>()),
-            readTimeout);
-
-    private static PageSnapshot Page(string fixture, string url = AqwUrls.Home) =>
-        PageSnapshot.Create(
-            url,
-            File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", fixture)),
-            "1.0.0",
-            DateTimeOffset.UnixEpoch);
+    private static Func<SignInMode, Task<SignInResult>> Reports(SignInResult result) =>
+        _ => Task.FromResult(result);
 
     [Fact]
-    public void Starts_closed_without_a_character()
+    public void Starts_not_connected_and_does_not_open_the_dialog()
     {
         var vm = Build();
 
-        Assert.False(vm.IsBrowserOpen);
+        Assert.Equal("Not connected", vm.Headline);
+        Assert.False(vm.IsConnected);
+        Assert.True(vm.NeedsSignIn);
         Assert.Null(vm.CharacterName);
-        Assert.False(vm.HasCharacter);
-        Assert.Null(_host.LastNavigated);
-        Assert.False(string.IsNullOrWhiteSpace(vm.Status));
+        Assert.Equal(AccountViewModel.SignedOutMessage, vm.Status);
+        Assert.Empty(_dialog.Shown);
     }
 
     [Fact]
-    public void Sign_in_opens_the_browser_at_account_home()
+    public async Task Sign_in_opens_the_full_dialog_and_shows_the_connected_name()
     {
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
         var vm = Build();
 
-        vm.SignInCommand.Execute(null);
+        await vm.SignInCommand.ExecuteAsync(null);
 
-        Assert.True(vm.IsBrowserOpen);
-        Assert.Equal(AqwUrls.Home, _host.LastNavigated);
-        Assert.Equal(AccountViewModel.WaitingMessage, vm.Status);
-    }
-
-    [Fact]
-    public void Open_home_navigates_to_account_home()
-    {
-        var vm = Build();
-        _host.Navigate(LoginUrl);
-
-        vm.OpenHomeCommand.Execute(null);
-
-        Assert.Equal(AqwUrls.Home, _host.LastNavigated);
-    }
-
-    [Fact]
-    public async Task Navigation_to_a_non_home_url_does_nothing_but_wait()
-    {
-        var vm = Build();
-        _host.OnCapture = () => Page("account-login.html", LoginUrl);
-
-        await vm.HandleNavigationAsync(LoginUrl);
-
-        Assert.Equal(0, _host.CaptureCount);
-        Assert.Null(vm.CharacterName);
-        Assert.Equal(AccountViewModel.WaitingMessage, vm.Status);
-        Assert.Null(_failures.Latest);
-    }
-
-    [Fact]
-    public void Navigation_completed_on_home_captures_and_shows_the_name()
-    {
-        var vm = Build();
-        _host.OnCapture = () => Page("account-home-sample.html");
-
-        _host.Raise(AqwUrls.Home);
-
-        Assert.Equal(1, _host.CaptureCount);
+        Assert.Equal([SignInMode.Full], _dialog.Shown);
         Assert.Equal("Test Hero", vm.CharacterName);
-        Assert.True(vm.HasCharacter);
-        Assert.Equal("Character: Test Hero", vm.CharacterText);
-        Assert.Equal(new AccountIdentity("Test Hero"), _store.Latest);
-        Assert.Null(_failures.Latest);
-    }
-
-    [Fact]
-    public async Task Failed_parse_shows_the_help_message_buffers_the_snapshot_and_keeps_no_name()
-    {
-        var vm = Build();
-        _host.OnCapture = () => Page("account-home-sample.html");
-        await vm.HandleNavigationAsync(AqwUrls.Home);
-        _host.OnCapture = () => Page("account-home-drifted.html");
-
-        await vm.HandleNavigationAsync(AqwUrls.Home);
-
-        Assert.Null(vm.CharacterName);
-        Assert.False(vm.HasCharacter);
-        Assert.Equal(AccountViewModel.ReadFailedMessage, vm.Status);
-        Assert.NotNull(_failures.Latest);
-    }
-
-    [Fact]
-    public async Task Capture_exception_is_reported_in_the_status_without_crashing()
-    {
-        var vm = Build();
-        _host.OnCapture = () => throw new InvalidOperationException("script failed");
-
-        var error = await Record.ExceptionAsync(() => vm.HandleNavigationAsync(AqwUrls.Home));
-
-        Assert.Null(error);
-        Assert.Null(vm.CharacterName);
-        Assert.StartsWith("Could not capture the page", vm.Status, StringComparison.Ordinal);
-        Assert.Contains("script failed", vm.Status, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Capture_exception_raised_through_the_event_does_not_escape()
-    {
-        var vm = Build();
-
-        var error = Record.Exception(() => _host.Raise(AqwUrls.Home));
-
-        Assert.Null(error);
-        Assert.StartsWith("Could not capture the page", vm.Status, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Read_failed_message_is_honest_about_the_diagnostics_steps()
-    {
-        var message = AccountViewModel.ReadFailedMessage;
-
-        Assert.DoesNotContain("redacted snapshot", message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Diagnostics", message, StringComparison.Ordinal);
-        Assert.Contains("Include the raw page snapshot of the last failed capture", message, StringComparison.Ordinal);
-        Assert.Contains("best-effort", message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task A_read_that_never_completes_times_out_and_a_later_home_event_works()
-    {
-        var vm = Build(TimeSpan.FromMilliseconds(50));
-        _host.OnCaptureAsync = _ => new TaskCompletionSource<PageSnapshot>().Task;
-
-        await vm.HandleNavigationAsync(AqwUrls.Home).WaitAsync(TimeSpan.FromSeconds(10));
-
-        Assert.Equal(AccountViewModel.ReadTimedOutMessage, vm.Status);
-        Assert.Null(vm.CharacterName);
-
-        _host.OnCaptureAsync = null;
-        _host.OnCapture = () => Page("account-home-sample.html");
-        await vm.HandleNavigationAsync(AqwUrls.Home);
-
-        Assert.Equal(2, _host.CaptureCount);
-        Assert.Equal("Test Hero", vm.CharacterName);
+        Assert.Equal("Connected as Test Hero", vm.Headline);
+        Assert.True(vm.IsConnected);
+        Assert.False(vm.NeedsSignIn);
         Assert.Equal(AccountViewModel.ReadMessage, vm.Status);
     }
 
     [Fact]
-    public async Task The_capture_is_given_a_token_that_is_cancelled_on_timeout()
+    public async Task Refresh_opens_the_compact_dialog_and_updates_the_name()
     {
-        var vm = Build(TimeSpan.FromMilliseconds(50));
-        CancellationToken seen = default;
-        _host.OnCaptureAsync = ct =>
-        {
-            seen = ct;
-            return new TaskCompletionSource<PageSnapshot>().Task;
-        };
+        var vm = Build();
+        _dialog.OnShow = Reports(SignInResult.Connected("Old Hero"));
+        await vm.SignInCommand.ExecuteAsync(null);
+        _dialog.OnShow = Reports(SignInResult.Connected("New Hero"));
 
-        await vm.HandleNavigationAsync(AqwUrls.Home).WaitAsync(TimeSpan.FromSeconds(10));
+        await vm.RefreshCommand.ExecuteAsync(null);
 
-        Assert.True(seen.IsCancellationRequested);
+        Assert.Equal([SignInMode.Full, SignInMode.Compact], _dialog.Shown);
+        Assert.Equal("New Hero", vm.CharacterName);
+        Assert.Equal("Connected as New Hero", vm.Headline);
     }
 
     [Fact]
-    public async Task A_home_event_during_a_read_triggers_exactly_one_extra_read()
+    public async Task A_cancelled_sign_in_changes_no_name()
     {
         var vm = Build();
-        var gate = new TaskCompletionSource();
-        var first = true;
-        _host.OnCaptureAsync = async _ =>
-        {
-            if (first)
-            {
-                first = false;
-                await gate.Task;
-            }
 
-            return Page("account-home-sample.html");
-        };
+        await vm.SignInCommand.ExecuteAsync(null);
 
-        var running = vm.HandleNavigationAsync(AqwUrls.Home);
-        await vm.HandleNavigationAsync(AqwUrls.Home);
-        await vm.HandleNavigationAsync(AqwUrls.Home);
-        Assert.Equal(1, _host.CaptureCount);
-
-        gate.SetResult();
-        await running.WaitAsync(TimeSpan.FromSeconds(10));
-
-        Assert.Equal(2, _host.CaptureCount);
-        Assert.Equal("Test Hero", vm.CharacterName);
-        Assert.Equal(AccountViewModel.ReadMessage, vm.Status);
+        Assert.Null(vm.CharacterName);
+        Assert.Equal("Not connected", vm.Headline);
+        Assert.Equal(AccountViewModel.CancelledMessage, vm.Status);
     }
 
     [Fact]
-    public async Task A_failing_read_still_releases_the_guard()
+    public async Task A_cancelled_refresh_keeps_the_known_name()
     {
         var vm = Build();
-        _host.OnCapture = () => throw new InvalidOperationException("boom");
-        await vm.HandleNavigationAsync(AqwUrls.Home);
-        _host.OnCapture = () => Page("account-home-sample.html");
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+        await vm.SignInCommand.ExecuteAsync(null);
+        _dialog.OnShow = Reports(SignInResult.Cancelled());
 
-        await vm.HandleNavigationAsync(AqwUrls.Home);
+        await vm.RefreshCommand.ExecuteAsync(null);
 
-        Assert.Equal(2, _host.CaptureCount);
+        Assert.Equal("Test Hero", vm.CharacterName);
+        Assert.Equal("Connected as Test Hero", vm.Headline);
+        Assert.Equal(AccountViewModel.CancelledMessage, vm.Status);
+    }
+
+    [Fact]
+    public async Task A_failed_refresh_shows_the_message_and_keeps_the_last_name()
+    {
+        var vm = Build();
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+        await vm.SignInCommand.ExecuteAsync(null);
+        _dialog.OnShow = Reports(SignInResult.Failed("The page took too long to read. Try again."));
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal("Test Hero", vm.CharacterName);
+        Assert.Equal("The page took too long to read. Try again.", vm.Status);
+    }
+
+    [Fact]
+    public async Task A_failed_sign_in_without_a_message_uses_the_fallback()
+    {
+        _dialog.OnShow = Reports(new SignInResult(SignInOutcome.Failed));
+        var vm = Build();
+
+        await vm.SignInCommand.ExecuteAsync(null);
+
+        Assert.Null(vm.CharacterName);
+        Assert.Equal(AccountViewModel.FailedFallbackMessage, vm.Status);
+    }
+
+    [Fact]
+    public async Task A_dialog_that_throws_is_reported_in_the_status()
+    {
+        _dialog.OnShow = _ => throw new InvalidOperationException("no window");
+        var vm = Build();
+
+        var error = await Record.ExceptionAsync(() => vm.SignInCommand.ExecuteAsync(null));
+
+        Assert.Null(error);
+        Assert.Contains("no window", vm.Status, StringComparison.Ordinal);
+        Assert.Null(vm.CharacterName);
+    }
+
+    [Fact]
+    public async Task A_second_request_while_the_dialog_is_open_is_ignored()
+    {
+        var gate = new TaskCompletionSource<SignInResult>();
+        _dialog.OnShow = _ => gate.Task;
+        var vm = Build();
+
+        var first = vm.SignInCommand.ExecuteAsync(null);
+        await vm.RefreshCommand.ExecuteAsync(null);
+        gate.SetResult(SignInResult.Connected("Test Hero"));
+        await first;
+
+        Assert.Equal([SignInMode.Full], _dialog.Shown);
         Assert.Equal("Test Hero", vm.CharacterName);
     }
 
     [Fact]
-    public async Task Leaving_home_keeps_the_name_but_labels_it_as_the_last_read()
+    public async Task Connecting_raises_change_notifications_for_the_card()
     {
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
         var vm = Build();
-        _host.OnCapture = () => Page("account-home-sample.html");
-        await vm.HandleNavigationAsync(AqwUrls.Home);
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
 
-        await vm.HandleNavigationAsync(LoginUrl);
+        await vm.SignInCommand.ExecuteAsync(null);
 
-        Assert.Equal("Test Hero", vm.CharacterName);
-        Assert.True(vm.HasCharacter);
-        Assert.Equal("Last read: Test Hero", vm.CharacterText);
-        Assert.Equal(AccountViewModel.WaitingMessage, vm.Status);
-
-        await vm.HandleNavigationAsync(AqwUrls.Home);
-
-        Assert.Equal("Character: Test Hero", vm.CharacterText);
+        Assert.Contains(nameof(AccountViewModel.Headline), changed);
+        Assert.Contains(nameof(AccountViewModel.IsConnected), changed);
+        Assert.Contains(nameof(AccountViewModel.NeedsSignIn), changed);
+        Assert.Contains(nameof(AccountViewModel.Status), changed);
     }
 }

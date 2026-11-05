@@ -24,6 +24,10 @@ public static class AqwUrls
     public static bool IsAccountHome(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri) && IsAccountPage(uri, "/Home");
 
+    /// <summary>True for an absolute https URL on the account host whose path is <c>/CharPage</c> (case-insensitive).</summary>
+    public static bool IsCharPage(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && IsAccountPage(uri, "/CharPage");
+
     internal static bool IsAccountPage(Uri uri, string path) =>
         uri.Scheme == Uri.UriSchemeHttps
         && string.Equals(uri.Host, AccountHost, StringComparison.OrdinalIgnoreCase)

@@ -23,7 +23,10 @@ public partial class AccountViewModel : ObservableObject
     public const string FailedFallbackMessage = "The character name could not be updated.";
     public const string StoredDataMessage = "Showing the data from your last session.";
     public const string StoredDataNoticeText = "Showing data saved on this computer. Refresh to update it.";
-    public const string ForgottenMessage = "Stored data was removed from this computer.";
+    public const string SignOutPromptText = "Sign out of account.aq.com and remove everything the app saved on this computer?";
+    public const string SignOutCompleteMessage = "Signed out. The saved data was removed from this computer.";
+    public const string SignOutUnreachableMessage =
+        "The saved data was removed, but account.aq.com could not be reached, so your site session may still be active.";
     public const string ForgetFailedMessage = "Could not remove the stored data. Close other copies of the app and try again.";
 
     private readonly ISignInDialog _dialog;
@@ -40,15 +43,15 @@ public partial class AccountViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsConnected), nameof(NeedsSignIn), nameof(Headline), nameof(ConnectionSummary), nameof(ShowSignIn))]
-    [NotifyCanExecuteChangedFor(nameof(RequestForgetCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RequestSignOutCommand))]
     private string? _characterName;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StoredDataNotice), nameof(HasStoredDataNotice), nameof(ShowSignIn))]
+    [NotifyPropertyChangedFor(nameof(StoredDataNotice), nameof(HasStoredDataNotice), nameof(Headline))]
     private bool _isFromStoredData;
 
     [ObservableProperty]
-    private bool _isForgetPending;
+    private bool _isSignOutPending;
 
     /// <param name="summary">The account summary card.</param>
     /// <param name="equipment">The equipped card.</param>
@@ -58,7 +61,7 @@ public partial class AccountViewModel : ObservableObject
     /// <param name="badgesLoader">Reads the badges once the equipment has been read; without it the badges card stays empty.</param>
     /// <param name="persistence">Keeps the last read data on disk; without it nothing is stored or restored.</param>
     /// <param name="clock">Source of the read times; the system clock by default.</param>
-    /// <param name="session">Follows restore and forget for the in-memory session data; without it nothing is seeded or cleared.</param>
+    /// <param name="session">Follows restore and sign-out for the in-memory session data; without it nothing is seeded or cleared.</param>
     public AccountViewModel(
         ISignInDialog dialog,
         SummaryCardViewModel summary,
@@ -81,6 +84,14 @@ public partial class AccountViewModel : ObservableObject
         _badgesLoader = badgesLoader;
         _persistence = persistence;
         _clock = clock ?? TimeProvider.System;
+        summary.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SummaryCardViewModel.ReadAt))
+            {
+                OnPropertyChanged(nameof(LastSyncText));
+                OnPropertyChanged(nameof(HasLastSync));
+            }
+        };
         equipment.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(EquipmentCardViewModel.Data))
@@ -130,14 +141,23 @@ public partial class AccountViewModel : ObservableObject
 
     public bool NeedsSignIn => !IsConnected;
 
-    /// <summary>Whether the Sign in button shows; stored data keeps it available because the saved session may have expired.</summary>
-    public bool ShowSignIn => NeedsSignIn || IsFromStoredData;
+    /// <summary>Whether the Sign in button shows: only while no character is shown. Refresh leads back to sign-in when the session expired.</summary>
+    public bool ShowSignIn => NeedsSignIn;
 
     public string StoredDataNotice => IsFromStoredData ? StoredDataNoticeText : string.Empty;
 
     public bool HasStoredDataNotice => IsFromStoredData;
 
-    public string Headline => CharacterName is null ? NotConnectedText : $"Connected as {CharacterName}";
+    public string Headline => CharacterName is null
+        ? NotConnectedText
+        : IsFromStoredData ? $"Saved data for {CharacterName}" : $"Connected as {CharacterName}";
+
+    /// <summary>"Last sync: " and the local time the account identity was last read; empty when unknown.</summary>
+    public string LastSyncText => Summary.ReadAt is { } at
+        ? "Last sync: " + at.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)
+        : string.Empty;
+
+    public bool HasLastSync => Summary.ReadAt is not null;
 
     /// <summary>
     /// Shows the data kept from the last session. Called once at startup; reads the disk off the UI thread, never throws,
@@ -175,26 +195,52 @@ public partial class AccountViewModel : ObservableObject
         }
     }
 
-    /// <summary>Asks for confirmation before the stored data is deleted; only possible while a character is shown.</summary>
+    /// <summary>Asks for confirmation before signing out; only possible while a character is shown.</summary>
     [RelayCommand(CanExecute = nameof(IsConnected))]
-    private void RequestForget()
+    private void RequestSignOut()
     {
         if (IsConnected)
         {
-            IsForgetPending = true;
+            IsSignOutPending = true;
         }
     }
 
     [RelayCommand]
-    private void CancelForget() => IsForgetPending = false;
+    private void CancelSignOut() => IsSignOutPending = false;
 
-    /// <summary>Deletes the stored data and returns to the not-connected state. The browser session is not touched.</summary>
+    /// <summary>
+    /// Ends the site session in the sign-out window, then removes the stored data. Nothing changes when the window is
+    /// dismissed; when the site cannot be reached the data is still removed and the message says the session may remain.
+    /// </summary>
     [RelayCommand]
-    private void ConfirmForget()
+    private async Task ConfirmSignOutAsync()
+    {
+        IsSignOutPending = false;
+        if (_dialogOpen)
+        {
+            return;
+        }
+
+        var result = await ShowDialogAsync(SignInMode.SignOut);
+        switch (result.Outcome)
+        {
+            case SignInOutcome.SignedOut:
+                RemoveLocalData(SignOutCompleteMessage);
+                break;
+            case SignInOutcome.Cancelled:
+                Status = CancelledMessage;
+                break;
+            default:
+                RemoveLocalData(SignOutUnreachableMessage);
+                break;
+        }
+    }
+
+    /// <summary>Deletes the stored data and returns to the not-connected state; keeps everything when the deletion fails.</summary>
+    private void RemoveLocalData(string doneMessage)
     {
         if (_persistence is not null && !_persistence.Forget())
         {
-            IsForgetPending = false;
             Status = ForgetFailedMessage;
             return;
         }
@@ -207,8 +253,7 @@ public partial class AccountViewModel : ObservableObject
         Badges.Clear();
         Sidebar.Reset();
         IsFromStoredData = false;
-        IsForgetPending = false;
-        Status = ForgottenMessage;
+        Status = doneMessage;
     }
 
     /// <summary>First sign-in: the browser is shown so the user can sign in themselves.</summary>
@@ -226,26 +271,29 @@ public partial class AccountViewModel : ObservableObject
             return;
         }
 
-        _dialogOpen = true;
-        SignInResult result;
-        try
-        {
-            result = await _dialog.ShowAsync(mode);
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            Log.Error(ex, "The sign-in window failed");
-            result = SignInResult.Failed($"Could not open the sign-in window: {ex.Message}");
-        }
-        finally
-        {
-            _dialogOpen = false;
-        }
-
+        var result = await ShowDialogAsync(mode);
         Apply(result);
         if (result is { Outcome: SignInOutcome.Connected, CharacterName: { } name })
         {
             await LoadCharacterAsync(name);
+        }
+    }
+
+    private async Task<SignInResult> ShowDialogAsync(SignInMode mode)
+    {
+        _dialogOpen = true;
+        try
+        {
+            return await _dialog.ShowAsync(mode);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Log.Error(ex, "The sign-in window failed");
+            return SignInResult.Failed($"Could not open the sign-in window: {ex.Message}");
+        }
+        finally
+        {
+            _dialogOpen = false;
         }
     }
 

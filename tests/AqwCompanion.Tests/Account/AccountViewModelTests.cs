@@ -460,7 +460,7 @@ public class AccountViewModelTests
         Assert.Equal(ExpectedUpdated(Earlier.AddMinutes(1)), vm.Equipment.UpdatedText);
         Assert.Equal(ExpectedUpdated(Earlier.AddMinutes(2)), vm.Badges.UpdatedText);
         Assert.True(vm.Summary.HasUpdatedText && vm.Equipment.HasUpdatedText && vm.Badges.HasUpdatedText);
-        Assert.True(vm.ShowSignIn);
+        Assert.False(vm.ShowSignIn);
         Assert.False(vm.NeedsSignIn);
         Assert.Contains(nameof(AccountViewModel.ShowSignIn), changed);
         Assert.Contains(nameof(AccountViewModel.StoredDataNotice), changed);
@@ -753,48 +753,6 @@ public class AccountViewModelTests
     }
 
     [Fact]
-    public async Task Forget_needs_confirmation()
-    {
-        _persistence.ToRestore = StoredAccount();
-        var vm = BuildPersisted();
-        await vm.RestoreStoredDataAsync();
-        vm.Badges.OpenDetailsCommand.Execute(null);
-        vm.Equipment.Status = "x";
-        vm.Badges.Status = "y";
-        _persistence.Calls.Clear();
-
-        vm.RequestForgetCommand.Execute(null);
-        Assert.True(vm.IsForgetPending);
-        Assert.DoesNotContain("Forget", _persistence.Calls);
-
-        vm.CancelForgetCommand.Execute(null);
-        Assert.False(vm.IsForgetPending);
-        Assert.DoesNotContain("Forget", _persistence.Calls);
-        Assert.True(vm.IsConnected);
-
-        vm.RequestForgetCommand.Execute(null);
-        vm.ConfirmForgetCommand.Execute(null);
-
-        Assert.Equal(["Forget"], _persistence.Calls);
-        Assert.False(vm.IsForgetPending);
-        Assert.Null(vm.CharacterName);
-        Assert.Null(vm.Summary.Data);
-        Assert.Null(vm.Equipment.Data);
-        Assert.Null(vm.Badges.Data);
-        Assert.Equal(string.Empty, vm.Summary.UpdatedText);
-        Assert.Equal(string.Empty, vm.Equipment.UpdatedText);
-        Assert.Equal(string.Empty, vm.Badges.UpdatedText);
-        Assert.Equal(string.Empty, vm.Equipment.Status);
-        Assert.Equal(string.Empty, vm.Badges.Status);
-        Assert.False(vm.Sidebar.IsOpen);
-        Assert.False(vm.IsFromStoredData);
-        Assert.Equal(string.Empty, vm.StoredDataNotice);
-        Assert.Equal(AccountViewModel.ForgottenMessage, vm.Status);
-        Assert.Equal(AccountViewModel.NotConnectedText, vm.Headline);
-        Assert.True(vm.ShowSignIn);
-    }
-
-    [Fact]
     public async Task Restore_seeds_the_session_data_with_what_was_restored()
     {
         var stored = StoredAccount();
@@ -816,18 +774,130 @@ public class AccountViewModelTests
         Assert.Empty(_session.Seeded);
     }
 
-    [Fact]
-    public async Task Forget_that_fails_keeps_everything_and_says_so()
+    private async Task<AccountViewModel> RestoredAsync()
     {
         _persistence.ToRestore = StoredAccount();
-        _persistence.ForgetResult = false;
         var vm = BuildPersisted();
         await vm.RestoreStoredDataAsync();
-        vm.RequestForgetCommand.Execute(null);
+        _persistence.Calls.Clear();
+        return vm;
+    }
 
-        vm.ConfirmForgetCommand.Execute(null);
+    private static async Task SignOutAsync(AccountViewModel vm)
+    {
+        vm.RequestSignOutCommand.Execute(null);
+        await vm.ConfirmSignOutCommand.ExecuteAsync(null);
+    }
 
-        Assert.False(vm.IsForgetPending);
+    private void AssertEverythingRemoved(AccountViewModel vm)
+    {
+        Assert.Equal(["Forget"], _persistence.Calls);
+        Assert.False(vm.IsSignOutPending);
+        Assert.Null(vm.CharacterName);
+        Assert.Null(vm.Summary.Data);
+        Assert.Null(vm.Equipment.Data);
+        Assert.Null(vm.Badges.Data);
+        Assert.Equal(string.Empty, vm.Summary.UpdatedText);
+        Assert.Equal(string.Empty, vm.Equipment.UpdatedText);
+        Assert.Equal(string.Empty, vm.Badges.UpdatedText);
+        Assert.Equal(string.Empty, vm.Equipment.Status);
+        Assert.Equal(string.Empty, vm.Badges.Status);
+        Assert.False(vm.Sidebar.IsOpen);
+        Assert.False(vm.IsFromStoredData);
+        Assert.Equal(string.Empty, vm.StoredDataNotice);
+        Assert.Equal(NotConnected, vm.Headline);
+        Assert.True(vm.ShowSignIn);
+        Assert.False(vm.HasLastSync);
+        Assert.Equal(string.Empty, vm.LastSyncText);
+        Assert.Equal(1, _session.ClearCalls);
+    }
+
+    private const string NotConnected = AccountViewModel.NotConnectedText;
+
+    [Fact]
+    public async Task Sign_out_needs_confirmation_and_opens_the_sign_out_window_only_after_it()
+    {
+        var vm = await RestoredAsync();
+        vm.Badges.OpenDetailsCommand.Execute(null);
+        vm.Equipment.Status = "x";
+        vm.Badges.Status = "y";
+        _dialog.OnShow = Reports(SignInResult.SignedOut());
+
+        vm.RequestSignOutCommand.Execute(null);
+        Assert.True(vm.IsSignOutPending);
+        Assert.Empty(_dialog.Shown);
+        Assert.DoesNotContain("Forget", _persistence.Calls);
+
+        vm.CancelSignOutCommand.Execute(null);
+        Assert.False(vm.IsSignOutPending);
+        Assert.Empty(_dialog.Shown);
+        Assert.True(vm.IsConnected);
+
+        await SignOutAsync(vm);
+
+        Assert.Equal([SignInMode.SignOut], _dialog.Shown);
+        AssertEverythingRemoved(vm);
+        Assert.Equal(AccountViewModel.SignOutCompleteMessage, vm.Status);
+        Assert.Null(vm.Sidebar.Content);
+        Assert.Equal(string.Empty, vm.Sidebar.Title);
+    }
+
+    [Fact]
+    public async Task Sign_out_that_could_not_reach_the_site_still_removes_the_local_data_and_says_so()
+    {
+        var vm = await RestoredAsync();
+        _dialog.OnShow = Reports(SignInResult.Failed("Could not reach account.aq.com."));
+
+        await SignOutAsync(vm);
+
+        AssertEverythingRemoved(vm);
+        Assert.Equal(AccountViewModel.SignOutUnreachableMessage, vm.Status);
+    }
+
+    [Fact]
+    public async Task Sign_out_whose_window_throws_is_treated_as_unreachable()
+    {
+        var vm = await RestoredAsync();
+        _dialog.OnShow = _ => throw new InvalidOperationException("boom");
+
+        await SignOutAsync(vm);
+
+        AssertEverythingRemoved(vm);
+        Assert.Equal(AccountViewModel.SignOutUnreachableMessage, vm.Status);
+    }
+
+    [Fact]
+    public async Task Sign_out_dismissed_changes_nothing()
+    {
+        var vm = await RestoredAsync();
+        _dialog.OnShow = Reports(SignInResult.Cancelled());
+
+        await SignOutAsync(vm);
+
+        Assert.Empty(_persistence.Calls);
+        Assert.False(vm.IsSignOutPending);
+        Assert.Equal("Test Hero", vm.CharacterName);
+        Assert.NotNull(vm.Summary.Data);
+        Assert.NotNull(vm.Equipment.Data);
+        Assert.NotNull(vm.Badges.Data);
+        Assert.True(vm.IsFromStoredData);
+        Assert.Equal(AccountViewModel.CancelledMessage, vm.Status);
+        Assert.Equal(0, _session.ClearCalls);
+        Assert.True(vm.HasLastSync);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Sign_out_that_cannot_remove_the_local_data_keeps_everything_and_says_so(bool signedOut)
+    {
+        _persistence.ForgetResult = false;
+        var vm = await RestoredAsync();
+        _dialog.OnShow = Reports(signedOut ? SignInResult.SignedOut() : SignInResult.Failed("x"));
+
+        await SignOutAsync(vm);
+
+        Assert.False(vm.IsSignOutPending);
         Assert.Equal(AccountViewModel.ForgetFailedMessage, vm.Status);
         Assert.Equal("Test Hero", vm.CharacterName);
         Assert.NotNull(vm.Summary.Data);
@@ -835,38 +905,40 @@ public class AccountViewModelTests
         Assert.NotNull(vm.Badges.Data);
         Assert.True(vm.IsFromStoredData);
         Assert.Equal(0, _session.ClearCalls);
+        Assert.True(vm.HasLastSync);
     }
 
     [Fact]
-    public async Task Forget_that_succeeds_clears_the_session_data_and_resets_the_sidebar()
-    {
-        _persistence.ToRestore = StoredAccount();
-        var vm = BuildPersisted();
-        await vm.RestoreStoredDataAsync();
-        vm.Badges.OpenDetailsCommand.Execute(null);
-        Assert.Same(vm.Badges, vm.Sidebar.Content);
-        vm.RequestForgetCommand.Execute(null);
-
-        vm.ConfirmForgetCommand.Execute(null);
-
-        Assert.Equal(1, _session.ClearCalls);
-        Assert.Null(vm.Sidebar.Content);
-        Assert.Equal(string.Empty, vm.Sidebar.Title);
-        Assert.Equal(AccountViewModel.ForgottenMessage, vm.Status);
-    }
-
-    [Fact]
-    public void Forget_can_only_be_requested_while_connected()
+    public void Sign_out_can_only_be_requested_while_connected()
     {
         var vm = BuildPersisted();
 
-        vm.RequestForgetCommand.Execute(null);
+        Assert.False(vm.RequestSignOutCommand.CanExecute(null));
+        vm.RequestSignOutCommand.Execute(null);
 
-        Assert.False(vm.IsForgetPending);
+        Assert.False(vm.IsSignOutPending);
     }
 
     [Fact]
-    public async Task Forget_cancels_an_in_flight_character_load()
+    public async Task Confirming_sign_out_while_a_window_is_open_does_nothing()
+    {
+        var vm = await RestoredAsync();
+        var gate = new TaskCompletionSource<SignInResult>();
+        _dialog.OnShow = _ => gate.Task;
+        var refreshing = vm.RefreshCommand.ExecuteAsync(null);
+        vm.RequestSignOutCommand.Execute(null);
+
+        await vm.ConfirmSignOutCommand.ExecuteAsync(null);
+
+        Assert.False(vm.IsSignOutPending);
+        Assert.Equal([SignInMode.Compact], _dialog.Shown);
+        Assert.DoesNotContain("Forget", _persistence.Calls);
+        gate.SetResult(SignInResult.Cancelled());
+        await refreshing;
+    }
+
+    [Fact]
+    public async Task Sign_out_cancels_an_in_flight_character_load()
     {
         var gate = new TaskCompletionSource<EquipmentLoadResult>();
         _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
@@ -874,8 +946,8 @@ public class AccountViewModelTests
 
         var signingIn = vm.SignInCommand.ExecuteAsync(null);
         Assert.Equal(EquipmentCardViewModel.LoadingText, vm.Equipment.Status);
-        vm.RequestForgetCommand.Execute(null);
-        vm.ConfirmForgetCommand.Execute(null);
+        _dialog.OnShow = Reports(SignInResult.SignedOut());
+        await SignOutAsync(vm);
         gate.SetResult(new EquipmentLoadResult(EquipmentLoadStatus.Loaded, Equipment("Test Hero", 3), true));
         await signingIn;
 
@@ -883,9 +955,83 @@ public class AccountViewModelTests
         Assert.Null(vm.Equipment.Data);
         Assert.Null(vm.Badges.Data);
         Assert.Equal(string.Empty, vm.Equipment.Status);
-        Assert.Equal(AccountViewModel.ForgottenMessage, vm.Status);
+        Assert.Equal(AccountViewModel.SignOutCompleteMessage, vm.Status);
         Assert.Empty(_persistence.SavedEquipment);
         Assert.Empty(_persistence.SavedBadges);
+    }
+
+    [Fact]
+    public void Sign_out_texts_are_honest()
+    {
+        Assert.Equal("Sign out of account.aq.com and remove everything the app saved on this computer?", AccountViewModel.SignOutPromptText);
+        Assert.Equal("Signed out. The saved data was removed from this computer.", AccountViewModel.SignOutCompleteMessage);
+        Assert.Equal(
+            "The saved data was removed, but account.aq.com could not be reached, so your site session may still be active.",
+            AccountViewModel.SignOutUnreachableMessage);
+    }
+
+    [Fact]
+    public async Task Headline_says_saved_data_until_the_session_is_read_this_run()
+    {
+        var vm = await RestoredAsync();
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        Assert.Equal("Saved data for Test Hero", vm.Headline);
+
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero", SampleAccount.Summary));
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal("Connected as Test Hero", vm.Headline);
+        Assert.Contains(nameof(AccountViewModel.Headline), changed);
+    }
+
+    [Fact]
+    public async Task Sign_in_is_offered_only_while_not_connected()
+    {
+        var vm = BuildPersisted();
+        Assert.True(vm.ShowSignIn);
+
+        _persistence.ToRestore = StoredAccount();
+        await vm.RestoreStoredDataAsync();
+        Assert.False(vm.ShowSignIn);
+        Assert.True(vm.IsFromStoredData);
+    }
+
+    [Fact]
+    public async Task Last_sync_follows_the_identity_read_time()
+    {
+        var vm = BuildPersisted();
+        Assert.False(vm.HasLastSync);
+        Assert.Equal(string.Empty, vm.LastSyncText);
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        _persistence.ToRestore = StoredAccount();
+        await vm.RestoreStoredDataAsync();
+        Assert.True(vm.HasLastSync);
+        Assert.Equal("Last sync: " + Earlier.ToLocalTime().ToString("g", CultureInfo.CurrentCulture), vm.LastSyncText);
+        Assert.Contains(nameof(AccountViewModel.LastSyncText), changed);
+
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero", SampleAccount.Summary));
+        await vm.RefreshCommand.ExecuteAsync(null);
+        Assert.Equal("Last sync: " + Now.ToLocalTime().ToString("g", CultureInfo.CurrentCulture), vm.LastSyncText);
+
+        _dialog.OnShow = Reports(SignInResult.SignedOut());
+        await SignOutAsync(vm);
+        Assert.False(vm.HasLastSync);
+        Assert.Equal(string.Empty, vm.LastSyncText);
+    }
+
+    [Fact]
+    public async Task Last_sync_is_set_after_a_first_sign_in()
+    {
+        var vm = BuildPersisted();
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero", SampleAccount.Summary));
+
+        await vm.SignInCommand.ExecuteAsync(null);
+
+        Assert.True(vm.HasLastSync);
+        Assert.Equal("Last sync: " + Now.ToLocalTime().ToString("g", CultureInfo.CurrentCulture), vm.LastSyncText);
     }
 
     [Fact]
@@ -900,10 +1046,11 @@ public class AccountViewModelTests
         await vm.SignInCommand.ExecuteAsync(null);
         Assert.Equal(ExpectedUpdated(Now), vm.Summary.UpdatedText);
 
-        vm.RequestForgetCommand.Execute(null);
-        vm.ConfirmForgetCommand.Execute(null);
+        _dialog.OnShow = Reports(SignInResult.SignedOut());
+        vm.RequestSignOutCommand.Execute(null);
+        await vm.ConfirmSignOutCommand.ExecuteAsync(null);
         Assert.Null(vm.CharacterName);
-        Assert.Equal(AccountViewModel.ForgottenMessage, vm.Status);
+        Assert.Equal(AccountViewModel.SignOutCompleteMessage, vm.Status);
     }
 
     [Fact]

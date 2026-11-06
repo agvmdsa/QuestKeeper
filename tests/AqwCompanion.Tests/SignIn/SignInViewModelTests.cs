@@ -584,6 +584,192 @@ public class SignInViewModelTests
         Assert.Equal(SignInViewModel.FullTitle, vm.WindowTitle);
     }
 
+    // ---- Sign out mode -------------------------------------------------------------------------------
+
+    [Fact]
+    public void Sign_out_mode_opens_the_exit_page_with_the_progress_layout()
+    {
+        var vm = Build(SignInMode.SignOut);
+
+        Assert.Equal(AqwUrls.Exit, _host.LastNavigated);
+        Assert.Equal(1, _host.NavigateCount);
+        Assert.True(vm.IsSignOut);
+        Assert.True(vm.IsCompact);
+        Assert.False(vm.IsFull);
+        Assert.True(vm.ShowCompactProgress);
+        Assert.False(vm.ShowFullStatus);
+        Assert.Equal("Signing out of account.aq.com...", SignInViewModel.SigningOutTitle);
+        Assert.Equal(SignInViewModel.SigningOutTitle, vm.WindowTitle);
+        Assert.Equal(SignInViewModel.SigningOutTitle, vm.CompactTitle);
+        Assert.Equal(SignInViewModel.SigningOutMessage, vm.Message);
+        Assert.Null(vm.Result);
+    }
+
+    [Theory]
+    [InlineData("https://account.aq.com/Login/Exit")]
+    [InlineData("https://account.aq.com/Login")]
+    [InlineData("https://account.aq.com/Home")]
+    public async Task Sign_out_finishes_on_the_first_completed_navigation_on_the_account_site_without_reading_anything(string url)
+    {
+        var vm = Build(SignInMode.SignOut);
+        var closed = new List<SignInResult>();
+        vm.CloseRequested += (_, r) => closed.Add(r);
+        _host.OnCapture = () => Page("account-home-sample.html");
+
+        await vm.HandleNavigationAsync(url);
+
+        Assert.Equal(SignInResult.SignedOut(), vm.Result);
+        Assert.Equal(SignInOutcome.SignedOut, vm.Result!.Outcome);
+        Assert.Equal(SignInResult.SignedOut(), Assert.Single(closed));
+        Assert.Equal(0, _host.CaptureCount);
+        Assert.Null(_failures.Latest);
+        Assert.Null(_store.Latest);
+        Assert.Null(vm.CharacterName);
+        Assert.Equal(0, _host.Subscribers);
+        Assert.Equal(1, _host.NavigateCount);
+    }
+
+    [Fact]
+    public void Sign_out_finishes_through_the_browser_event_too()
+    {
+        var vm = Build(SignInMode.SignOut);
+
+        _host.Raise(AqwUrls.Exit);
+
+        Assert.Equal(SignInOutcome.SignedOut, vm.Result?.Outcome);
+        Assert.Equal(0, _host.CaptureCount);
+    }
+
+    [Fact]
+    public async Task Sign_out_ignores_later_navigations()
+    {
+        var vm = Build(SignInMode.SignOut);
+        await vm.HandleNavigationAsync(AqwUrls.Exit);
+
+        await vm.HandleNavigationAsync(AqwUrls.Home);
+
+        Assert.Equal(SignInResult.SignedOut(), vm.Result);
+        Assert.Equal(0, _host.CaptureCount);
+    }
+
+    [Fact]
+    public async Task Sign_out_never_switches_to_the_expired_session_layout()
+    {
+        var vm = Build(SignInMode.SignOut);
+
+        await vm.HandleNavigationAsync("https://sso.example/login");
+
+        Assert.NotEqual(SignInState.SessionExpired, vm.State);
+        Assert.Null(vm.Result);
+    }
+
+    [Theory]
+    [InlineData("about:blank")]
+    [InlineData("https://sso.example/login")]
+    [InlineData("http://account.aq.com/Login/Exit")]
+    [InlineData("not a url")]
+    public async Task Sign_out_ignores_a_completed_navigation_outside_the_account_site_and_keeps_the_watchdog(string url)
+    {
+        var vm = Build(SignInMode.SignOut, navigationTimeout: Fast);
+        var closed = new List<SignInResult>();
+        vm.CloseRequested += (_, r) => closed.Add(r);
+
+        await vm.HandleNavigationAsync(url);
+
+        Assert.Null(vm.Result);
+        Assert.Empty(closed);
+        Assert.Equal(0, _host.CaptureCount);
+
+        await vm.NavigationWatchdog!.WaitAsync(TimeSpan.FromSeconds(10));
+        AssertCouldNotReach(vm);
+        vm.CancelCommand.Execute(null);
+        Assert.Equal(SignInResult.Failed(SignInViewModel.CouldNotReachMessage), vm.Result);
+    }
+
+    [Fact]
+    public async Task Sign_out_finishes_on_a_later_account_site_navigation_after_ignoring_a_blank_page()
+    {
+        var vm = Build(SignInMode.SignOut);
+
+        await vm.HandleNavigationAsync("about:blank");
+        Assert.Null(vm.Result);
+        await vm.HandleNavigationAsync("https://account.aq.com/Login/Exit");
+
+        Assert.Equal(SignInResult.SignedOut(), vm.Result);
+        Assert.Equal(0, _host.CaptureCount);
+    }
+
+    [Fact]
+    public async Task Sign_out_watchdog_failure_shows_the_error_and_dismissal_reports_failed()
+    {
+        var vm = Build(SignInMode.SignOut, navigationTimeout: Fast);
+
+        await vm.NavigationWatchdog!.WaitAsync(TimeSpan.FromSeconds(10));
+
+        AssertCouldNotReach(vm);
+        vm.CancelCommand.Execute(null);
+        Assert.Equal(SignInResult.Failed(SignInViewModel.CouldNotReachMessage), vm.Result);
+    }
+
+    [Fact]
+    public async Task Sign_out_try_again_opens_the_exit_page_again_and_can_still_finish()
+    {
+        var vm = Build(SignInMode.SignOut, navigationTimeout: Fast);
+        await vm.NavigationWatchdog!.WaitAsync(TimeSpan.FromSeconds(10));
+
+        vm.TryAgainCommand.Execute(null);
+
+        Assert.Equal(2, _host.NavigateCount);
+        Assert.Equal(AqwUrls.Exit, _host.LastNavigated);
+        Assert.Equal(SignInState.SigningIn, vm.State);
+        Assert.Equal(SignInViewModel.SigningOutMessage, vm.Message);
+        Assert.True(vm.IsCompact);
+        await vm.HandleNavigationAsync(AqwUrls.Exit);
+        Assert.Equal(SignInOutcome.SignedOut, vm.Result?.Outcome);
+    }
+
+    [Fact]
+    public void Sign_out_failed_first_navigation_fails_at_once()
+    {
+        var vm = Build(SignInMode.SignOut);
+
+        _host.RaiseFailure();
+
+        Assert.Equal(SignInState.Error, vm.State);
+        Assert.Null(vm.Result);
+    }
+
+    [Fact]
+    public void Cancelling_a_sign_out_before_it_completes_reports_cancelled()
+    {
+        var vm = Build(SignInMode.SignOut);
+
+        vm.CancelCommand.Execute(null);
+
+        Assert.Equal(SignInResult.Cancelled(), vm.Result);
+        Assert.Equal(0, _host.Subscribers);
+    }
+
+    [Fact]
+    public async Task A_page_that_finishes_after_a_sign_out_was_cancelled_changes_nothing()
+    {
+        var vm = Build(SignInMode.SignOut);
+        vm.CancelCommand.Execute(null);
+
+        await vm.HandleNavigationAsync(AqwUrls.Exit);
+
+        Assert.Equal(SignInResult.Cancelled(), vm.Result);
+    }
+
+    [Fact]
+    public void Sign_in_results_include_signed_out()
+    {
+        Assert.Equal(SignInOutcome.SignedOut, SignInResult.SignedOut().Outcome);
+        Assert.Null(SignInResult.SignedOut().CharacterName);
+        Assert.Null(SignInResult.SignedOut().Summary);
+        Assert.NotEqual(SignInResult.SignedOut(), SignInResult.Cancelled());
+    }
+
     // ---- Navigation watchdog -------------------------------------------------------------------------
 
     private static void AssertCouldNotReach(SignInViewModel vm)

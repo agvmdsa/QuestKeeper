@@ -17,6 +17,8 @@ public static class AqwUrls
     public const string ProgressSagas = "https://account.aq.com/AQW/ProgressSagas";
     public const string ProgressMembership = "https://account.aq.com/AQW/ProgressMembership";
     public const string ProgressCoins = "https://account.aq.com/AQW/ProgressCoins";
+    /// <summary>The plain link behind the site's own "Logout" menu item; opened only when the user confirms Sign out.</summary>
+    public const string Exit = "https://account.aq.com/Login/Exit";
     public const string CharPageBase = "https://account.aq.com/CharPage";
 
     public static string CharPage(string characterName) =>

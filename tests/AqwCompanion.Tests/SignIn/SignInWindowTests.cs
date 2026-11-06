@@ -66,6 +66,23 @@ public class SignInWindowTests
     }
 
     [AvaloniaFact]
+    public void Sign_out_layout_shows_the_progress_panel_and_the_browser_stays_tiny()
+    {
+        var vm = BuildViewModel(SignInMode.SignOut);
+        var window = new SignInWindow(vm);
+
+        window.Show();
+        Settle(window);
+
+        Assert.Equal(SignInViewModel.SigningOutTitle, window.Title);
+        Assert.True(Find<StackPanel>(window, "CompactPanel").IsVisible);
+        Assert.Equal(SignInViewModel.SigningOutTitle, Find<TextBlock>(window, "CompactTitle").Text);
+        Assert.True(Find<ProgressBar>(window, "CompactProgress").IsVisible);
+        Assert.False(Find<Border>(window, "AddressStrip").IsVisible);
+        Assert.Contains("compact", Find<Border>(window, "BrowserSlot").Classes);
+    }
+
+    [AvaloniaFact]
     public void Compact_layout_shows_progress_and_cancel_and_keeps_the_browser_slot_one_pixel_big()
     {
         var vm = BuildViewModel(SignInMode.Compact);

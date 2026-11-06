@@ -7,6 +7,9 @@ public enum SignInOutcome
     Connected,
     Cancelled,
     Failed,
+
+    /// <summary>The sign-out page finished loading; the site session was ended.</summary>
+    SignedOut,
 }
 
 /// <summary>
@@ -23,6 +26,8 @@ public sealed record SignInResult(
         new(SignInOutcome.Connected, characterName, Summary: summary);
 
     public static SignInResult Cancelled() => new(SignInOutcome.Cancelled);
+
+    public static SignInResult SignedOut() => new(SignInOutcome.SignedOut);
 
     public static SignInResult Failed(string message) => new(SignInOutcome.Failed, Message: message);
 }

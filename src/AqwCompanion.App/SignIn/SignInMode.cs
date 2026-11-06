@@ -8,4 +8,7 @@ public enum SignInMode
 
     /// <summary>A small progress window for refreshing an existing session; the browser is not shown.</summary>
     Compact,
+
+    /// <summary>A small progress window that only opens the site's logout page; nothing is read.</summary>
+    SignOut,
 }

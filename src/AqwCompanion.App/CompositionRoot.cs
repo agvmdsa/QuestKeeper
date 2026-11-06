@@ -33,7 +33,6 @@ public static class CompositionRoot
         services.AddSingleton(_ => new SnapshotRedactor());
         services.AddSingleton<DiagnosticsExporter>();
         services.AddSingleton<FailedSnapshotBuffer>();
-        services.AddSingleton<IBrowserHost, NullBrowserHost>();
         services.AddSingleton<WebViewBrowserHost>();
         services.AddSingleton<IPageParser<AccountIdentity>, AccountHomeParser>();
         services.AddSingleton<LatestResultStore<AccountIdentity>>();

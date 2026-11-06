@@ -22,25 +22,9 @@ public sealed class ViewModelTests : IDisposable
     }
 
     [Fact]
-    public void Wiki_go_command_navigates_the_host_to_the_address()
+    public void Wiki_view_model_builds_without_a_browser_host()
     {
-        var host = new FakeBrowserHost();
-        var vm = new WikiViewModel(host) { AddressInput = "https://aqwwiki.wikidot.com/some-page" };
-
-        vm.GoCommand.Execute(null);
-
-        Assert.Equal("https://aqwwiki.wikidot.com/some-page", host.LastNavigated);
-    }
-
-    [Fact]
-    public void Wiki_current_url_follows_navigation_completed()
-    {
-        var host = new FakeBrowserHost();
-        var vm = new WikiViewModel(host);
-
-        host.Raise("https://aqwwiki.wikidot.com/final");
-
-        Assert.Equal("https://aqwwiki.wikidot.com/final", vm.CurrentUrl);
+        Assert.NotNull(new WikiViewModel());
     }
 
     [Fact]

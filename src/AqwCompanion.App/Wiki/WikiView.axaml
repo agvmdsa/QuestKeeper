@@ -4,9 +4,6 @@
              x:Class="AqwCompanion.App.Wiki.WikiView"
              x:DataType="vm:WikiViewModel">
   <StackPanel Margin="16" Spacing="12">
-    <TextBox Text="{Binding AddressInput}" Watermark="Address" />
-    <Button Content="Go" Command="{Binding GoCommand}" />
-    <TextBlock Text="{Binding CurrentUrl}" />
     <TextBlock Foreground="{DynamicResource AqwTextMuted}" Text="The integrated browser is not available yet." />
   </StackPanel>
 </UserControl>

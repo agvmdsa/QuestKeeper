@@ -3,6 +3,7 @@ using AqwCompanion.App.Account;
 using AqwCompanion.App.Infrastructure.Browser;
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Shell;
+using AqwCompanion.App.Wiki;
 using AqwCompanion.App.SignIn;
 using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Ingestion;
@@ -26,6 +27,17 @@ public class CompositionRootTests
         Assert.NotNull(main.Wiki);
         Assert.NotNull(main.Diagnostics);
         Assert.NotNull(main.Account);
+    }
+
+    [Fact]
+    public void Container_no_longer_registers_a_generic_browser_host()
+    {
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
+
+        using var services = CompositionRoot.Build(paths);
+
+        Assert.Null(services.GetService<IBrowserHost>());
+        Assert.NotNull(services.GetRequiredService<WikiViewModel>());
     }
 
     [Fact]

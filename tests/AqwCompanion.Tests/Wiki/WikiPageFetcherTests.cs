@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using AqwCompanion.Core.Ingestion;
 using AqwCompanion.Core.Wiki;
 using AqwCompanion.Tests.TestDoubles;
 
@@ -185,7 +186,7 @@ public class WikiPageFetcherTests
     public void The_limits_are_the_agreed_ones()
     {
         Assert.Equal(8 * 1024 * 1024, WikiPageFetcher.MaxBytes);
-        Assert.Equal(TimeSpan.FromSeconds(20), WikiPageFetcher.Timeout);
+        Assert.Equal(TimeSpan.FromSeconds(30), WikiPageFetcher.DefaultTimeout);
     }
 
     [Theory]
@@ -222,6 +223,168 @@ public class WikiPageFetcherTests
         await cts.CancelAsync();
         var fetcher = new WikiPageFetcher(new HttpClient(new HangingHandler()), "1.0.0", new ListLogger<WikiPageFetcher>());
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetcher.FetchPageAsync(PageUrl, cts.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetcher.FetchPageAsync(PageUrl, null, cts.Token));
+    }
+
+    [Fact]
+    public async Task A_page_that_does_not_answer_in_time_is_a_timeout_failure_not_a_cancellation()
+    {
+        var fetcher = new WikiPageFetcher(new HttpClient(new HangingHandler()), "1.0.0", new ListLogger<WikiPageFetcher>());
+
+        var result = await fetcher.FetchPageAsync(PageUrl, TimeSpan.FromMilliseconds(30));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(PageFailureKind.Timeout, result.Kind);
+        Assert.Null(result.HttpStatus);
+    }
+
+    [Fact]
+    public async Task The_timeout_is_per_call_and_a_generous_one_lets_a_slow_answer_through()
+    {
+        var (fetcher, _, _) = Build(_ => Reply("<p/>"));
+
+        var result = await fetcher.FetchPageAsync(PageUrl, TimeSpan.FromMinutes(5));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PageFailureKind.None, result.Kind);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public async Task A_non_success_answer_is_an_http_failure_with_its_status(HttpStatusCode status)
+    {
+        var (fetcher, _, _) = Build(_ => Reply("nope", status: status));
+
+        var result = await fetcher.FetchPageAsync(PageUrl);
+
+        Assert.Equal(PageFailureKind.Http, result.Kind);
+        Assert.Equal((int)status, result.HttpStatus);
+    }
+
+    [Fact]
+    public async Task A_connection_error_is_a_network_failure()
+    {
+        var (fetcher, _, _) = Build(_ => throw new HttpRequestException("down"));
+
+        var result = await fetcher.FetchPageAsync(PageUrl);
+
+        Assert.Equal(PageFailureKind.Network, result.Kind);
+        Assert.Null(result.HttpStatus);
+    }
+
+    [Fact]
+    public async Task A_page_that_is_not_html_is_a_not_html_failure()
+    {
+        var (fetcher, _, _) = Build(_ => Reply("x", "application/json"));
+
+        Assert.Equal(PageFailureKind.NotHtml, (await fetcher.FetchPageAsync(PageUrl)).Kind);
+    }
+
+    [Fact]
+    public async Task A_page_over_the_cap_is_a_too_large_failure()
+    {
+        var (fetcher, _, _) = Build(_ => Reply(new string('x', WikiPageFetcher.MaxBytes + 1)));
+
+        Assert.Equal(PageFailureKind.TooLarge, (await fetcher.FetchPageAsync(PageUrl)).Kind);
+    }
+
+    [Theory]
+    [InlineData("http://aqwwiki.wikidot.com/syfarm")]
+    [InlineData("https://evil.example.com/syfarm")]
+    public async Task A_forbidden_address_is_a_blocked_failure(string url)
+    {
+        var (fetcher, _, _) = Build(_ => Reply("<p/>"));
+
+        Assert.Equal(PageFailureKind.Blocked, (await fetcher.FetchPageAsync(url)).Kind);
+    }
+
+    [Fact]
+    public async Task A_redirect_to_a_forbidden_target_is_a_blocked_failure()
+    {
+        var (fetcher, _, _) = Build(_ => Redirect("https://evil.example.com/x"));
+
+        Assert.Equal(PageFailureKind.Blocked, (await fetcher.FetchPageAsync(PageUrl)).Kind);
+    }
+
+    [Fact]
+    public async Task A_redirect_without_a_location_is_an_http_failure_not_a_blocked_one()
+    {
+        var (fetcher, _, _) = Build(_ => new HttpResponseMessage(HttpStatusCode.Found));
+
+        var result = await fetcher.FetchPageAsync(PageUrl);
+
+        Assert.Equal(PageFailureKind.Http, result.Kind);
+        Assert.Equal(302, result.HttpStatus);
+    }
+
+    [Theory]
+    [InlineData("http://aqwwiki.wikidot.com/next")]
+    [InlineData("https://other.example.com/next")]
+    public async Task A_redirect_to_another_host_or_to_http_stays_blocked(string target)
+    {
+        var (fetcher, _, _) = Build(_ => Redirect(target));
+
+        Assert.Equal(PageFailureKind.Blocked, (await fetcher.FetchPageAsync(PageUrl)).Kind);
+    }
+
+    [Theory]
+    [InlineData(null, 30)]
+    [InlineData(0.0, 1)]
+    [InlineData(-5.0, 1)]
+    [InlineData(0.2, 1)]
+    [InlineData(45.0, 45)]
+    [InlineData(500.0, 120)]
+    public void The_timeout_is_defaulted_and_clamped_between_one_and_120_seconds(double? seconds, double expected)
+    {
+        var timeout = seconds is { } s ? TimeSpan.FromSeconds(s) : (TimeSpan?)null;
+
+        Assert.Equal(TimeSpan.FromSeconds(expected), WikiPageFetcher.NormalizeTimeout(timeout));
+    }
+
+    [Fact]
+    public void An_infinite_timeout_is_clamped_to_the_maximum()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(120), WikiPageFetcher.NormalizeTimeout(Timeout.InfiniteTimeSpan));
+        Assert.Equal(TimeSpan.FromSeconds(120), WikiPageFetcher.NormalizeTimeout(TimeSpan.MaxValue));
+    }
+
+    [Fact]
+    public async Task The_failure_log_names_the_kind_and_the_page_but_never_the_query_or_the_content()
+    {
+        var (fetcher, _, log) = Build(_ => Reply("SECRET-CONTENT", status: HttpStatusCode.ServiceUnavailable));
+
+        await fetcher.FetchPageAsync(PageUrl + "?token=SECRET-QUERY");
+
+        var entry = Assert.Single(log.Entries);
+        Assert.Contains("Http", entry.Message);
+        Assert.Contains("/syfarm", entry.Message);
+        Assert.DoesNotContain("SECRET", entry.Message);
+        Assert.DoesNotContain("token", entry.Message);
+    }
+
+    [Fact]
+    public async Task A_timeout_is_logged_with_its_kind_and_page()
+    {
+        var log = new ListLogger<WikiPageFetcher>();
+        var fetcher = new WikiPageFetcher(new HttpClient(new HangingHandler()), "1.0.0", log);
+
+        await fetcher.FetchPageAsync("https://aqwwiki.wikidot.com/pets", TimeSpan.FromMilliseconds(20));
+
+        Assert.Contains(log.Entries, e => e.Message.Contains("Timeout") && e.Message.Contains("/pets"));
+    }
+
+    [Fact]
+    public async Task Robots_txt_failures_are_classified_too()
+    {
+        var (fetcher, _, _) = Build(_ => Reply("x", status: HttpStatusCode.NotFound));
+
+        var result = await fetcher.FetchRobotsAsync();
+
+        Assert.Equal(PageFailureKind.Http, result.Kind);
+        Assert.Equal(404, result.HttpStatus);
     }
 }

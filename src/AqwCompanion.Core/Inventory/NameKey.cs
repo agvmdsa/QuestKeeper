@@ -36,4 +36,27 @@ public static class NameKey
 
         return builder.ToString();
     }
+
+    /// <summary>
+    /// The looser key used to match wiki names and page names: only lower-case letters and digits (Unicode letters are kept),
+    /// everything else dropped. "Evolved Shadow of Nulgath" and "evolved-shadow-of-nulgath" give the same key.
+    /// </summary>
+    public static string Compact(string? name)
+    {
+        if (string.IsNullOrEmpty(name))
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder(name.Length);
+        foreach (var c in name)
+        {
+            if (char.IsLetterOrDigit(c))
+            {
+                builder.Append(char.ToLowerInvariant(c));
+            }
+        }
+
+        return builder.ToString();
+    }
 }

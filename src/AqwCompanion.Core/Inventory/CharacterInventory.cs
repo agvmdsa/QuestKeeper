@@ -29,6 +29,8 @@ public sealed record CharacterInventory(IReadOnlyList<InventoryItem> Items)
     // Kept outside the record so equality, copies and serialization never see it. Built once per instance, on first lookup.
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CharacterInventory, Dictionary<string, NameEntry>> Indexes = new();
 
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CharacterInventory, HashSet<string>> CompactKeys = new();
+
     private readonly record struct NameEntry(InventoryItem First, long Total);
 
     private Dictionary<string, NameEntry> Index => Indexes.GetValue(this, static inventory =>
@@ -49,6 +51,28 @@ public sealed record CharacterInventory(IReadOnlyList<InventoryItem> Items)
 
         return index;
     });
+
+    private HashSet<string> CompactIndex => CompactKeys.GetValue(this, static inventory =>
+    {
+        var keys = new HashSet<string>(inventory.Items.Count, StringComparer.Ordinal);
+        foreach (var item in inventory.Items)
+        {
+            var key = NameKey.Compact(item.Name);
+            if (key.Length > 0)
+            {
+                keys.Add(key);
+            }
+        }
+
+        return keys;
+    });
+
+    /// <summary>True when an item's name has exactly this <see cref="NameKey.Compact"/> key (the argument is compacted too, so a name works as well). Whole keys only.</summary>
+    public bool HasCompactKey(string key)
+    {
+        var compact = NameKey.Compact(key);
+        return compact.Length > 0 && CompactIndex.Contains(compact);
+    }
 
     /// <summary>The summed counts of the items with this name (trimmed, case-insensitive); 0 when there is none.</summary>
     public int CountOf(string name) =>

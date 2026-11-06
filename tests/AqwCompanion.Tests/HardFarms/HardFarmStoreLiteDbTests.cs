@@ -1,3 +1,4 @@
+using AqwCompanion.Tests.TestDoubles;
 using AqwCompanion.App.Account;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure.Persistence;
@@ -35,12 +36,12 @@ public sealed class HardFarmStoreLiteDbTests : IDisposable
         var list = new HardFarmList(
             [new HardFarmGroup("Nation", ["blade-one", "cape-one"]), new HardFarmGroup("Legion", ["pet-one"])],
             "Created by Tester");
-        var types = new WikiTypeTable([
-            new WikiTypeRow("blade-one", "Blade One", WikiType.Weapon),
-            new WikiTypeRow("pet-one", "Pet One", WikiType.Pet)]);
+        var weapons = new WikiIndex(WikiUrls.WeaponsSlug, WikiType.Weapon, [new WikiIndexEntry("blade-one", "Blade One")]);
+        var pets = new WikiIndex(WikiUrls.PetsSlug, WikiType.Pet, [new WikiIndexEntry("pet-one", "Pet One")]);
 
         Build().SaveList(list, ReadAt);
-        Build().SaveTypes(types, ReadAt);
+        Build().SaveIndex(weapons, ReadAt);
+        Build().SaveIndex(pets, ReadAt);
 
         var again = Build();
         var loadedList = again.LoadList();
@@ -52,7 +53,8 @@ public sealed class HardFarmStoreLiteDbTests : IDisposable
         var loadedTypes = again.LoadTypes();
         Assert.NotNull(loadedTypes);
         Assert.Equal(ReadAt, loadedTypes.ReadAtUtc);
-        Assert.Equal(types.Rows, loadedTypes.Table.Rows);
+        Assert.Equal(WikiTypeTable.From([weapons, pets]).Rows, loadedTypes.Table.Rows);
+        Assert.Equal(2, again.LoadIndexes().Count);
     }
 
     [Fact]
@@ -62,13 +64,13 @@ public sealed class HardFarmStoreLiteDbTests : IDisposable
         var database = new LiteDbStoredDataStore(path);
         var store = new HardFarmStore(database);
         store.SaveList(new HardFarmList([new HardFarmGroup("Nation", ["blade-one"])], null), ReadAt);
-        store.SaveTypes(new WikiTypeTable([new WikiTypeRow("blade-one", "Blade One", WikiType.Weapon)]), ReadAt);
+        store.SaveIndex(new WikiIndex(WikiUrls.WeaponsSlug, WikiType.Weapon, [new WikiIndexEntry("blade-one", "Blade One")]), ReadAt);
         Assert.NotNull(store.LoadList());
 
         Assert.True(new AccountDataPersistence(database).Forget());
 
         Assert.Null(database.Load<HardFarmStore.ListDto>(HardFarmStore.ListKey));
-        Assert.Null(database.Load<HardFarmStore.TypesDto>(HardFarmStore.TypesKey));
+        Assert.Null(database.Load<HardFarmStore.IndexesDto>(HardFarmStore.IndexesKey));
         Assert.Null(store.LoadList());
         Assert.Null(store.LoadTypes());
     }

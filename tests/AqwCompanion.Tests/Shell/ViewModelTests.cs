@@ -114,7 +114,7 @@ public sealed class ViewModelTests : IDisposable
         var store = new HardFarmStore(new InMemoryStoredDataStore());
         store.SaveList(new HardFarmList([new HardFarmGroup("Nation", ["blade-one"])], null), DateTimeOffset.UnixEpoch);
         var hardFarms = new HardFarmsViewModel(
-            store, new FakeHardFarmUpdater(), new InventoryCardViewModel(new SidebarViewModel()), new FakeUrlLauncher());
+            store, new FakeHardFarmSync(), new InventoryCardViewModel(new SidebarViewModel()), new FakeUrlLauncher());
         await hardFarms.RestoreAsync();
         var main = new MainViewModel(
             account, new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer()), hardFarms);

@@ -29,7 +29,7 @@ public class HardFarmsViewTests
 
         public required Window Window { get; init; }
 
-        public required FakeHardFarmUpdater Updater { get; init; }
+        public required FakeHardFarmSync Sync { get; init; }
 
         public required FakeUrlLauncher Launcher { get; init; }
 
@@ -40,32 +40,36 @@ public class HardFarmsViewTests
         [new HardFarmGroup("Nation", ["blade-one", "cape-one", "void-highlord-class"]), new HardFarmGroup("Legion", ["blade-two", "pet-one"])],
         "Created by Tester, Revised by Checker");
 
-    private static WikiTypeTable SmallTypes() => new([
-        new WikiTypeRow("blade-one", "Blade One", WikiType.Weapon),
-        new WikiTypeRow("cape-one", "Cape One", WikiType.Cape),
-        new WikiTypeRow("blade-two", "Blade Two", WikiType.Weapon),
-        new WikiTypeRow("pet-one", "Pet One", WikiType.Pet)]);
+    private static WikiIndex[] SmallIndexes() =>
+    [
+        new(WikiUrls.WeaponsSlug, WikiType.Weapon, [new WikiIndexEntry("blade-one", "Blade One"), new WikiIndexEntry("blade-two", "Blade Two")]),
+        new(WikiUrls.CapesSlug, WikiType.Cape, [new WikiIndexEntry("cape-one", "Cape One")]),
+        new(WikiUrls.PetsSlug, WikiType.Pet, [new WikiIndexEntry("pet-one", "Pet One")]),
+    ];
 
-    private static async Task<Host> Build(HardFarmList? list = null, WikiTypeTable? types = null)
+    private static async Task<Host> Build(HardFarmList? list = null, WikiIndex[]? indexes = null, IReadOnlyList<string>? pending = null)
     {
         var store = new HardFarmStore(new InMemoryStoredDataStore());
         if (list is not null)
         {
             store.SaveList(list, At);
-            store.SaveTypes(types ?? WikiTypeTable.Empty, At);
+            foreach (var index in indexes ?? [])
+            {
+                store.SaveIndex(index, At);
+            }
         }
 
-        var updater = new FakeHardFarmUpdater();
+        var sync = new FakeHardFarmSync { Pending = pending ?? [] };
         var launcher = new FakeUrlLauncher();
         var inventory = new InventoryCardViewModel(new SidebarViewModel());
-        var vm = new HardFarmsViewModel(store, updater, inventory, launcher);
+        var vm = new HardFarmsViewModel(store, sync, inventory, launcher);
         await vm.RestoreAsync();
         var view = new HardFarmsView { DataContext = vm };
         var window = new Window { Width = 1100, Height = 700, Content = view };
         window.Show();
         window.UpdateLayout();
         Flush();
-        return new Host { Vm = vm, View = view, Window = window, Updater = updater, Launcher = launcher, Inventory = inventory };
+        return new Host { Vm = vm, View = view, Window = window, Sync = sync, Launcher = launcher, Inventory = inventory };
     }
 
     // Pumps layout, render ticks and queued jobs until the condition holds; never a fixed number of passes.
@@ -126,7 +130,11 @@ public class HardFarmsViewTests
 
         var empty = h.View.Named<TextBlock>("HardFarmsEmptyState");
         Assert.True(empty.IsEffectivelyVisible);
-        Assert.Equal("Click 'Update from the Wiki' to import the Hard Farming list (about 15 pages, ~45 s).", empty.Text);
+        Assert.Equal(HardFarmsViewModel.EmptyText, empty.Text);
+        Assert.Contains("few seconds", empty.Text);
+        Assert.Contains("minute or two", empty.Text);
+        Assert.Equal("Update from the Wiki", h.View.Named<Button>("HardFarmsUpdateButton").Content);
+        Assert.False(h.View.Named<TextBlock>("HardFarmsPendingLine").IsEffectivelyVisible);
         Assert.False(h.View.Named<ListBox>("HardFarmsList").IsEffectivelyVisible);
         Assert.True(h.View.Named<Button>("HardFarmsUpdateButton").IsEffectivelyEnabled);
         Assert.False(h.View.Named<Button>("HardFarmsCancelButton").IsEffectivelyEnabled);
@@ -135,10 +143,10 @@ public class HardFarmsViewTests
     [AvaloniaFact]
     public async Task Controls_have_accessible_names_and_the_search_box_a_watermark()
     {
-        var h = await Build(SmallList(), SmallTypes());
+        var h = await Build(SmallList(), SmallIndexes());
 
         foreach (var name in new[] { "HardFarmsUpdateButton", "HardFarmsCancelButton", "HardFarmsTypeFilter", "HardFarmsGroupFilter",
-                     "HardFarmsOwnedFilter", "HardFarmsSearchBox", "HardFarmsList" })
+                     "HardFarmsOwnedFilter", "HardFarmsSearchBox", "HardFarmsList", "HardFarmsPendingLine" })
         {
             Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(h.View.Named<Control>(name))), name);
         }
@@ -149,7 +157,7 @@ public class HardFarmsViewTests
     [AvaloniaFact]
     public async Task A_stored_list_is_shown_with_names_types_groups_badges_the_summary_and_the_credit()
     {
-        var h = await Build(SmallList(), SmallTypes());
+        var h = await Build(SmallList(), SmallIndexes());
         WaitForRows(h, 5);
 
         var list = h.View.Named<ListBox>("HardFarmsList");
@@ -170,22 +178,22 @@ public class HardFarmsViewTests
     [AvaloniaFact]
     public async Task Badges_say_Owned_or_Missing_in_words_when_an_inventory_is_known()
     {
-        var h = await Build(SmallList(), SmallTypes());
+        var h = await Build(SmallList(), SmallIndexes());
         h.Inventory.Data = new CharacterInventory([new InventoryItem("Blade One", "Sword", 1, false, false)]);
         WaitForRows(h, 5);
 
         var badges = h.View.Named<ListBox>("HardFarmsList").GetVisualDescendants().OfType<TextBlock>()
             .Where(t => t.Name == "HardFarmsRowBadge").Select(t => t.Text).ToList();
         Assert.Equal(1, badges.Count(t => t == "Owned"));
-        Assert.Equal(3, badges.Count(t => t == "Missing"));
-        Assert.Equal(1, badges.Count(t => t == "Unknown"));
+        Assert.Equal(4, badges.Count(t => t == "Missing"));
+        Assert.Equal(0, badges.Count(t => t == "Unknown"));
         Assert.Equal("1 of 5 owned", h.View.Named<TextBlock>("HardFarmsSummaryLine").Text);
     }
 
     [AvaloniaFact]
     public async Task The_type_group_and_owned_filters_and_the_search_narrow_the_list_and_update_the_summary()
     {
-        var h = await Build(SmallList(), SmallTypes());
+        var h = await Build(SmallList(), SmallIndexes());
         WaitForRows(h, 5);
         var list = h.View.Named<ListBox>("HardFarmsList");
         var summary = h.View.Named<TextBlock>("HardFarmsSummaryLine");
@@ -233,29 +241,100 @@ public class HardFarmsViewTests
     public async Task While_updating_Update_is_disabled_Cancel_is_enabled_and_the_progress_is_shown()
     {
         var h = await Build();
-        h.Updater.Gate = new TaskCompletionSource();
-        h.Updater.Result = new HardFarmUpdateResult(HardFarmUpdateStatus.Failed, "stopped");
+        h.Sync.Gate = new TaskCompletionSource();
+        h.Sync.Result = new SyncResult(SyncStatus.Failed, "stopped", []);
 
         var running = h.Vm.UpdateCommand.ExecuteAsync(null);
-        SettleUntil(h.Window, () => h.Updater.Progress is not null, "the updater to start");
-        h.Updater.Progress!(new HardFarmProgress(2, 17, "Step 2 of 17: Hard Farming list"));
-        SettleUntil(h.Window, () => h.View.Named<TextBlock>("HardFarmsProgressLine").Text?.Contains("Step 2 of 17") == true,
-            "the progress text");
+        SettleUntil(h.Window, () => h.Sync.Progress is not null, "the sync to start");
+        h.Sync.Progress!(new SyncProgress(5, 15, "Index 6 of 15 · /pets", "Waiting 10 s before trying /pets again"));
+        SettleUntil(h.Window, () => h.View.Named<TextBlock>("HardFarmsProgressLine").Text
+            == "Index 6 of 15 · /pets · Waiting 10 s before trying /pets again", "the progress text");
 
         Assert.False(h.View.Named<Button>("HardFarmsUpdateButton").IsEffectivelyEnabled);
         Assert.True(h.View.Named<Button>("HardFarmsCancelButton").IsEffectivelyEnabled);
         Assert.False(h.View.Named<TextBlock>("HardFarmsEmptyState").IsEffectivelyVisible);
+        Assert.False(h.View.Named<TextBlock>("HardFarmsPendingLine").IsEffectivelyVisible);
 
-        h.Updater.Gate.SetResult();
+        h.Sync.Gate.SetResult();
         await running;
         SettleUntil(h.Window, () => h.View.Named<Button>("HardFarmsUpdateButton").IsEffectivelyEnabled, "update to be enabled again");
         Assert.False(h.View.Named<Button>("HardFarmsCancelButton").IsEffectivelyEnabled);
+        SettleUntil(h.Window, () => h.View.Named<TextBlock>("HardFarmsStatusLine").Text == "stopped", "the final message");
+    }
+
+    [AvaloniaFact]
+    public async Task Rows_appear_while_the_pass_runs_and_a_partial_pass_leaves_Continue_with_the_pending_line()
+    {
+        var h = await Build();
+        h.Sync.Gate = new TaskCompletionSource();
+        h.Sync.Result = new SyncResult(SyncStatus.Partial, "Stored 5 entries in the list and 12 index pages. 3 pages pending.", ["pets", "houses", "grounds"]);
+        var button = h.View.Named<Button>("HardFarmsUpdateButton");
+        Assert.Equal("Update from the Wiki", button.Content);
+
+        var running = h.Vm.UpdateCommand.ExecuteAsync(null);
+        SettleUntil(h.Window, () => h.Sync.Saved is not null, "the sync to start");
+        h.Sync.Saved!(new SyncUpdate(SmallList(), At, WikiTypeTable.Empty, null));
+        WaitForRows(h, 5);
+        Assert.Equal(["Blade One", "Cape One", "Void Highlord Class", "Blade Two", "Pet One"], NamesShown(h.View.Named<ListBox>("HardFarmsList")));
+
+        h.Vm.TypeFilter = h.Vm.TypeOptions.Single(o => o.Value == WikiType.Weapon);
+        WaitForRows(h, 0);
+        h.Sync.Saved!(new SyncUpdate(null, null, WikiTypeTable.From(SmallIndexes()), At));
+        WaitForRows(h, 2);
+        Assert.Equal(["Blade One", "Blade Two"], NamesShown(h.View.Named<ListBox>("HardFarmsList")));
+
+        h.Sync.Gate.SetResult();
+        await running;
+        var pending = h.View.Named<TextBlock>("HardFarmsPendingLine");
+        SettleUntil(h.Window, () => pending.IsEffectivelyVisible, "the pending line");
+        Assert.Equal("3 pages pending — Continue", pending.Text);
+        Assert.Equal("Continue", button.Content);
+        Assert.Equal("Continue reading the pending Wiki pages", AutomationProperties.GetName(button));
+        Assert.Equal("3 pages pending — Continue", AutomationProperties.GetName(pending));
+        Assert.True(button.IsEffectivelyEnabled);
+    }
+
+    [AvaloniaFact]
+    public async Task A_restored_list_with_nothing_pending_says_Update_from_the_Wiki_and_hides_the_pending_line()
+    {
+        var h = await Build(SmallList(), SmallIndexes());
+        WaitForRows(h, 5);
+
+        Assert.Equal("Update from the Wiki", h.View.Named<Button>("HardFarmsUpdateButton").Content);
+        Assert.False(h.View.Named<TextBlock>("HardFarmsPendingLine").IsEffectivelyVisible);
+    }
+
+    [AvaloniaFact]
+    public async Task A_restored_list_with_pending_pages_says_Continue_with_the_pending_line()
+    {
+        var h = await Build(SmallList(), SmallIndexes(), ["pets", "houses"]);
+        WaitForRows(h, 5);
+
+        var pending = h.View.Named<TextBlock>("HardFarmsPendingLine");
+        SettleUntil(h.Window, () => pending.IsEffectivelyVisible, "the pending line");
+        Assert.Equal("2 pages pending — Continue", pending.Text);
+        Assert.Equal("Continue", h.View.Named<Button>("HardFarmsUpdateButton").Content);
+    }
+
+    [AvaloniaFact]
+    public async Task Pressing_Continue_runs_the_sync_again()
+    {
+        var h = await Build(SmallList(), SmallIndexes(), ["pets"]);
+        h.Sync.Result = new SyncResult(SyncStatus.Updated, "Stored.", []);
+        var button = h.View.Named<Button>("HardFarmsUpdateButton");
+        SettleUntil(h.Window, () => Equals(button.Content, "Continue"), "the Continue button");
+
+        button.Command!.Execute(null);
+
+        SettleUntil(h.Window, () => h.Sync.Calls == 1, "the sync to be called");
+        SettleUntil(h.Window, () => Equals(button.Content, "Update from the Wiki"), "the button to go back to Update");
+        Assert.False(h.View.Named<TextBlock>("HardFarmsPendingLine").IsEffectivelyVisible);
     }
 
     [AvaloniaFact]
     public async Task Open_on_the_Wiki_passes_the_row_to_the_launcher()
     {
-        var h = await Build(SmallList(), SmallTypes());
+        var h = await Build(SmallList(), SmallIndexes());
         WaitForRows(h, 5);
 
         var button = h.View.Named<ListBox>("HardFarmsList").GetVisualDescendants().OfType<Button>()
@@ -274,8 +353,8 @@ public class HardFarmsViewTests
         const int count = 3000;
         var slugs = Enumerable.Range(1, count).Select(i => $"item-{i}").ToList();
         var list = new HardFarmList([new HardFarmGroup("Big", slugs)], "Created by Tester");
-        var types = new WikiTypeTable(slugs.Select(s => new WikiTypeRow(s, s.Replace('-', ' '), WikiType.Other)));
-        var h = await Build(list, types);
+        var index = new WikiIndex(WikiUrls.MiscItemsSlug, WikiType.Other, slugs.Select(s => new WikiIndexEntry(s, s.Replace('-', ' '))).ToList());
+        var h = await Build(list, [index]);
 
         var box = h.View.Named<ListBox>("HardFarmsList");
         SettleUntil(h.Window, () => Realized(box) >= 5, "the first rows to be realized");

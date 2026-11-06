@@ -20,6 +20,7 @@ using AqwCompanion.Core.Inventory;
 using AqwCompanion.Core.Persistence;
 using AqwCompanion.Core.Wiki;
 using AqwCompanion.Core.Site;
+using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -56,8 +57,9 @@ public static class CompositionRoot
         services.AddSingleton<IngestionService<CharacterInventory>>();
         services.AddSingleton<IPageFetcher>(sp => new AccountPageFetcher(
             CreateHttpClient(AccountPageFetcher.Timeout), AppInfo.Version, sp.GetRequiredService<ILogger<AccountPageFetcher>>()));
+        // The wiki fetcher applies its own deadline per call, so the client has none.
         services.AddSingleton<IWikiPageFetcher>(sp => new WikiPageFetcher(
-            CreateHttpClient(WikiPageFetcher.Timeout), AppInfo.Version, sp.GetRequiredService<ILogger<WikiPageFetcher>>()));
+            CreateHttpClient(System.Threading.Timeout.InfiniteTimeSpan), AppInfo.Version, sp.GetRequiredService<ILogger<WikiPageFetcher>>()));
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IStoredDataStore>(sp => new LiteDbStoredDataStore(sp.GetRequiredService<AppPaths>().DatabasePath));
         services.AddSingleton<IAccountDataPersistence, AccountDataPersistence>();
@@ -67,13 +69,28 @@ public static class CompositionRoot
         services.AddSingleton<ICharacterInventoryLoader, CharacterInventoryLoader>();
         services.AddSingleton<IDelay, TaskDelay>();
         services.AddSingleton<IHardFarmStore, HardFarmStore>();
-        services.AddSingleton<IHardFarmUpdater>(sp => new HardFarmUpdater(
+        services.AddSingleton<IHardFarmSync>(sp => new HardFarmSync(
             sp.GetRequiredService<IWikiPageFetcher>(),
             sp.GetRequiredService<IHardFarmStore>(),
             sp.GetRequiredService<IDelay>(),
             sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<IUrlLauncher, ProcessUrlLauncher>();
-        services.AddSingleton<HardFarmsViewModel>();
+        services.AddSingleton(sp => new HardFarmsViewModel(
+            sp.GetRequiredService<IHardFarmStore>(),
+            sp.GetRequiredService<IHardFarmSync>(),
+            sp.GetRequiredService<InventoryCardViewModel>(),
+            sp.GetRequiredService<IUrlLauncher>(),
+            action =>
+            {
+                if (Dispatcher.UIThread.CheckAccess())
+                {
+                    action();
+                }
+                else
+                {
+                    Dispatcher.UIThread.Post(action);
+                }
+            }));
         services.AddSingleton<ISignInDialog, SignInDialog>();
         services.AddSingleton<SidebarViewModel>();
         services.AddSingleton<SummaryCardViewModel>();

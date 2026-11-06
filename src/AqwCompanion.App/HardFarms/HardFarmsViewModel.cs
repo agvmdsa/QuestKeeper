@@ -16,10 +16,17 @@ public enum HardFarmsState
     Updating,
 }
 
-/// <summary>The Hard Farms tab: the imported list with item types and what the character already owns.</summary>
+/// <summary>
+/// The Hard Farms tab: the imported list with item types and what the character already owns. The sync reports from the
+/// thread pool, so the app passes <c>onUiThread</c> to run what it reports on the UI thread (without it, inline).
+/// </summary>
 public partial class HardFarmsViewModel : ObservableObject
 {
-    public const string EmptyText = "Click 'Update from the Wiki' to import the Hard Farming list (about 15 pages, ~45 s).";
+    public const string EmptyText = "Click 'Update from the Wiki' to import the Hard Farming list. The list shows up in a few seconds; the item types keep arriving for a minute or two.";
+    public const string UpdateText = "Update from the Wiki";
+    public const string ContinueText = "Continue";
+    public const string UpdateAccessibleName = "Update the Hard Farming list from the Wiki";
+    public const string ContinueAccessibleName = "Continue reading the pending Wiki pages";
     public const string NoMatchesText = "No entries match the filters.";
     public const string NoInventoryHint = "refresh your account to see what you own";
     public const string LicenseText = "AQW Wiki (CC BY-SA 3.0)";
@@ -35,15 +42,18 @@ public partial class HardFarmsViewModel : ObservableObject
         [AllOwnership, new(Ownership.Missing, "Missing"), new(Ownership.Owned, "Owned"), new(Ownership.Unknown, "Unknown")];
 
     private readonly IHardFarmStore _store;
-    private readonly IHardFarmUpdater _updater;
+    private readonly IHardFarmSync _sync;
     private readonly InventoryCardViewModel _inventory;
     private readonly IUrlLauncher _launcher;
+    private readonly Action<Action> _onUiThread;
 
     private HardFarmList? _list;
     private WikiTypeTable _types = WikiTypeTable.Empty;
     private DateTimeOffset? _listReadAt;
     private IReadOnlyList<Candidate> _candidates = [];
     private CancellationTokenSource? _updateCts;
+    private IReadOnlyList<string> _pending = [];
+    private bool _everRead;
 
     // Bumped by Reset: work that started before it must not bring data back.
     private int _epoch;
@@ -58,12 +68,14 @@ public partial class HardFarmsViewModel : ObservableObject
 
     public HardFarmsViewModel(
         IHardFarmStore store,
-        IHardFarmUpdater updater,
+        IHardFarmSync sync,
         InventoryCardViewModel inventory,
-        IUrlLauncher launcher)
+        IUrlLauncher launcher,
+        Action<Action>? onUiThread = null)
     {
+        _onUiThread = onUiThread ?? (action => action());
         _store = store;
-        _updater = updater;
+        _sync = sync;
         _inventory = inventory;
         _launcher = launcher;
         _typeFilter = AllTypes;
@@ -95,7 +107,7 @@ public partial class HardFarmsViewModel : ObservableObject
     private IReadOnlyList<HardFarmRow> _rows = [];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsUpdating), nameof(IsIdle), nameof(ShowEmptyState))]
+    [NotifyPropertyChangedFor(nameof(IsUpdating), nameof(IsIdle), nameof(ShowEmptyState), nameof(ShowPending))]
     [NotifyCanExecuteChangedFor(nameof(UpdateCommand), nameof(CancelCommand))]
     private HardFarmsState _state = HardFarmsState.Idle;
 
@@ -136,7 +148,29 @@ public partial class HardFarmsViewModel : ObservableObject
 
     public bool HasCredit => CreditText.Length > 0;
 
+    /// <summary>True when something was read before and index pages are still missing or old.</summary>
+    public bool CanContinue => _everRead && _pending.Count > 0;
+
+    public bool ShowPending => CanContinue && IsIdle;
+
+    public string UpdateButtonText => CanContinue ? ContinueText : UpdateText;
+
+    public string UpdateButtonAccessibleName => CanContinue ? ContinueAccessibleName : UpdateAccessibleName;
+
+    public string PendingText => string.Create(
+        CultureInfo.InvariantCulture,
+        $"{_pending.Count} {(_pending.Count == 1 ? "page" : "pages")} pending — {ContinueText}");
+
     public string EmptyStateText => EmptyText;
+
+    private void NotifyPending()
+    {
+        OnPropertyChanged(nameof(CanContinue));
+        OnPropertyChanged(nameof(ShowPending));
+        OnPropertyChanged(nameof(UpdateButtonText));
+        OnPropertyChanged(nameof(UpdateButtonAccessibleName));
+        OnPropertyChanged(nameof(PendingText));
+    }
 
     private bool CanUpdate() => State == HardFarmsState.Idle;
 
@@ -151,27 +185,35 @@ public partial class HardFarmsViewModel : ObservableObject
         State = HardFarmsState.Updating;
         StatusText = string.Empty;
         ProgressText = "Starting...";
-        HardFarmUpdateResult result;
+        SyncResult? result = null;
+        string? failure = null;
         try
         {
-            result = await _updater.UpdateAsync(
-                p =>
+            result = await _sync.RunAsync(
+                p => _onUiThread(() =>
                 {
                     if (epoch == _epoch)
                     {
-                        ProgressText = p.Text;
+                        ProgressText = ProgressLine(p);
                     }
-                },
+                }),
+                u => _onUiThread(() =>
+                {
+                    if (epoch == _epoch)
+                    {
+                        ApplyUpdate(u);
+                    }
+                }),
                 cts.Token);
         }
         catch (OperationCanceledException)
         {
-            result = new HardFarmUpdateResult(HardFarmUpdateStatus.Cancelled, "Update cancelled.");
+            failure = "Update cancelled.";
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             Log.Error("The Hard Farms update failed unexpectedly: {ExceptionType}", ex.GetType().Name);
-            result = new HardFarmUpdateResult(HardFarmUpdateStatus.Failed, "The update failed unexpectedly. Nothing was changed.");
+            failure = "The update failed unexpectedly.";
         }
         finally
         {
@@ -187,14 +229,25 @@ public partial class HardFarmsViewModel : ObservableObject
             return;
         }
 
-        if (result.List is not null || result.Types is not null)
+        if (result is not null)
         {
-            Apply(result.List ?? _list, result.Types ?? _types, result.List is not null ? result.ReadAtUtc : _listReadAt);
+            _pending = result.Pending;
         }
 
         ProgressText = string.Empty;
-        StatusText = result.Message;
+        StatusText = result?.Message ?? failure ?? string.Empty;
         State = HardFarmsState.Idle;
+        NotifyPending();
+    }
+
+    private static string ProgressLine(SyncProgress p) =>
+        p.Waiting is { Length: > 0 } ? $"{p.Label} · {p.Waiting}" : p.Label;
+
+    private void ApplyUpdate(SyncUpdate update)
+    {
+        _everRead = true;
+        Apply(update.List ?? _list, update.Types, update.List is not null ? update.ListReadAtUtc : _listReadAt);
+        NotifyPending();
     }
 
     [RelayCommand(CanExecute = nameof(CanCancel))]
@@ -226,14 +279,20 @@ public partial class HardFarmsViewModel : ObservableObject
     {
         var epoch = _epoch;
         var version = _dataVersion;
-        var (list, types) = await Task.Run(() => (_store.LoadList(), _store.LoadTypes()));
-        if (list is null || _list is not null || epoch != _epoch)
+        var (list, types, pending) = await Task.Run(() => (_store.LoadList(), _store.LoadTypes(), _sync.GetPending()));
+        if ((list is null && types is null) || _list is not null || epoch != _epoch)
         {
             return;
         }
 
         var newerTypes = version != _dataVersion;
-        Apply(list.List, newerTypes ? _types : types?.Table ?? WikiTypeTable.Empty, list.ReadAtUtc);
+        Apply(list?.List, newerTypes ? _types : types?.Table ?? WikiTypeTable.Empty, list?.ReadAtUtc);
+        if (!newerTypes)
+        {
+            _pending = pending;
+            _everRead = true;
+            NotifyPending();
+        }
     }
 
     /// <summary>
@@ -249,6 +308,8 @@ public partial class HardFarmsViewModel : ObservableObject
         _list = null;
         _types = WikiTypeTable.Empty;
         _listReadAt = null;
+        _pending = [];
+        _everRead = false;
         _candidates = [];
         _all = [];
         GroupOptions = [AllGroups];
@@ -264,6 +325,7 @@ public partial class HardFarmsViewModel : ObservableObject
         StatusText = string.Empty;
         State = HardFarmsState.Idle;
         Refilter();
+        NotifyPending();
     }
 
     // A drop-down can write null back when its items are replaced; that means "All".
@@ -349,8 +411,7 @@ public partial class HardFarmsViewModel : ObservableObject
                 c.Name,
                 c.Type,
                 c.Group,
-                // An entry the type table does not know has no wiki name to compare.
-                OwnershipMatcher.Match(_types.Find(c.Slug)?.Name, inventory),
+                OwnershipMatcher.Match(c.Slug, _types.Find(c.Slug)?.Name, inventory),
                 c.WikiUrl))
             .ToList();
     }
@@ -382,16 +443,17 @@ public partial class HardFarmsViewModel : ObservableObject
                 ? string.Create(CultureInfo.InvariantCulture, $"{scope.Count} {(scope.Count == 1 ? "entry" : "entries")} — {NoInventoryHint}")
                 : string.Create(CultureInfo.InvariantCulture, $"{ownedInScope} of {scope.Count} owned");
 
-        if (owned is null && needle.Length == 0)
-        {
-            Rows = scope;
-        }
-        else
-        {
-            Rows = scope
+        var shown = owned is null && needle.Length == 0
+            ? scope
+            : scope
                 .Where(row => (owned is null || row.Ownership == owned)
                     && (needle.Length == 0 || row.Name.Contains(needle, StringComparison.OrdinalIgnoreCase)))
                 .ToList();
+
+        // Identical rows keep the same list instance, so the list does not reset its scroll position.
+        if (!Rows.SequenceEqual(shown))
+        {
+            Rows = shown;
         }
 
         OnPropertyChanged(nameof(ShowNoMatches));

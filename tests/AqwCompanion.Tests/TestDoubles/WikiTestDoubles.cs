@@ -20,6 +20,30 @@ public sealed class FakeWikiFetcher : IWikiPageFetcher
 
     public Action<string>? OnFetch { get; set; }
 
+    /// <summary>Scripted answers per slug, used one by one before <see cref="Pages"/> and <see cref="Errors"/> apply again.</summary>
+    public Dictionary<string, Queue<PageFetchResult>> Scripts { get; } = [];
+
+    /// <summary>The timeout every page request asked for, in order.</summary>
+    public List<(string Slug, TimeSpan? Timeout)> Timeouts { get; } = [];
+
+    /// <summary>Makes the next requests of <paramref name="slug"/> fail like this (once each), then serve the page again.</summary>
+    public void Script(string slug, params PageFetchResult[] answers)
+    {
+        if (!Scripts.TryGetValue(slug, out var queue))
+        {
+            Scripts[slug] = queue = new Queue<PageFetchResult>();
+        }
+
+        foreach (var answer in answers)
+        {
+            queue.Enqueue(answer);
+        }
+    }
+
+    public static PageFetchResult Timeout() => PageFetchResult.Failure("The request timed out.", PageFailureKind.Timeout);
+
+    public static PageFetchResult Http(int status) => PageFetchResult.Failure($"The server answered HTTP {status}.", PageFailureKind.Http, status);
+
     public List<string> Requested => Log.Where(e => e.StartsWith("fetch:", StringComparison.Ordinal)).Select(e => e[6..]).ToList();
 
     public Task<PageFetchResult> FetchRobotsAsync(CancellationToken ct = default)
@@ -31,12 +55,18 @@ public sealed class FakeWikiFetcher : IWikiPageFetcher
             : PageFetchResult.Success(PageSnapshot.Create(WikiUrls.Robots, Robots, "1.0.0", DateTimeOffset.UnixEpoch)));
     }
 
-    public Task<PageFetchResult> FetchPageAsync(string url, CancellationToken ct = default)
+    public Task<PageFetchResult> FetchPageAsync(string url, TimeSpan? timeout = null, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
         var slug = WikiUrls.Slug(url)!;
         Log.Add("fetch:" + slug);
+        Timeouts.Add((slug, timeout));
         OnFetch?.Invoke(slug);
+        if (Scripts.TryGetValue(slug, out var script) && script.Count > 0)
+        {
+            return Task.FromResult(script.Dequeue());
+        }
+
         if (Errors.TryGetValue(slug, out var error))
         {
             return Task.FromResult(PageFetchResult.Failure(error));
@@ -44,7 +74,7 @@ public sealed class FakeWikiFetcher : IWikiPageFetcher
 
         return Task.FromResult(Pages.TryGetValue(slug, out var html)
             ? PageFetchResult.Success(PageSnapshot.Create(url, html, "1.0.0", DateTimeOffset.UnixEpoch))
-            : PageFetchResult.Failure("HTTP 404"));
+            : PageFetchResult.Failure("HTTP 404", PageFailureKind.Http, 404));
     }
 }
 
@@ -73,14 +103,18 @@ public sealed class FakeUrlLauncher : IUrlLauncher
     }
 }
 
-/// <summary>An updater whose result the test controls; <see cref="Gate"/> holds it open to observe the Updating state.</summary>
-public sealed class FakeHardFarmUpdater : IHardFarmUpdater
+/// <summary>A sync whose result the test controls; <see cref="Gate"/> holds it open to observe the Updating state.</summary>
+public sealed class FakeHardFarmSync : IHardFarmSync
 {
-    public HardFarmUpdateResult Result { get; set; } = new(HardFarmUpdateStatus.Failed, "not set");
+    public SyncResult Result { get; set; } = new(SyncStatus.Failed, "not set", []);
+
+    public IReadOnlyList<string> Pending { get; set; } = [.. WikiUrls.TypeIndexSlugs];
 
     public TaskCompletionSource? Gate { get; set; }
 
-    public Action<HardFarmProgress>? Progress { get; private set; }
+    public Action<SyncProgress>? Progress { get; private set; }
+
+    public Action<SyncUpdate>? Saved { get; private set; }
 
     public CancellationToken Token { get; private set; }
 
@@ -88,10 +122,13 @@ public sealed class FakeHardFarmUpdater : IHardFarmUpdater
 
     public bool Throw { get; set; }
 
-    public async Task<HardFarmUpdateResult> UpdateAsync(Action<HardFarmProgress>? progress, CancellationToken ct)
+    public IReadOnlyList<string> GetPending() => Pending;
+
+    public async Task<SyncResult> RunAsync(Action<SyncProgress>? progress, Action<SyncUpdate>? saved, CancellationToken ct)
     {
         Calls++;
         Progress = progress;
+        Saved = saved;
         Token = ct;
         if (Throw)
         {
@@ -100,7 +137,7 @@ public sealed class FakeHardFarmUpdater : IHardFarmUpdater
 
         if (Gate is not null)
         {
-            await Gate.Task.WaitAsync(ct).ConfigureAwait(false);
+            await Gate.Task.ConfigureAwait(false);
         }
 
         return Result;
@@ -123,4 +160,23 @@ public static class WikiPages
 
     public static string[] Slugs(string prefix, int count) =>
         Enumerable.Range(1, count).Select(i => $"{prefix}-{i}").ToArray();
+}
+
+/// <summary>A clock that only moves when the test (or a fake fetcher) advances it; it also serves as the timestamp source.</summary>
+public sealed class ManualClock(DateTimeOffset start) : TimeProvider
+{
+    private DateTimeOffset _now = start;
+    private long _ticks;
+
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+    public override DateTimeOffset GetUtcNow() => _now;
+
+    public override long GetTimestamp() => _ticks;
+
+    public void Advance(TimeSpan by)
+    {
+        _now += by;
+        _ticks += by.Ticks;
+    }
 }

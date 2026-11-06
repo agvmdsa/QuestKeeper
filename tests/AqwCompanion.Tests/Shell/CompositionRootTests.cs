@@ -41,7 +41,7 @@ public class CompositionRootTests
         using var services = CompositionRoot.Build(paths);
 
         Assert.IsType<WikiPageFetcher>(services.GetRequiredService<IWikiPageFetcher>());
-        Assert.IsType<HardFarmUpdater>(services.GetRequiredService<IHardFarmUpdater>());
+        Assert.IsType<HardFarmSync>(services.GetRequiredService<IHardFarmSync>());
         Assert.IsType<ProcessUrlLauncher>(services.GetRequiredService<IUrlLauncher>());
         Assert.Same(services.GetRequiredService<HardFarmsViewModel>(), services.GetRequiredService<MainViewModel>().HardFarms);
     }

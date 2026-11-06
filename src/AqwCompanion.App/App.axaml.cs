@@ -1,5 +1,4 @@
-using AqwCompanion.App.ViewModels;
-using AqwCompanion.App.Views;
+using AqwCompanion.App.Shell;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;

@@ -1,5 +1,4 @@
-using AqwCompanion.App;
-using AqwCompanion.App.Persistence;
+using AqwCompanion.App.Account;
 using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Badges;
 using AqwCompanion.Core.Equipment;

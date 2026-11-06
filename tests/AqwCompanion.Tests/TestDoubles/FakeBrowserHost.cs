@@ -1,4 +1,4 @@
-using AqwCompanion.App.Browser;
+using AqwCompanion.App.Infrastructure.Browser;
 using AqwCompanion.Core.Ingestion;
 
 namespace AqwCompanion.Tests.TestDoubles;

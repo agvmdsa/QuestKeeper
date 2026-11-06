@@ -1,10 +1,8 @@
 using System.Globalization;
-using AqwCompanion.App;
+using AqwCompanion.App.Account;
 using AqwCompanion.App.Badges;
 using AqwCompanion.App.Equipment;
-using AqwCompanion.App.Persistence;
 using AqwCompanion.App.SignIn;
-using AqwCompanion.App.ViewModels;
 using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Badges;
 using AqwCompanion.Core.Equipment;

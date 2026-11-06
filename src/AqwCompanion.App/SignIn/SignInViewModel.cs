@@ -1,5 +1,6 @@
 using AqwCompanion.App.Infrastructure.Browser;
 using AqwCompanion.Core.Account;
+using AqwCompanion.Core.Common;
 using AqwCompanion.Core.Ingestion;
 using AqwCompanion.Core.Site;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -323,7 +324,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
     private static bool IsAccountSite(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri)
         && uri.Scheme == Uri.UriSchemeHttps
-        && string.Equals(uri.Host, AqwUrls.AccountHost, StringComparison.OrdinalIgnoreCase);
+        && uri.Host.EqualsIgnoreCase(AqwUrls.AccountHost);
 
     // async void: nothing may escape it, or an unhandled exception would take the application down.
     private async void OnNavigationCompleted(object? sender, NavigationCompletedEventArgs e)

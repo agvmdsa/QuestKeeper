@@ -4,6 +4,7 @@ using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Badges;
 using AqwCompanion.Core.Equipment;
 using AqwCompanion.Core.Ingestion;
+using AqwCompanion.Core.Inventory;
 using AqwCompanion.Tests.TestDoubles;
 
 namespace AqwCompanion.Tests.Account;
@@ -14,10 +15,11 @@ public class AccountSessionDataTests
 
     private readonly LatestResultStore<CharacterEquipment> _equipment = new();
     private readonly LatestResultStore<CharacterBadges> _badges = new();
+    private readonly LatestResultStore<CharacterInventory> _inventory = new();
     private readonly LatestResultStore<AccountIdentity> _identity = new();
     private readonly FailedSnapshotBuffer _failures = new();
 
-    private AccountSessionData Build() => new(_equipment, _badges, _identity, _failures);
+    private AccountSessionData Build() => new(_equipment, _badges, _inventory, _identity, _failures);
 
     private static CharacterBadges Badges(int count) =>
         new(Enumerable.Range(0, count).Select(i => new Badge("Badge " + i, "d", "Category")).ToList());
@@ -55,6 +57,52 @@ public class AccountSessionDataTests
         Assert.Equal(14, await _equipment.GetLastCountAsync());
         Assert.Null(await _badges.GetLastCountAsync());
     }
+
+    [Fact]
+    public async Task Seed_sets_the_inventory_baseline_from_the_restored_item_count()
+    {
+        Build().Seed(Restored(Equipment(3), null) with { Inventory = Inventory(40), InventoryReadAtUtc = At });
+
+        Assert.Equal(40, await _inventory.GetLastCountAsync());
+    }
+
+    [Fact]
+    public async Task A_restore_without_inventory_seeds_no_inventory_baseline()
+    {
+        Build().Seed(Restored(Equipment(3), Badges(2)));
+
+        Assert.Null(await _inventory.GetLastCountAsync());
+    }
+
+    [Fact]
+    public async Task A_degraded_first_inventory_read_after_a_restore_is_suspicious_and_not_persisted()
+    {
+        Build().Seed(Restored(Equipment(3), null) with { Inventory = Inventory(300), InventoryReadAtUtc = At });
+        var parser = new FakeParser<CharacterInventory>(_ =>
+            ParseResult<CharacterInventory>.Ok(Inventory(12), new ParseDiagnostics("fake", "1", "s", [], 12)));
+        var ingestion = new IngestionService<CharacterInventory>(parser, _inventory, _failures, new ListLogger<IngestionService<CharacterInventory>>());
+        var snapshot = PageSnapshot.Create("https://account.aq.com/CharPage/Inventory?ccid=3", "[]", "1.0.0", At);
+
+        var result = await ingestion.IngestAsync(snapshot);
+
+        Assert.Equal(ParseOutcome.Suspicious, result.Parse.Outcome);
+        Assert.False(result.Persisted);
+        Assert.Null(_inventory.Latest);
+    }
+
+    [Fact]
+    public async Task Clear_empties_the_inventory_store()
+    {
+        await _inventory.SaveAsync(Inventory(2), 2);
+
+        Build().Clear();
+
+        Assert.Null(_inventory.Latest);
+        Assert.Null(await _inventory.GetLastCountAsync());
+    }
+
+    private static CharacterInventory Inventory(int count) =>
+        new(Enumerable.Range(0, count).Select(i => new InventoryItem("Item " + i, "Item", 1, false, false)).ToList());
 
     [Fact]
     public async Task Clear_empties_the_stores_and_the_failed_snapshot()

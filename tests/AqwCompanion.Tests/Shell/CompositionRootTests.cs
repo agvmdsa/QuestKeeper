@@ -2,11 +2,13 @@ using AqwCompanion.App;
 using AqwCompanion.App.Account;
 using AqwCompanion.App.Infrastructure.Browser;
 using AqwCompanion.App.Infrastructure.Persistence;
+using AqwCompanion.App.Inventory;
 using AqwCompanion.App.Shell;
 using AqwCompanion.App.Wiki;
 using AqwCompanion.App.SignIn;
 using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Ingestion;
+using AqwCompanion.Core.Inventory;
 using AqwCompanion.Core.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -27,6 +29,21 @@ public class CompositionRootTests
         Assert.NotNull(main.Wiki);
         Assert.NotNull(main.Diagnostics);
         Assert.NotNull(main.Account);
+    }
+
+    [Fact]
+    public void Container_resolves_the_inventory_pipeline_and_shares_the_card_with_the_account_tab()
+    {
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
+
+        using var services = CompositionRoot.Build(paths);
+
+        Assert.IsType<InventoryParser>(services.GetRequiredService<IPageParser<CharacterInventory>>());
+        Assert.NotNull(services.GetRequiredService<IngestionService<CharacterInventory>>());
+        Assert.IsType<CharacterInventoryLoader>(services.GetRequiredService<ICharacterInventoryLoader>());
+        Assert.Same(
+            services.GetRequiredService<InventoryCardViewModel>(),
+            services.GetRequiredService<AccountViewModel>().Inventory);
     }
 
     [Fact]

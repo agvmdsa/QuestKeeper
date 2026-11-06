@@ -1,4 +1,5 @@
 using AqwCompanion.App.Account;
+using AqwCompanion.App.Infrastructure.Formatting;
 using AqwCompanion.Core.Equipment;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;

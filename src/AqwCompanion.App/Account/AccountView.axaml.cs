@@ -13,7 +13,12 @@ public partial class AccountView : UserControl
     {
         InitializeComponent();
         SidebarHost.Underlay = Dashboard;
-        SidebarHost.DefaultOpener = content => content is Badges.BadgesCardViewModel ? BadgesCard.OpenButton : EquipmentCard.OpenButton;
+        SidebarHost.DefaultOpener = content => content switch
+        {
+            Badges.BadgesCardViewModel => BadgesCard.OpenButton,
+            Inventory.InventoryCardViewModel => InventoryCard.OpenButton,
+            _ => EquipmentCard.OpenButton,
+        };
         SidebarHost.FallbackFocus = () => SignInButton.IsEffectivelyVisible ? SignInButton : RefreshButton;
     }
 }

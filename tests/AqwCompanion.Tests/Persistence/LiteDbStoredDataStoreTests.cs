@@ -1,6 +1,7 @@
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Badges;
+using AqwCompanion.Core.Inventory;
 using AqwCompanion.Core.Equipment;
 
 namespace AqwCompanion.Tests.Persistence;
@@ -60,6 +61,22 @@ public sealed class LiteDbStoredDataStoreTests : IDisposable
         Assert.Equal(3, store.Load<CharacterEquipment>("equipment")!.Value.CharacterId);
         Assert.Equal(2, store.Load<CharacterBadges>("badges")!.Value.Count);
         Assert.Equal("Quests", store.Load<CharacterBadges>("badges")!.Value.Badges[0].Category);
+    }
+
+    [Fact]
+    public void Round_trips_the_inventory_without_its_computed_properties()
+    {
+        var store = Build();
+        var inventory = new CharacterInventory(
+            [new InventoryItem("Test Sword", "Sword", 1, true, false), new InventoryItem("Test Ore", "Resource", 250, false, true)]);
+
+        store.Save("inventory", inventory, ReadAt);
+
+        var loaded = store.Load<CharacterInventory>("inventory")!.Value;
+        Assert.Equal(inventory.Items, loaded.Items);
+        Assert.Equal(250, loaded.CountOf("test ore"));
+        var json = System.Text.Json.JsonSerializer.Serialize(inventory, StoredJson.Options);
+        Assert.DoesNotContain("typeCounts", json, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

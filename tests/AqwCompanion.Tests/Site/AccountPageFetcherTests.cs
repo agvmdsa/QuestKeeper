@@ -8,6 +8,7 @@ namespace AqwCompanion.Tests.Site;
 public class AccountPageFetcherTests
 {
     private const string BadgesUrl = "https://account.aq.com/CharPage/Badges?ccid=3";
+    private const string InventoryUrl = "https://account.aq.com/CharPage/Inventory?ccid=3";
     private const string CharPageUrl = "https://account.aq.com/CharPage?id=Test%20Hero";
 
     private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
@@ -142,5 +143,78 @@ public class AccountPageFetcherTests
         var (fetcher, _) = Build(_ => Reply("error", "application/json", HttpStatusCode.InternalServerError));
 
         Assert.False((await fetcher.FetchAsync(BadgesUrl)).IsSuccess);
+    }
+
+    [Fact]
+    public async Task Json_is_accepted_for_the_inventory_url()
+    {
+        var (fetcher, handler) = Build(_ => Reply("[]", "application/json"));
+
+        var result = await fetcher.FetchAsync(InventoryUrl);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("https://account.aq.com/CharPage/Inventory", result.Snapshot!.Url);
+        Assert.Equal("application/json", Assert.Single(handler.Requests).Headers.Accept.ToString());
+    }
+
+    [Theory]
+    [InlineData("text/html")]
+    [InlineData("text/plain")]
+    [InlineData("application/javascript")]
+    public async Task A_wrong_content_type_is_refused_for_the_inventory_url(string mediaType)
+    {
+        var (fetcher, _) = Build(_ => Reply("[]", mediaType));
+
+        Assert.False((await fetcher.FetchAsync(InventoryUrl)).IsSuccess);
+    }
+
+    [Theory]
+    [InlineData("https://evil.example.com/CharPage/Inventory?ccid=3")]
+    [InlineData("http://account.aq.com/CharPage/Inventory?ccid=3")]
+    [InlineData("https://account.aq.com.evil.example/CharPage/Inventory?ccid=3")]
+    public async Task Other_hosts_and_schemes_are_refused_for_the_inventory_without_a_request(string url)
+    {
+        var (fetcher, handler) = Build(_ => Reply("[]", "application/json"));
+
+        Assert.False((await fetcher.FetchAsync(url)).IsSuccess);
+        Assert.Empty(handler.Requests);
+    }
+
+    [Theory]
+    [InlineData("https://account.aq.com/CharPage/InventoryX?ccid=3")]
+    [InlineData("https://account.aq.com/Inventory?ccid=3")]
+    public async Task Json_is_refused_for_other_paths_that_look_like_the_inventory(string url)
+    {
+        var (fetcher, handler) = Build(_ => Reply("[]", "application/json"));
+
+        Assert.False((await fetcher.FetchAsync(url)).IsSuccess);
+        Assert.Equal("text/html", Assert.Single(handler.Requests).Headers.Accept.ToString());
+    }
+
+    [Fact]
+    public async Task A_redirect_from_the_inventory_url_to_a_page_that_answers_json_is_refused()
+    {
+        var calls = 0;
+        var (fetcher, _) = Build(_ =>
+        {
+            if (calls++ == 0)
+            {
+                var redirect = new HttpResponseMessage(HttpStatusCode.Found);
+                redirect.Headers.Location = new Uri("https://account.aq.com/Home");
+                return redirect;
+            }
+
+            return Reply("[]", "application/json");
+        });
+
+        Assert.False((await fetcher.FetchAsync(InventoryUrl)).IsSuccess);
+    }
+
+    [Fact]
+    public async Task A_json_inventory_larger_than_the_cap_is_refused()
+    {
+        var (fetcher, _) = Build(_ => Reply(new string('x', AccountPageFetcher.MaxBytes + 1), "application/json"));
+
+        Assert.False((await fetcher.FetchAsync(InventoryUrl)).IsSuccess);
     }
 }

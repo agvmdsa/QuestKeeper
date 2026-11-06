@@ -1,14 +1,16 @@
 using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Badges;
+using AqwCompanion.Core.Common;
 using AqwCompanion.Core.Equipment;
+using AqwCompanion.Core.Inventory;
 using AqwCompanion.Core.Persistence;
 using Serilog;
 
 namespace AqwCompanion.App.Account;
 
 /// <summary>
-/// Maps the account state to four stored values (identity, summary, equipment, badges). Equipment is only restored for
-/// the stored character, and badges only together with that equipment. Store failures are logged and swallowed.
+/// Maps the account state to five stored values (identity, summary, equipment, badges, inventory). Equipment is only restored for
+/// the stored character, and badges and inventory only together with that equipment. Store failures are logged and swallowed.
 /// </summary>
 public sealed class AccountDataPersistence(IStoredDataStore store) : IAccountDataPersistence
 {
@@ -16,6 +18,7 @@ public sealed class AccountDataPersistence(IStoredDataStore store) : IAccountDat
     public const string SummaryKey = "summary";
     public const string EquipmentKey = "equipment";
     public const string BadgesKey = "badges";
+    public const string InventoryKey = "inventory";
 
     public RestoredAccount? Restore()
     {
@@ -32,12 +35,13 @@ public sealed class AccountDataPersistence(IStoredDataStore store) : IAccountDat
             var equipment = store.Load<CharacterEquipment>(EquipmentKey);
             if (equipment is not null
                 && equipment.Value.Name is { } equipmentName
-                && !string.Equals(equipmentName, name, StringComparison.OrdinalIgnoreCase))
+                && !equipmentName.EqualsIgnoreCase(name))
             {
                 equipment = null;
             }
 
             var badges = equipment is null ? null : store.Load<CharacterBadges>(BadgesKey);
+            var inventory = equipment is null ? null : store.Load<CharacterInventory>(InventoryKey);
 
             return new RestoredAccount(
                 name,
@@ -46,7 +50,9 @@ public sealed class AccountDataPersistence(IStoredDataStore store) : IAccountDat
                 equipment?.Value,
                 equipment?.ReadAtUtc,
                 badges?.Value,
-                badges?.ReadAtUtc);
+                badges?.ReadAtUtc,
+                inventory?.Value,
+                inventory?.ReadAtUtc);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -58,12 +64,13 @@ public sealed class AccountDataPersistence(IStoredDataStore store) : IAccountDat
     public void SaveIdentity(string characterName, AccountSummary? summary, DateTimeOffset readAtUtc) =>
         Guard(nameof(SaveIdentity), () =>
         {
-            // Compared with what is on disk, not with memory: the equipment and badges there belong to the stored character.
+            // Compared with what is on disk, not with memory: the equipment, badges and inventory there belong to the stored character.
             var stored = store.Load<StoredName>(IdentityKey);
-            if (stored is null || !string.Equals(stored.Value.CharacterName, characterName, StringComparison.OrdinalIgnoreCase))
+            if (stored is null || !stored.Value.CharacterName.EqualsIgnoreCase(characterName))
             {
                 store.Remove(EquipmentKey);
                 store.Remove(BadgesKey);
+                store.Remove(InventoryKey);
             }
 
             store.Save(IdentityKey, new StoredName(characterName), readAtUtc);
@@ -83,9 +90,14 @@ public sealed class AccountDataPersistence(IStoredDataStore store) : IAccountDat
     public void SaveBadges(CharacterBadges badges, DateTimeOffset readAtUtc) =>
         Guard(nameof(SaveBadges), () => store.Save(BadgesKey, badges, readAtUtc));
 
+    public void SaveInventory(CharacterInventory inventory, DateTimeOffset readAtUtc) =>
+        Guard(nameof(SaveInventory), () => store.Save(InventoryKey, inventory, readAtUtc));
+
     public void RemoveEquipment() => Guard(nameof(RemoveEquipment), () => store.Remove(EquipmentKey));
 
     public void RemoveBadges() => Guard(nameof(RemoveBadges), () => store.Remove(BadgesKey));
+
+    public void RemoveInventory() => Guard(nameof(RemoveInventory), () => store.Remove(InventoryKey));
 
     public bool Forget()
     {

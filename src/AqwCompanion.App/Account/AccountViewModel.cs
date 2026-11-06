@@ -1,7 +1,10 @@
 using System.Globalization;
 using AqwCompanion.App.Badges;
 using AqwCompanion.App.Equipment;
+using AqwCompanion.App.Infrastructure.Formatting;
+using AqwCompanion.App.Inventory;
 using AqwCompanion.App.SignIn;
+using AqwCompanion.Core.Common;
 using AqwCompanion.Core.Equipment;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -32,6 +35,7 @@ public partial class AccountViewModel : ObservableObject
     private readonly ISignInDialog _dialog;
     private readonly ICharacterEquipmentLoader? _equipmentLoader;
     private readonly ICharacterBadgesLoader? _badgesLoader;
+    private readonly ICharacterInventoryLoader? _inventoryLoader;
     private readonly IAccountDataPersistence? _persistence;
     private readonly TimeProvider _clock;
     private readonly IAccountSessionData? _session;
@@ -56,9 +60,11 @@ public partial class AccountViewModel : ObservableObject
     /// <param name="summary">The account summary card.</param>
     /// <param name="equipment">The equipped card.</param>
     /// <param name="badges">The badges card.</param>
+    /// <param name="inventory">The inventory card.</param>
     /// <param name="sidebar">The details sidebar the cards open.</param>
     /// <param name="equipmentLoader">Reads the equipped items once the name is known; without it the panel stays empty.</param>
     /// <param name="badgesLoader">Reads the badges once the equipment has been read; without it the badges card stays empty.</param>
+    /// <param name="inventoryLoader">Reads the inventory once the badges have been read; without it the inventory card stays empty.</param>
     /// <param name="persistence">Keeps the last read data on disk; without it nothing is stored or restored.</param>
     /// <param name="clock">Source of the read times; the system clock by default.</param>
     /// <param name="session">Follows restore and sign-out for the in-memory session data; without it nothing is seeded or cleared.</param>
@@ -67,9 +73,11 @@ public partial class AccountViewModel : ObservableObject
         SummaryCardViewModel summary,
         EquipmentCardViewModel equipment,
         BadgesCardViewModel badges,
+        InventoryCardViewModel inventory,
         SidebarViewModel sidebar,
         ICharacterEquipmentLoader? equipmentLoader = null,
         ICharacterBadgesLoader? badgesLoader = null,
+        ICharacterInventoryLoader? inventoryLoader = null,
         IAccountDataPersistence? persistence = null,
         TimeProvider? clock = null,
         IAccountSessionData? session = null)
@@ -79,9 +87,11 @@ public partial class AccountViewModel : ObservableObject
         Summary = summary;
         Equipment = equipment;
         Badges = badges;
+        Inventory = inventory;
         Sidebar = sidebar;
         _equipmentLoader = equipmentLoader;
         _badgesLoader = badgesLoader;
+        _inventoryLoader = inventoryLoader;
         _persistence = persistence;
         _clock = clock ?? TimeProvider.System;
         summary.PropertyChanged += (_, e) =>
@@ -107,6 +117,8 @@ public partial class AccountViewModel : ObservableObject
 
     public BadgesCardViewModel Badges { get; }
 
+    public InventoryCardViewModel Inventory { get; }
+
     public SidebarViewModel Sidebar { get; }
 
     public bool IsConnected => CharacterName is not null;
@@ -122,7 +134,7 @@ public partial class AccountViewModel : ObservableObject
             }
 
             var parts = new List<string>(3) { CharacterName };
-            if (Equipment.Data is { } equipment && string.Equals(equipment.Name, CharacterName, StringComparison.OrdinalIgnoreCase))
+            if (Equipment.Data is { } equipment && equipment.Name.EqualsIgnoreCase(CharacterName))
             {
                 if (equipment.Level is { } level)
                 {
@@ -154,7 +166,7 @@ public partial class AccountViewModel : ObservableObject
 
     /// <summary>"Last sync: " and the local time the account identity was last read; empty when unknown.</summary>
     public string LastSyncText => Summary.ReadAt is { } at
-        ? "Last sync: " + at.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)
+        ? "Last sync: " + LocalTimeText.Format(at)
         : string.Empty;
 
     public bool HasLastSync => Summary.ReadAt is not null;
@@ -182,9 +194,11 @@ public partial class AccountViewModel : ObservableObject
             Summary.Data = restored.Summary;
             Equipment.Data = restored.Equipment;
             Badges.Data = restored.Badges;
+            Inventory.Data = restored.Inventory;
             Summary.ReadAt = restored.IdentityReadAtUtc;
             Equipment.ReadAt = restored.Equipment is null ? null : restored.EquipmentReadAtUtc;
             Badges.ReadAt = restored.Badges is null ? null : restored.BadgesReadAtUtc;
+            Inventory.ReadAt = restored.Inventory is null ? null : restored.InventoryReadAtUtc;
             IsFromStoredData = true;
             Status = StoredDataMessage;
             _session?.Seed(restored);
@@ -251,6 +265,7 @@ public partial class AccountViewModel : ObservableObject
         Summary.Clear();
         Equipment.Clear();
         Badges.Clear();
+        Inventory.Clear();
         Sidebar.Reset();
         IsFromStoredData = false;
         Status = doneMessage;
@@ -298,7 +313,7 @@ public partial class AccountViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Reads the public character page, then (when it carries a character id) the badges list. Runs after the dialog
+    /// Reads the public character page, then (when it carries a character id) the badges list and the inventory list. Runs after the dialog
     /// is closed, never throws, newest call wins.
     /// </summary>
     private async Task LoadCharacterAsync(string name)
@@ -312,18 +327,25 @@ public partial class AccountViewModel : ObservableObject
         using var load = new CancellationTokenSource();
         _characterLoad = load;
 
-        if (!string.Equals(Equipment.Data?.Name, name, StringComparison.OrdinalIgnoreCase))
+        if (!(Equipment.Data?.Name).EqualsIgnoreCase(name))
         {
             Equipment.Data = null;
             Badges.Data = null;
+            Inventory.Data = null;
             Equipment.ReadAt = null;
             Badges.ReadAt = null;
+            Inventory.ReadAt = null;
         }
 
         Equipment.Status = EquipmentCardViewModel.LoadingText;
         if (_badgesLoader is not null && Badges.Data is null)
         {
             Badges.Status = BadgesCardViewModel.LoadingText;
+        }
+
+        if (_inventoryLoader is not null && Inventory.Data is null)
+        {
+            Inventory.Status = InventoryCardViewModel.LoadingText;
         }
 
         try
@@ -358,7 +380,9 @@ public partial class AccountViewModel : ObservableObject
                     break;
             }
 
-            await LoadBadgesAsync(loaded.Status == EquipmentLoadStatus.Loaded ? loaded.Equipment?.CharacterId : null, load);
+            var characterId = loaded.Status == EquipmentLoadStatus.Loaded ? loaded.Equipment?.CharacterId : null;
+            await LoadBadgesAsync(characterId, load);
+            await LoadInventoryAsync(characterId, load);
         }
         catch (OperationCanceledException)
         {
@@ -371,6 +395,7 @@ public partial class AccountViewModel : ObservableObject
             {
                 Equipment.Status = EquipmentCardViewModel.UnavailableText;
                 Badges.Status = _badgesLoader is not null ? BadgesCardViewModel.UnavailableText : string.Empty;
+                Inventory.Status = _inventoryLoader is not null ? InventoryCardViewModel.UnavailableText : string.Empty;
             }
         }
         finally
@@ -434,19 +459,73 @@ public partial class AccountViewModel : ObservableObject
         }
     }
 
+    /// <summary>Reads the inventory list; skipped (with a status) when the character page gave no character id.</summary>
+    private async Task LoadInventoryAsync(int? characterId, CancellationTokenSource load)
+    {
+        if (_inventoryLoader is null || load.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (characterId is not { } id)
+        {
+            Inventory.Status = InventoryCardViewModel.UnavailableText;
+            return;
+        }
+
+        var loaded = await _inventoryLoader.LoadAsync(id, load.Token);
+        if (load.IsCancellationRequested)
+        {
+            return;
+        }
+
+        switch (loaded.Status)
+        {
+            case InventoryLoadStatus.Loaded:
+                Inventory.Data = loaded.Inventory;
+                Inventory.Status = loaded.Inventory is { Count: > 0 } ? string.Empty : InventoryCardViewModel.NotFoundText;
+                Inventory.ReadAt = null;
+                if (loaded.Persisted)
+                {
+                    if (loaded.Inventory is { Count: > 0 } toSave)
+                    {
+                        var now = _clock.GetUtcNow();
+                        _persistence?.SaveInventory(toSave, now);
+                        Inventory.ReadAt = now;
+                    }
+                    else
+                    {
+                        _persistence?.RemoveInventory();
+                    }
+                }
+
+                break;
+            case InventoryLoadStatus.NotFound:
+                Inventory.Data = null;
+                Inventory.ReadAt = null;
+                Inventory.Status = InventoryCardViewModel.NotFoundText;
+                break;
+            default:
+                Inventory.Status = InventoryCardViewModel.UnavailableText;
+                break;
+        }
+    }
+
     private void Apply(SignInResult result)
     {
         switch (result.Outcome)
         {
             case SignInOutcome.Connected when result.CharacterName is { } name:
-                // A different character never keeps the previous one's stored equipment or badges.
-                if (CharacterName is not null && !string.Equals(CharacterName, name, StringComparison.OrdinalIgnoreCase))
+                // A different character never keeps the previous one's stored equipment, badges or inventory.
+                if (CharacterName is not null && !CharacterName.EqualsIgnoreCase(name))
                 {
                     // The stored records of the previous character are removed by SaveIdentity.
                     Equipment.Data = null;
                     Badges.Data = null;
+                    Inventory.Data = null;
                     Equipment.ReadAt = null;
                     Badges.ReadAt = null;
+                    Inventory.ReadAt = null;
                 }
 
                 // A successful read replaces the summary, so a different character never shows the old one.

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AqwCompanion.Core.Common;
 using AqwCompanion.Core.Ingestion;
 using AqwCompanion.Core.Site;
 
@@ -28,7 +29,7 @@ public sealed class BadgesParser : IPageParser<CharacterBadges>
     public ParseResult<CharacterBadges> Parse(PageSnapshot snapshot)
     {
         var body = snapshot.Payload.Trim();
-        if (body.Length == 0 || string.Equals(body, "error", StringComparison.OrdinalIgnoreCase))
+        if (body.Length == 0 || body.EqualsIgnoreCase("error"))
         {
             return Failed("the badges endpoint reported an error", [ArrayMarker]);
         }
@@ -74,7 +75,7 @@ public sealed class BadgesParser : IPageParser<CharacterBadges>
             return null;
         }
 
-        var title = ReadText(entry, "sTitle", MaxTitleLength);
+        var title = entry.ReadCleanText("sTitle", MaxTitleLength);
         if (title is null)
         {
             return null;
@@ -82,24 +83,7 @@ public sealed class BadgesParser : IPageParser<CharacterBadges>
 
         return new Badge(
             title,
-            ReadText(entry, "sDesc", MaxDescriptionLength) ?? string.Empty,
-            ReadText(entry, "sCategory", MaxCategoryLength) ?? CharacterBadges.UncategorizedName);
-    }
-
-    /// <summary>The cleaned string value, or null when the property is missing, not a string or blank.</summary>
-    private static string? ReadText(JsonElement entry, string property, int maxLength)
-    {
-        if (!entry.TryGetProperty(property, out var value) || value.ValueKind != JsonValueKind.String)
-        {
-            return null;
-        }
-
-        var text = new string((value.GetString() ?? string.Empty).Where(c => !char.IsControl(c)).ToArray()).Trim();
-        if (text.Length == 0)
-        {
-            return null;
-        }
-
-        return text.Length > maxLength ? text[..maxLength] : text;
+            entry.ReadCleanText("sDesc", MaxDescriptionLength) ?? string.Empty,
+            entry.ReadCleanText("sCategory", MaxCategoryLength) ?? CharacterBadges.UncategorizedName);
     }
 }

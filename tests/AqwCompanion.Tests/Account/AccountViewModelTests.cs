@@ -6,6 +6,7 @@ using AqwCompanion.App.SignIn;
 using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Badges;
 using AqwCompanion.Core.Equipment;
+using AqwCompanion.Core.Inventory;
 using AqwCompanion.Tests.TestDoubles;
 
 namespace AqwCompanion.Tests.Account;
@@ -1077,6 +1078,10 @@ public class AccountViewModelTests
         public void RemoveEquipment() { }
 
         public void RemoveBadges() { }
+
+        public void SaveInventory(CharacterInventory inventory, DateTimeOffset readAtUtc) { }
+
+        public void RemoveInventory() { }
 
         public bool Forget() => true;
     }

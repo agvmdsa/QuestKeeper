@@ -1,6 +1,7 @@
 using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Badges;
 using AqwCompanion.Core.Equipment;
+using AqwCompanion.Core.Inventory;
 
 namespace AqwCompanion.App.Account;
 
@@ -15,7 +16,9 @@ public sealed record RestoredAccount(
     CharacterEquipment? Equipment,
     DateTimeOffset? EquipmentReadAtUtc,
     CharacterBadges? Badges,
-    DateTimeOffset? BadgesReadAtUtc);
+    DateTimeOffset? BadgesReadAtUtc,
+    CharacterInventory? Inventory = null,
+    DateTimeOffset? InventoryReadAtUtc = null);
 
 /// <summary>The in-memory data of this session that has to follow what was restored or forgotten.</summary>
 public interface IAccountSessionData
@@ -39,9 +42,13 @@ public interface IAccountDataPersistence
 
     void SaveBadges(CharacterBadges badges, DateTimeOffset readAtUtc);
 
+    void SaveInventory(CharacterInventory inventory, DateTimeOffset readAtUtc);
+
     void RemoveEquipment();
 
     void RemoveBadges();
+
+    void RemoveInventory();
 
     /// <summary>Deletes everything that is stored; true only when all of it is gone.</summary>
     bool Forget();

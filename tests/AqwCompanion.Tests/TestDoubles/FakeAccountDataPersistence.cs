@@ -2,6 +2,7 @@ using AqwCompanion.App.Account;
 using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Badges;
 using AqwCompanion.Core.Equipment;
+using AqwCompanion.Core.Inventory;
 
 namespace AqwCompanion.Tests.TestDoubles;
 
@@ -15,6 +16,8 @@ public sealed class FakeAccountDataPersistence : IAccountDataPersistence
     public List<(CharacterEquipment Equipment, DateTimeOffset At)> SavedEquipment { get; } = [];
 
     public List<(CharacterBadges Badges, DateTimeOffset At)> SavedBadges { get; } = [];
+
+    public List<(CharacterInventory Inventory, DateTimeOffset At)> SavedInventory { get; } = [];
 
     /// <summary>What <see cref="Restore"/> returns.</summary>
     public RestoredAccount? ToRestore { get; set; }
@@ -47,9 +50,17 @@ public sealed class FakeAccountDataPersistence : IAccountDataPersistence
         SavedBadges.Add((badges, readAtUtc));
     }
 
+    public void SaveInventory(CharacterInventory inventory, DateTimeOffset readAtUtc)
+    {
+        Calls.Add("SaveInventory:" + inventory.Count);
+        SavedInventory.Add((inventory, readAtUtc));
+    }
+
     public void RemoveEquipment() => Calls.Add("RemoveEquipment");
 
     public void RemoveBadges() => Calls.Add("RemoveBadges");
+
+    public void RemoveInventory() => Calls.Add("RemoveInventory");
 
     /// <summary>What <see cref="Forget"/> returns.</summary>
     public bool ForgetResult { get; set; } = true;

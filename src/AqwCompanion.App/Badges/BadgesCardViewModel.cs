@@ -1,4 +1,5 @@
 using AqwCompanion.App.Account;
+using AqwCompanion.App.Infrastructure.Formatting;
 using AqwCompanion.Core.Badges;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -31,7 +32,7 @@ public partial class BadgesCardViewModel(SidebarViewModel sidebar) : ObservableO
 
     public bool HasStatus => Status.Length > 0;
 
-    public string CountText => Data is { Count: 1 } ? "1 badge" : $"{Data?.Count ?? 0} badges";
+    public string CountText => Plural.Count(Data?.Count ?? 0, "badge", "badges");
 
     /// <summary>The first few badges, shown on the dashboard card.</summary>
     public IEnumerable<Badge> Preview => Data?.Preview ?? [];

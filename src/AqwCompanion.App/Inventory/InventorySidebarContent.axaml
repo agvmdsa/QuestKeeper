@@ -1,0 +1,41 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:inventory="using:AqwCompanion.Core.Inventory"
+             xmlns:inventoryapp="using:AqwCompanion.App.Inventory"
+             x:Class="AqwCompanion.App.Inventory.InventorySidebarContent"
+             x:DataType="inventoryapp:InventoryCardViewModel">
+  <UserControl.Resources>
+    <DataTemplate x:Key="InventoryRow" x:DataType="inventory:InventoryItem">
+      <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" Margin="0,4">
+        <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Name}" Foreground="{DynamicResource AqwTextBright}"
+                   TextWrapping="Wrap" />
+        <TextBlock x:Name="InventoryRowCount" Grid.Row="0" Grid.Column="1" Margin="6,0,0,0" Classes="muted"
+                   Text="{Binding Count, StringFormat='×{0}'}"
+                   IsVisible="{Binding Count, Converter={x:Static inventoryapp:InventorySidebarContent.ShowCount}}" />
+        <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,1,0,0" Text="{Binding Type}" Classes="muted"
+                   TextWrapping="Wrap" />
+      </Grid>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <!-- The grid is given the height of the sidebar, so the list below is bounded and its panel can virtualize. -->
+  <Grid x:Name="InventoryLayout" RowDefinitions="Auto,Auto,*" Height="480">
+    <TextBox x:Name="InventoryFilterBox" Grid.Row="0" Text="{Binding FilterText, Mode=TwoWay}"
+             Watermark="Filter by name" AutomationProperties.Name="Filter inventory by name" />
+    <StackPanel Grid.Row="1" Margin="0,12,0,8" Spacing="4">
+      <TextBlock x:Name="InventoryTotalLine" Text="{Binding TotalText}" Classes="muted" />
+      <TextBlock x:Name="InventoryNoMatchLine" Text="No items match the filter." TextWrapping="Wrap"
+                 IsVisible="{Binding HasNoMatches}" />
+    </StackPanel>
+    <ListBox x:Name="InventoryItemList" Grid.Row="2" ItemsSource="{Binding FilteredItems}"
+             ItemTemplate="{StaticResource InventoryRow}" Background="Transparent"
+             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+             AutomationProperties.Name="Inventory items">
+      <ListBox.ItemsPanel>
+        <ItemsPanelTemplate>
+          <VirtualizingStackPanel />
+        </ItemsPanelTemplate>
+      </ListBox.ItemsPanel>
+    </ListBox>
+  </Grid>
+</UserControl>

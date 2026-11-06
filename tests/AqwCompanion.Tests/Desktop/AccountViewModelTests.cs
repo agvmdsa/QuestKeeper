@@ -392,4 +392,102 @@ public class AccountViewModelTests
         Assert.False(vm.HasBadges);
         Assert.Equal(string.Empty, vm.BadgesStatus);
     }
+
+    [Fact]
+    public void Without_a_summary_the_card_texts_are_dashes()
+    {
+        var vm = Build();
+
+        Assert.False(vm.HasSummary);
+        Assert.Equal(AccountViewModel.MissingValueText, vm.AdventureCoinsText);
+        Assert.Equal(AccountViewModel.MissingValueText, vm.AccountTypeText);
+        Assert.Equal(AccountViewModel.MissingValueText, vm.MembershipText);
+        Assert.Equal(AccountViewModel.MissingValueText, vm.GearsOfDoomText);
+    }
+
+    [Fact]
+    public async Task Sign_in_shows_the_summary_with_thousands_separators()
+    {
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero", SampleAccount.Summary));
+        var vm = Build();
+
+        await vm.SignInCommand.ExecuteAsync(null);
+
+        Assert.True(vm.HasSummary);
+        Assert.Equal("1,234,567", vm.AdventureCoinsText);
+        Assert.Equal("LEGEND", vm.AccountTypeText);
+        Assert.Equal("Membership Expired: Tuesday, January 2, 2030", vm.MembershipText);
+        Assert.Equal("7", vm.GearsOfDoomText);
+    }
+
+    [Fact]
+    public async Task Missing_summary_fields_show_a_dash_while_the_others_show()
+    {
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero", new AccountSummary(5, null, null, null)));
+        var vm = Build();
+
+        await vm.SignInCommand.ExecuteAsync(null);
+
+        Assert.True(vm.HasSummary);
+        Assert.Equal("5", vm.AdventureCoinsText);
+        Assert.Equal(AccountViewModel.MissingValueText, vm.AccountTypeText);
+        Assert.Equal(AccountViewModel.MissingValueText, vm.MembershipText);
+        Assert.Equal(AccountViewModel.MissingValueText, vm.GearsOfDoomText);
+    }
+
+    [Fact]
+    public async Task A_connected_result_without_a_summary_leaves_the_card_unavailable()
+    {
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+        var vm = Build();
+
+        await vm.SignInCommand.ExecuteAsync(null);
+
+        Assert.True(vm.IsConnected);
+        Assert.False(vm.HasSummary);
+    }
+
+    [Fact]
+    public async Task A_failed_or_cancelled_refresh_keeps_the_last_summary()
+    {
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero", SampleAccount.Summary));
+        var vm = Build();
+        await vm.SignInCommand.ExecuteAsync(null);
+
+        _dialog.OnShow = Reports(SignInResult.Failed("The page took too long to read. Try again."));
+        await vm.RefreshCommand.ExecuteAsync(null);
+        _dialog.OnShow = Reports(SignInResult.Cancelled());
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal(SampleAccount.Summary, vm.Summary);
+    }
+
+    [Fact]
+    public async Task A_refresh_replaces_the_summary()
+    {
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero", SampleAccount.Summary));
+        var vm = Build();
+        await vm.SignInCommand.ExecuteAsync(null);
+        var newer = new AccountSummary(10, "FREE", null, 0);
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero", newer));
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal(newer, vm.Summary);
+    }
+
+    [Fact]
+    public async Task A_different_character_never_shows_the_previous_summary()
+    {
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero", SampleAccount.Summary));
+        var vm = Build();
+        await vm.SignInCommand.ExecuteAsync(null);
+        _dialog.OnShow = Reports(SignInResult.Connected("Other Hero"));
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal("Other Hero", vm.CharacterName);
+        Assert.Null(vm.Summary);
+        Assert.False(vm.HasSummary);
+    }
 }

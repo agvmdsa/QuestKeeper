@@ -26,6 +26,8 @@ public partial class AccountViewModel : ObservableObject
     public const string BadgesLoadingText = "Loading badges...";
     public const string BadgesUnavailableText = "Could not load the badges. Try Refresh again.";
     public const string BadgesNotFoundText = "No badges found for this character.";
+    public const string SummaryUnavailableText = "Not available. Try Refresh.";
+    public const string MissingValueText = "\u2014";
 
     /// <summary>Which card the details sidebar is showing.</summary>
     public enum SidebarCard
@@ -46,6 +48,11 @@ public partial class AccountViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsConnected), nameof(NeedsSignIn), nameof(Headline), nameof(ConnectionSummary))]
     private string? _characterName;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(
+        nameof(HasSummary), nameof(AdventureCoinsText), nameof(AccountTypeText), nameof(MembershipText), nameof(GearsOfDoomText))]
+    private AccountSummary? _summary;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasEquipment), nameof(ConnectionSummary), nameof(EquippedPreviewSlots))]
@@ -92,6 +99,20 @@ public partial class AccountViewModel : ObservableObject
     public bool HasBadges => Badges is { Count: > 0 };
 
     public bool HasBadgesStatus => BadgesStatus.Length > 0;
+
+    public bool HasSummary => Summary is not null;
+
+    /// <summary>AdventureCoins with thousands separators, or a dash when the page did not carry it.</summary>
+    public string AdventureCoinsText =>
+        Summary?.AdventureCoins is { } coins ? coins.ToString("N0", CultureInfo.InvariantCulture) : MissingValueText;
+
+    public string AccountTypeText => Summary?.AccountType ?? MissingValueText;
+
+    /// <summary>The page's own membership line, date included.</summary>
+    public string MembershipText => Summary?.MembershipStatus ?? MissingValueText;
+
+    public string GearsOfDoomText =>
+        Summary?.GearsOfDoom is { } gears ? gears.ToString(CultureInfo.InvariantCulture) : MissingValueText;
 
     public bool IsConnected => CharacterName is not null;
 
@@ -334,14 +355,16 @@ public partial class AccountViewModel : ObservableObject
         switch (result.Outcome)
         {
             case SignInOutcome.Connected when result.CharacterName is { } name:
+                // A successful read replaces the summary, so a different character never shows the old one.
                 CharacterName = name;
+                Summary = result.Summary;
                 Status = ReadMessage;
                 break;
             case SignInOutcome.Cancelled:
                 Status = CancelledMessage;
                 break;
             default:
-                // A failed refresh keeps the last name that was read; only the status changes.
+                // A failed refresh keeps the last name and summary that were read; only the status changes.
                 Status = result.Message ?? FailedFallbackMessage;
                 break;
         }

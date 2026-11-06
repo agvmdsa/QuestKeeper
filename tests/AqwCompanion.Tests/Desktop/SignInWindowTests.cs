@@ -176,7 +176,7 @@ public class SignInWindowTests
         Settle(window);
 
         Assert.False(window.IsVisible);
-        Assert.Equal(SignInResult.Connected("Test Hero"), vm.Result);
+        Assert.Equal(SignInResult.Connected("Test Hero", SampleAccount.Summary), vm.Result);
     }
 
     [AvaloniaFact]

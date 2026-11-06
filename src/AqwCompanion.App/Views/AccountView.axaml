@@ -108,6 +108,42 @@
             </StackPanel>
           </Border>
 
+          <Border x:Name="SummaryPanel" Classes="card" IsVisible="{Binding IsConnected}"
+                  AutomationProperties.Name="Account summary">
+            <StackPanel>
+              <Border Classes="cardHeader">
+                <TextBlock Text="Account summary" Classes="cardTitle" />
+              </Border>
+              <StackPanel Margin="16" Spacing="12">
+                <TextBlock x:Name="SummaryUnavailableLine" Text="{x:Static vm:AccountViewModel.SummaryUnavailableText}" TextWrapping="Wrap"
+                           IsVisible="{Binding !HasSummary}" />
+
+                <StackPanel Spacing="6" IsVisible="{Binding HasSummary}">
+                  <Grid ColumnDefinitions="130,*">
+                    <TextBlock Grid.Column="0" Text="AdventureCoins" Classes="muted" TextWrapping="Wrap" />
+                    <TextBlock x:Name="AdventureCoinsValue" Grid.Column="1" Text="{Binding AdventureCoinsText}"
+                               TextWrapping="Wrap" AutomationProperties.Name="AdventureCoins" />
+                  </Grid>
+                  <Grid ColumnDefinitions="130,*">
+                    <TextBlock Grid.Column="0" Text="Account type" Classes="muted" TextWrapping="Wrap" />
+                    <TextBlock x:Name="AccountTypeValue" Grid.Column="1" Text="{Binding AccountTypeText}"
+                               TextWrapping="Wrap" AutomationProperties.Name="Account type" />
+                  </Grid>
+                  <Grid ColumnDefinitions="130,*">
+                    <TextBlock Grid.Column="0" Text="Membership" Classes="muted" TextWrapping="Wrap" />
+                    <TextBlock x:Name="MembershipValue" Grid.Column="1" Text="{Binding MembershipText}"
+                               TextWrapping="Wrap" AutomationProperties.Name="Membership status" />
+                  </Grid>
+                  <Grid ColumnDefinitions="130,*">
+                    <TextBlock Grid.Column="0" Text="Gears of Doom" Classes="muted" TextWrapping="Wrap" />
+                    <TextBlock x:Name="GearsOfDoomValue" Grid.Column="1" Text="{Binding GearsOfDoomText}"
+                               TextWrapping="Wrap" AutomationProperties.Name="Gears of Doom" />
+                  </Grid>
+                </StackPanel>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
           <Border x:Name="EquippedPanel" Classes="card" IsVisible="{Binding IsConnected}" Cursor="Hand">
             <StackPanel>
               <Border Classes="cardHeader">

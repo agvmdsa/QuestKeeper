@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/agvmdsa/aqw-companion/releases/latest"><img src="docs/download-windows.svg" width="320" alt="Download the latest AQW Companion for Windows"></a>
+  <a href="https://github.com/agvmdsa/aqw-companion/releases/latest"><img src="docs/download-windows.svg" width="368" alt="Download the latest AQW Companion for Windows"></a>
 </p>
 
 <p align="center">

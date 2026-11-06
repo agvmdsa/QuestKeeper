@@ -1,11 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="320" height="76" viewBox="0 0 320 76" role="img" aria-label="Download the latest AQW Companion for Windows">
+<svg xmlns="http://www.w3.org/2000/svg" width="368" height="76" viewBox="0 0 368 76" role="img" aria-label="Download the latest AQW Companion for Windows">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#2B2433"/>
       <stop offset="1" stop-color="#15101F"/>
     </linearGradient>
   </defs>
-  <rect x="1" y="1" width="318" height="74" rx="18" fill="url(#bg)" stroke="#B8313E" stroke-width="2"/>
+  <rect x="1" y="1" width="366" height="74" rx="18" fill="url(#bg)" stroke="#B8313E" stroke-width="2"/>
   <rect x="18" y="16" width="44" height="44" rx="12" fill="#FCE7B5"/>
   <path d="M40 24 V41 M32 34 L40 42 L48 34" fill="none" stroke="#15101F" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M31 50 H49" stroke="#B8313E" stroke-width="4" stroke-linecap="round"/>

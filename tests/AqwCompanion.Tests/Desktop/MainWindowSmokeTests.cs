@@ -1,7 +1,9 @@
 using AqwCompanion.App;
 using AqwCompanion.App.Browser;
+using AqwCompanion.App.Persistence;
 using AqwCompanion.App.ViewModels;
 using AqwCompanion.App.Views;
+using AqwCompanion.Tests.TestDoubles;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
@@ -43,5 +45,36 @@ public class MainWindowSmokeTests
         Assert.False(account.FindControl<Button>("RefreshButton")!.IsVisible);
         Assert.Empty(account.GetVisualDescendants().OfType<NativeWebView>());
         Assert.False(services.GetRequiredService<WebViewBrowserHost>().IsAttached);
+    }
+
+    [AvaloniaFact]
+    public async Task Account_view_shows_the_stored_data_notice_and_the_forget_button_after_a_restore()
+    {
+        var at = new DateTimeOffset(2026, 11, 5, 10, 0, 0, TimeSpan.Zero);
+        var persistence = new FakeAccountDataPersistence
+        {
+            ToRestore = new RestoredAccount("Test Hero", SampleAccount.Summary, at, null, null, null, null),
+        };
+        var vm = new AccountViewModel(new FakeSignInDialog(), persistence: persistence);
+        var view = new AccountView { DataContext = vm };
+        var window = new Window { Content = view };
+        window.Show();
+
+        await vm.RestoreStoredDataAsync();
+
+        var notice = view.FindControl<TextBlock>("StoredDataNoticeLine")!;
+        Assert.True(notice.IsVisible);
+        Assert.Equal(AccountViewModel.StoredDataNoticeText, notice.Text);
+        var forget = view.FindControl<Button>("ForgetButton")!;
+        Assert.True(forget.IsVisible);
+        Assert.Equal("Forget stored data", forget.Content);
+        Assert.True(view.FindControl<Button>("SignInButton")!.IsVisible);
+        Assert.True(view.FindControl<TextBlock>("SummaryUpdatedLine")!.IsVisible);
+        Assert.False(view.FindControl<StackPanel>("ForgetConfirmation")!.IsVisible);
+
+        vm.RequestForgetCommand.Execute(null);
+
+        Assert.False(forget.IsVisible);
+        Assert.True(view.FindControl<StackPanel>("ForgetConfirmation")!.IsVisible);
     }
 }

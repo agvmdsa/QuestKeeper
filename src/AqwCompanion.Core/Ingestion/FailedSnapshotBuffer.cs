@@ -8,4 +8,6 @@ public sealed class FailedSnapshotBuffer
     public PageSnapshot? Latest => Volatile.Read(ref _latest);
 
     public void Record(PageSnapshot snapshot) => Volatile.Write(ref _latest, snapshot);
+
+    public void Clear() => Volatile.Write(ref _latest, null);
 }

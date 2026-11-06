@@ -10,6 +10,15 @@ public sealed class LatestResultStore<T> : IResultStore<T>
 
     public T? Latest => _latest;
 
+    /// <summary>Sets the item count the drop guard compares against, but only when no count is known yet.</summary>
+    public void SeedCount(int count) => _lastCount ??= count;
+
+    public void Clear()
+    {
+        _latest = default;
+        _lastCount = null;
+    }
+
     public Task<int?> GetLastCountAsync(CancellationToken ct = default) => Task.FromResult(_lastCount);
 
     public Task SaveAsync(T data, int count, CancellationToken ct = default)

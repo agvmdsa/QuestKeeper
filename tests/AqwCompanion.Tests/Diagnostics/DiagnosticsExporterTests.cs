@@ -46,6 +46,23 @@ public sealed class DiagnosticsExporterTests : IDisposable
     }
 
     [Fact]
+    public void Export_never_contains_the_stored_data_file()
+    {
+        File.WriteAllText(Path.Combine(_logs, "log-20261104.txt"), "started");
+        var data = Path.Combine(_root, "data");
+        Directory.CreateDirectory(data);
+        File.WriteAllText(Path.Combine(data, "companion.db"), "fake stored content");
+        File.WriteAllText(Path.Combine(_logs, "companion.db"), "fake stored content");
+        var exporter = new DiagnosticsExporter(new SnapshotRedactor());
+
+        exporter.Export(new DiagnosticsRequest(_logs, "1.0.0", _output, Snapshot(), IncludeSnapshot: true));
+
+        using var zip = ZipFile.OpenRead(_output);
+        Assert.DoesNotContain(zip.Entries, e => e.FullName.Contains("companion.db", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain("fake stored content", string.Concat(zip.Entries.Select(e => ReadEntry(zip, e.FullName))));
+    }
+
+    [Fact]
     public void Export_includes_redacted_snapshot_only_with_opt_in()
     {
         var exporter = new DiagnosticsExporter(new SnapshotRedactor());

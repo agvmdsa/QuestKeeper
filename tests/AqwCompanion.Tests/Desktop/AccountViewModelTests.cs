@@ -1,5 +1,8 @@
+using System.Globalization;
+using AqwCompanion.App;
 using AqwCompanion.App.Badges;
 using AqwCompanion.App.Equipment;
+using AqwCompanion.App.Persistence;
 using AqwCompanion.App.SignIn;
 using AqwCompanion.App.ViewModels;
 using AqwCompanion.Core.Aqw;
@@ -489,5 +492,531 @@ public class AccountViewModelTests
         Assert.Equal("Other Hero", vm.CharacterName);
         Assert.Null(vm.Summary);
         Assert.False(vm.HasSummary);
+    }
+
+    // ---- Local persistence ----
+
+    private static readonly DateTimeOffset Now = new(2030, 3, 4, 5, 6, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset Earlier = new(2030, 3, 1, 8, 30, 0, TimeSpan.Zero);
+
+    private readonly FakeAccountDataPersistence _persistence = new();
+
+    private readonly FakeAccountSessionData _session = new();
+
+    private AccountViewModel BuildPersisted(
+        Func<string, Task<EquipmentLoadResult>>? equipment = null, Func<int, Task<BadgesLoadResult>>? badges = null) =>
+        new(
+            _dialog,
+            equipment is null ? null : new FakeEquipmentLoader(equipment),
+            badges is null ? null : new FakeBadgesLoader(badges),
+            _persistence,
+            new FixedTimeProvider(Now),
+            _session);
+
+    private static string ExpectedUpdated(DateTimeOffset at) =>
+        "Last updated " + at.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
+
+    private static Func<string, Task<EquipmentLoadResult>> EquipsPersisted(CharacterEquipment equipment) =>
+        _ => Task.FromResult(new EquipmentLoadResult(EquipmentLoadStatus.Loaded, equipment, true));
+
+    private static Func<int, Task<BadgesLoadResult>> BadgesPersisted(CharacterBadges badges) =>
+        _ => Task.FromResult(new BadgesLoadResult(BadgesLoadStatus.Loaded, badges, true));
+
+    private static RestoredAccount StoredAccount() =>
+        new("Test Hero", SampleAccount.Summary, Earlier, Equipment("Test Hero", 3), Earlier.AddMinutes(1), Badges(3), Earlier.AddMinutes(2));
+
+    [Fact]
+    public async Task Restore_fills_name_summary_equipment_badges_and_marks_data_as_stored()
+    {
+        _persistence.ToRestore = StoredAccount();
+        var vm = BuildPersisted();
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        await vm.RestoreStoredDataAsync();
+
+        Assert.True(vm.IsConnected);
+        Assert.Equal("Test Hero", vm.CharacterName);
+        Assert.Equal(SampleAccount.Summary, vm.Summary);
+        Assert.Equal("Test Hero", vm.Equipment!.Name);
+        Assert.Equal(3, vm.Badges!.Count);
+        Assert.True(vm.IsFromStoredData);
+        Assert.Equal(AccountViewModel.StoredDataMessage, vm.Status);
+        Assert.Equal(AccountViewModel.StoredDataNoticeText, vm.StoredDataNotice);
+        Assert.True(vm.HasStoredDataNotice);
+        Assert.Equal(ExpectedUpdated(Earlier), vm.SummaryUpdatedText);
+        Assert.Equal(ExpectedUpdated(Earlier.AddMinutes(1)), vm.EquipmentUpdatedText);
+        Assert.Equal(ExpectedUpdated(Earlier.AddMinutes(2)), vm.BadgesUpdatedText);
+        Assert.True(vm.HasSummaryUpdatedText && vm.HasEquipmentUpdatedText && vm.HasBadgesUpdatedText);
+        Assert.True(vm.ShowSignIn);
+        Assert.False(vm.NeedsSignIn);
+        Assert.Contains(nameof(AccountViewModel.ShowSignIn), changed);
+        Assert.Contains(nameof(AccountViewModel.StoredDataNotice), changed);
+        Assert.Contains(nameof(AccountViewModel.HasStoredDataNotice), changed);
+        Assert.Contains(nameof(AccountViewModel.SummaryUpdatedText), changed);
+        Assert.Contains(nameof(AccountViewModel.HasEquipmentUpdatedText), changed);
+        Assert.Contains(nameof(AccountViewModel.BadgesUpdatedText), changed);
+        Assert.DoesNotContain(_persistence.Calls, c => c.StartsWith("Save", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Restore_does_nothing_when_nothing_is_stored()
+    {
+        var vm = BuildPersisted();
+
+        await vm.RestoreStoredDataAsync();
+
+        Assert.False(vm.IsConnected);
+        Assert.False(vm.IsFromStoredData);
+        Assert.Equal(AccountViewModel.SignedOutMessage, vm.Status);
+        Assert.True(vm.ShowSignIn);
+        Assert.Equal(string.Empty, vm.StoredDataNotice);
+        Assert.Equal(string.Empty, vm.SummaryUpdatedText);
+    }
+
+    [Fact]
+    public async Task Restore_does_not_override_a_name_that_was_set_meanwhile()
+    {
+        var release = new TaskCompletionSource();
+        _persistence.ToRestore = StoredAccount();
+        _persistence.RestoreGate = release.Task;
+        var vm = BuildPersisted();
+
+        var restoring = vm.RestoreStoredDataAsync();
+        _dialog.OnShow = Reports(SignInResult.Connected("Other Hero"));
+        await vm.SignInCommand.ExecuteAsync(null);
+        release.SetResult();
+        await restoring;
+
+        Assert.Equal("Other Hero", vm.CharacterName);
+        Assert.False(vm.IsFromStoredData);
+        Assert.Null(vm.Equipment);
+        Assert.Equal(AccountViewModel.ReadMessage, vm.Status);
+    }
+
+    [Fact]
+    public async Task Connected_sign_in_saves_the_identity_and_summary_and_clears_the_stored_flag()
+    {
+        _persistence.ToRestore = StoredAccount();
+        var vm = BuildPersisted();
+        await vm.RestoreStoredDataAsync();
+        _persistence.Calls.Clear();
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero", SampleAccount.Summary));
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal(["SaveIdentity:Test Hero"], _persistence.Calls);
+        Assert.Equal(("Test Hero", SampleAccount.Summary, Now), _persistence.SavedIdentities.Single());
+        Assert.False(vm.IsFromStoredData);
+        Assert.Equal(string.Empty, vm.StoredDataNotice);
+        Assert.False(vm.HasStoredDataNotice);
+        Assert.False(vm.ShowSignIn);
+        Assert.Equal(ExpectedUpdated(Now), vm.SummaryUpdatedText);
+        Assert.Equal(AccountViewModel.ReadMessage, vm.Status);
+    }
+
+    [Fact]
+    public async Task Connected_sign_in_with_a_different_name_clears_equipment_and_badges_in_memory()
+    {
+        _persistence.ToRestore = StoredAccount();
+        var vm = BuildPersisted();
+        await vm.RestoreStoredDataAsync();
+        _persistence.Calls.Clear();
+        _dialog.OnShow = Reports(SignInResult.Connected("Other Hero"));
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        // The stored equipment and badges are removed by the coordinator when the identity changes.
+        Assert.Equal(["SaveIdentity:Other Hero"], _persistence.Calls);
+        Assert.Equal("Other Hero", vm.CharacterName);
+        Assert.Null(vm.Equipment);
+        Assert.Null(vm.Badges);
+        Assert.Equal(string.Empty, vm.EquipmentUpdatedText);
+        Assert.Equal(string.Empty, vm.BadgesUpdatedText);
+        Assert.Equal(ExpectedUpdated(Now), vm.SummaryUpdatedText);
+    }
+
+    [Fact]
+    public async Task The_first_sign_in_does_not_remove_anything()
+    {
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+        var vm = BuildPersisted();
+
+        await vm.SignInCommand.ExecuteAsync(null);
+
+        Assert.Equal(["SaveIdentity:Test Hero"], _persistence.Calls);
+    }
+
+    [Fact]
+    public async Task Cancelled_or_failed_sign_in_does_not_touch_persistence()
+    {
+        _persistence.ToRestore = StoredAccount();
+        var vm = BuildPersisted();
+        await vm.RestoreStoredDataAsync();
+        _persistence.Calls.Clear();
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+        _dialog.OnShow = Reports(SignInResult.Failed("Could not read."));
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Empty(_persistence.Calls);
+        Assert.True(vm.IsFromStoredData);
+        Assert.Equal("Test Hero", vm.CharacterName);
+    }
+
+    [Fact]
+    public async Task Loaded_and_persisted_equipment_is_saved_with_its_read_time()
+    {
+        var equipment = Equipment("Test Hero", 3);
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+        var vm = BuildPersisted(EquipsPersisted(equipment));
+
+        await vm.SignInCommand.ExecuteAsync(null);
+
+        Assert.Equal((equipment, Now), _persistence.SavedEquipment.Single());
+        Assert.Equal(ExpectedUpdated(Now), vm.EquipmentUpdatedText);
+        Assert.True(vm.HasEquipmentUpdatedText);
+    }
+
+    [Fact]
+    public async Task Loaded_but_not_persisted_equipment_is_shown_but_not_saved()
+    {
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+        var vm = BuildPersisted(Equips(Equipment("Test Hero", 3)));
+
+        await vm.SignInCommand.ExecuteAsync(null);
+
+        Assert.True(vm.HasEquipment);
+        Assert.Empty(_persistence.SavedEquipment);
+        Assert.DoesNotContain("RemoveEquipment", _persistence.Calls);
+        Assert.Equal(string.Empty, vm.EquipmentUpdatedText);
+    }
+
+    [Fact]
+    public async Task Equipment_not_found_never_removes_the_stored_equipment()
+    {
+        _persistence.ToRestore = StoredAccount();
+        var vm = BuildPersisted(_ => Task.FromResult(new EquipmentLoadResult(EquipmentLoadStatus.NotFound)));
+        await vm.RestoreStoredDataAsync();
+        _persistence.Calls.Clear();
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal(["SaveIdentity:Test Hero"], _persistence.Calls);
+        Assert.Null(vm.Equipment);
+        Assert.Equal(string.Empty, vm.EquipmentUpdatedText);
+        Assert.Equal(AccountViewModel.EquipmentNotFoundText, vm.EquipmentStatus);
+    }
+
+    [Fact]
+    public async Task Unavailable_equipment_keeps_stored_equipment_untouched()
+    {
+        _persistence.ToRestore = StoredAccount();
+        var vm = BuildPersisted(_ => Task.FromResult(new EquipmentLoadResult(EquipmentLoadStatus.Unavailable)));
+        await vm.RestoreStoredDataAsync();
+        _persistence.Calls.Clear();
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal(["SaveIdentity:Test Hero"], _persistence.Calls);
+        Assert.NotNull(vm.Equipment);
+        Assert.Equal(ExpectedUpdated(Earlier.AddMinutes(1)), vm.EquipmentUpdatedText);
+    }
+
+    [Fact]
+    public async Task Badges_loaded_and_persisted_with_items_are_saved()
+    {
+        var badges = Badges(3);
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+        var vm = BuildPersisted(EquipsPersisted(Equipment("Test Hero", 3)), BadgesPersisted(badges));
+
+        await vm.SignInCommand.ExecuteAsync(null);
+
+        Assert.Equal((badges, Now), _persistence.SavedBadges.Single());
+        Assert.Equal(ExpectedUpdated(Now), vm.BadgesUpdatedText);
+        Assert.True(vm.HasBadgesUpdatedText);
+    }
+
+    [Fact]
+    public async Task Loaded_but_not_persisted_badges_are_shown_but_not_saved()
+    {
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+        var vm = BuildPersisted(Equips(Equipment("Test Hero", 3)), HasBadges(Badges(3)));
+
+        await vm.SignInCommand.ExecuteAsync(null);
+
+        Assert.True(vm.HasBadges);
+        Assert.Empty(_persistence.SavedBadges);
+        Assert.DoesNotContain("RemoveBadges", _persistence.Calls);
+        Assert.Equal(string.Empty, vm.BadgesUpdatedText);
+    }
+
+    [Fact]
+    public async Task Persisted_empty_badges_remove_the_stored_badges()
+    {
+        _persistence.ToRestore = StoredAccount();
+        var vm = BuildPersisted(EquipsPersisted(Equipment("Test Hero", 3)), BadgesPersisted(Badges(0)));
+        await vm.RestoreStoredDataAsync();
+        _persistence.Calls.Clear();
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Contains("RemoveBadges", _persistence.Calls);
+        Assert.Empty(_persistence.SavedBadges);
+        Assert.Equal(string.Empty, vm.BadgesUpdatedText);
+    }
+
+    [Fact]
+    public async Task Badges_not_found_never_remove_the_stored_badges()
+    {
+        _persistence.ToRestore = StoredAccount();
+        var vm = BuildPersisted(
+            EquipsPersisted(Equipment("Test Hero", 3)), _ => Task.FromResult(new BadgesLoadResult(BadgesLoadStatus.NotFound)));
+        await vm.RestoreStoredDataAsync();
+        _persistence.Calls.Clear();
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain("RemoveBadges", _persistence.Calls);
+        Assert.Null(vm.Badges);
+        Assert.Equal(string.Empty, vm.BadgesUpdatedText);
+        Assert.Equal(AccountViewModel.BadgesNotFoundText, vm.BadgesStatus);
+    }
+
+    [Fact]
+    public async Task Ok_but_not_persisted_empty_badges_do_not_remove_the_stored_badges()
+    {
+        _persistence.ToRestore = StoredAccount();
+        var vm = BuildPersisted(
+            EquipsPersisted(Equipment("Test Hero", 3)), _ => Task.FromResult(new BadgesLoadResult(BadgesLoadStatus.Loaded, Badges(0), false)));
+        await vm.RestoreStoredDataAsync();
+        _persistence.Calls.Clear();
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain("RemoveBadges", _persistence.Calls);
+    }
+
+    [Fact]
+    public async Task Unavailable_badges_keep_the_stored_badges_untouched()
+    {
+        _persistence.ToRestore = StoredAccount();
+        var vm = BuildPersisted(
+            EquipsPersisted(Equipment("Test Hero", 3)), _ => Task.FromResult(new BadgesLoadResult(BadgesLoadStatus.Unavailable)));
+        await vm.RestoreStoredDataAsync();
+        _persistence.Calls.Clear();
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain("RemoveBadges", _persistence.Calls);
+        Assert.NotNull(vm.Badges);
+    }
+
+    [Fact]
+    public async Task Updated_texts_use_local_time_and_are_empty_without_a_read_time()
+    {
+        var vm = BuildPersisted();
+        Assert.Equal(string.Empty, vm.SummaryUpdatedText);
+        Assert.Equal(string.Empty, vm.EquipmentUpdatedText);
+        Assert.Equal(string.Empty, vm.BadgesUpdatedText);
+        Assert.False(vm.HasSummaryUpdatedText);
+        Assert.False(vm.HasEquipmentUpdatedText);
+        Assert.False(vm.HasBadgesUpdatedText);
+
+        _persistence.ToRestore = StoredAccount() with { EquipmentReadAtUtc = null, Badges = null, BadgesReadAtUtc = null };
+        await vm.RestoreStoredDataAsync();
+
+        Assert.Equal("Last updated " + Earlier.ToLocalTime().ToString("g", CultureInfo.CurrentCulture), vm.SummaryUpdatedText);
+        Assert.Equal(string.Empty, vm.EquipmentUpdatedText);
+        Assert.Equal(string.Empty, vm.BadgesUpdatedText);
+        Assert.True(vm.HasSummaryUpdatedText);
+        Assert.False(vm.HasEquipmentUpdatedText);
+    }
+
+    [Fact]
+    public async Task Forget_needs_confirmation()
+    {
+        _persistence.ToRestore = StoredAccount();
+        var vm = BuildPersisted();
+        await vm.RestoreStoredDataAsync();
+        vm.OpenBadgesDetailsCommand.Execute(null);
+        vm.EquipmentStatus = "x";
+        vm.BadgesStatus = "y";
+        _persistence.Calls.Clear();
+
+        vm.RequestForgetCommand.Execute(null);
+        Assert.True(vm.IsForgetPending);
+        Assert.DoesNotContain("Forget", _persistence.Calls);
+
+        vm.CancelForgetCommand.Execute(null);
+        Assert.False(vm.IsForgetPending);
+        Assert.DoesNotContain("Forget", _persistence.Calls);
+        Assert.True(vm.IsConnected);
+
+        vm.RequestForgetCommand.Execute(null);
+        vm.ConfirmForgetCommand.Execute(null);
+
+        Assert.Equal(["Forget"], _persistence.Calls);
+        Assert.False(vm.IsForgetPending);
+        Assert.Null(vm.CharacterName);
+        Assert.Null(vm.Summary);
+        Assert.Null(vm.Equipment);
+        Assert.Null(vm.Badges);
+        Assert.Equal(string.Empty, vm.SummaryUpdatedText);
+        Assert.Equal(string.Empty, vm.EquipmentUpdatedText);
+        Assert.Equal(string.Empty, vm.BadgesUpdatedText);
+        Assert.Equal(string.Empty, vm.EquipmentStatus);
+        Assert.Equal(string.Empty, vm.BadgesStatus);
+        Assert.False(vm.IsSidebarOpen);
+        Assert.False(vm.IsFromStoredData);
+        Assert.Equal(string.Empty, vm.StoredDataNotice);
+        Assert.Equal(AccountViewModel.ForgottenMessage, vm.Status);
+        Assert.Equal(AccountViewModel.NotConnectedText, vm.Headline);
+        Assert.True(vm.ShowSignIn);
+    }
+
+    [Fact]
+    public async Task Restore_seeds_the_session_data_with_what_was_restored()
+    {
+        var stored = StoredAccount();
+        _persistence.ToRestore = stored;
+        var vm = BuildPersisted();
+
+        await vm.RestoreStoredDataAsync();
+
+        Assert.Same(stored, Assert.Single(_session.Seeded));
+    }
+
+    [Fact]
+    public async Task A_restore_that_finds_nothing_seeds_nothing()
+    {
+        var vm = BuildPersisted();
+
+        await vm.RestoreStoredDataAsync();
+
+        Assert.Empty(_session.Seeded);
+    }
+
+    [Fact]
+    public async Task Forget_that_fails_keeps_everything_and_says_so()
+    {
+        _persistence.ToRestore = StoredAccount();
+        _persistence.ForgetResult = false;
+        var vm = BuildPersisted();
+        await vm.RestoreStoredDataAsync();
+        vm.RequestForgetCommand.Execute(null);
+
+        vm.ConfirmForgetCommand.Execute(null);
+
+        Assert.False(vm.IsForgetPending);
+        Assert.Equal(AccountViewModel.ForgetFailedMessage, vm.Status);
+        Assert.Equal("Test Hero", vm.CharacterName);
+        Assert.NotNull(vm.Summary);
+        Assert.NotNull(vm.Equipment);
+        Assert.NotNull(vm.Badges);
+        Assert.True(vm.IsFromStoredData);
+        Assert.Equal(0, _session.ClearCalls);
+    }
+
+    [Fact]
+    public async Task Forget_that_succeeds_clears_the_session_data_and_resets_the_sidebar_card()
+    {
+        _persistence.ToRestore = StoredAccount();
+        var vm = BuildPersisted();
+        await vm.RestoreStoredDataAsync();
+        vm.OpenBadgesDetailsCommand.Execute(null);
+        Assert.Equal(AccountViewModel.SidebarCard.Badges, vm.SidebarContent);
+        vm.RequestForgetCommand.Execute(null);
+
+        vm.ConfirmForgetCommand.Execute(null);
+
+        Assert.Equal(1, _session.ClearCalls);
+        Assert.Equal(AccountViewModel.SidebarCard.Equipped, vm.SidebarContent);
+        Assert.Equal(AccountViewModel.ForgottenMessage, vm.Status);
+    }
+
+    [Fact]
+    public void Forget_can_only_be_requested_while_connected()
+    {
+        var vm = BuildPersisted();
+
+        vm.RequestForgetCommand.Execute(null);
+
+        Assert.False(vm.IsForgetPending);
+    }
+
+    [Fact]
+    public async Task Forget_cancels_an_in_flight_character_load()
+    {
+        var gate = new TaskCompletionSource<EquipmentLoadResult>();
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+        var vm = BuildPersisted(_ => gate.Task, BadgesPersisted(Badges(2)));
+
+        var signingIn = vm.SignInCommand.ExecuteAsync(null);
+        Assert.Equal(AccountViewModel.EquipmentLoadingText, vm.EquipmentStatus);
+        vm.RequestForgetCommand.Execute(null);
+        vm.ConfirmForgetCommand.Execute(null);
+        gate.SetResult(new EquipmentLoadResult(EquipmentLoadStatus.Loaded, Equipment("Test Hero", 3), true));
+        await signingIn;
+
+        Assert.Null(vm.CharacterName);
+        Assert.Null(vm.Equipment);
+        Assert.Null(vm.Badges);
+        Assert.Equal(string.Empty, vm.EquipmentStatus);
+        Assert.Equal(AccountViewModel.ForgottenMessage, vm.Status);
+        Assert.Empty(_persistence.SavedEquipment);
+        Assert.Empty(_persistence.SavedBadges);
+    }
+
+    [Fact]
+    public async Task Persistence_is_optional()
+    {
+        var vm = new AccountViewModel(_dialog, null, null, null, new FixedTimeProvider(Now));
+
+        await vm.RestoreStoredDataAsync();
+        Assert.False(vm.IsConnected);
+
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero", SampleAccount.Summary));
+        await vm.SignInCommand.ExecuteAsync(null);
+        Assert.Equal(ExpectedUpdated(Now), vm.SummaryUpdatedText);
+
+        vm.RequestForgetCommand.Execute(null);
+        vm.ConfirmForgetCommand.Execute(null);
+        Assert.Null(vm.CharacterName);
+        Assert.Equal(AccountViewModel.ForgottenMessage, vm.Status);
+    }
+
+    [Fact]
+    public async Task A_persistence_that_throws_never_breaks_restore()
+    {
+        var vm = new AccountViewModel(_dialog, persistence: new ThrowingPersistence());
+
+        var error = await Record.ExceptionAsync(vm.RestoreStoredDataAsync);
+
+        Assert.Null(error);
+        Assert.False(vm.IsConnected);
+    }
+
+    private sealed class ThrowingPersistence : IAccountDataPersistence
+    {
+        public RestoredAccount? Restore() => throw new IOException("boom");
+
+        public void SaveIdentity(string characterName, AccountSummary? summary, DateTimeOffset readAtUtc) { }
+
+        public void SaveEquipment(CharacterEquipment equipment, DateTimeOffset readAtUtc) { }
+
+        public void SaveBadges(CharacterBadges badges, DateTimeOffset readAtUtc) { }
+
+        public void RemoveEquipment() { }
+
+        public void RemoveBadges() { }
+
+        public bool Forget() => true;
     }
 }

@@ -21,7 +21,7 @@ public sealed class CharacterEquipmentLoader(
 
             var result = await ingestion.IngestAsync(snapshot, ct).ConfigureAwait(false);
             return result.Parse is { Outcome: not ParseOutcome.Failed, Data: { } equipment }
-                ? new EquipmentLoadResult(EquipmentLoadStatus.Loaded, equipment)
+                ? new EquipmentLoadResult(EquipmentLoadStatus.Loaded, equipment, result.Persisted)
                 : new EquipmentLoadResult(EquipmentLoadStatus.NotFound);
         }
         catch (OperationCanceledException)

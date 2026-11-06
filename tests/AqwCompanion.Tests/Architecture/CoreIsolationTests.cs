@@ -29,6 +29,18 @@ public class CoreIsolationTests
         }
     }
 
+    [Fact]
+    public void Core_does_not_reference_litedb()
+    {
+        var referenced = typeof(PageSnapshot).Assembly
+            .GetReferencedAssemblies()
+            .Select(a => a.Name ?? string.Empty)
+            .ToList();
+
+        Assert.DoesNotContain(referenced, name => name.Contains("LiteDB", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain("LiteDB", File.ReadAllText(FindCoreProject()), StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string FindCoreProject()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

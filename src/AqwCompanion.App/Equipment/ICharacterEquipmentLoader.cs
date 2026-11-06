@@ -14,7 +14,8 @@ public enum EquipmentLoadStatus
     NotFound,
 }
 
-public sealed record EquipmentLoadResult(EquipmentLoadStatus Status, CharacterEquipment? Equipment = null);
+/// <param name="Persisted">True only when the ingestion saved an <c>Ok</c> parse; a suspicious result is shown but never stored.</param>
+public sealed record EquipmentLoadResult(EquipmentLoadStatus Status, CharacterEquipment? Equipment = null, bool Persisted = false);
 
 /// <summary>Fetches the public character page for a name and reads the equipped items. Never throws.</summary>
 public interface ICharacterEquipmentLoader

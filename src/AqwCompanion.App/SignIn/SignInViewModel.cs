@@ -55,16 +55,13 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
     internal static readonly TimeSpan DefaultSuccessDelay = TimeSpan.FromMilliseconds(1200);
 
     private readonly IBrowserHost _host;
-    private readonly IngestionService<AccountIdentity> _ingestion;
     private readonly IDelay _delay;
-    private readonly TimeSpan _readTimeout;
     private readonly TimeSpan _successDelay;
-    private readonly TimeSpan _navigationTimeout;
     private readonly ILogger _log;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly CancellationToken _lifetimeToken;
-    private CancellationTokenSource? _watchdog;
-    private bool _pageLoaded;
+    private readonly NavigationWatchdog _watchdog;
+    private readonly AccountHomeReader _reader;
     private bool _unreachable;
     private bool _started;
     private bool _startFailed;
@@ -110,13 +107,13 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
         ILogger? logger = null)
     {
         _host = host;
-        _ingestion = ingestion;
         _delay = delay;
         _mode = mode;
-        _readTimeout = readTimeout ?? DefaultReadTimeout;
         _successDelay = successDelay ?? DefaultSuccessDelay;
-        _navigationTimeout = navigationTimeout ?? DefaultNavigationTimeout;
         _log = logger ?? Log.Logger;
+        _reader = new AccountHomeReader(host, ingestion, readTimeout ?? DefaultReadTimeout, _log);
+        _watchdog = new NavigationWatchdog(
+            navigationTimeout ?? DefaultNavigationTimeout, _log, () => IsFinished || _disposed, FailUnreachable);
         _lifetimeToken = _lifetime.Token;
         _message = InitialMessage(mode);
     }
@@ -154,7 +151,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
     public string CompactTitle => IsSuccess ? SuccessText : UpdatingTitle;
 
     /// <summary>The running navigation watchdog; null while none is armed. Exposed so tests can await it.</summary>
-    internal Task? NavigationWatchdog { get; private set; }
+    internal Task? NavigationWatchdog => _watchdog.Running;
 
     /// <summary>Begins listening to the browser and opens the account home page. Call once the browser exists.</summary>
     public void Start()
@@ -173,7 +170,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
 
         State = SignInState.SigningIn;
         Message = InitialMessage(Mode);
-        StartWatchdog();
+        _watchdog.Start();
         _host.Navigate(AqwUrls.Home);
     }
 
@@ -216,7 +213,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
         State = SignInState.SigningIn;
         Message = SigningInMessage;
         _unreachable = false;
-        StartWatchdog();
+        _watchdog.Start();
         _host.Navigate(AqwUrls.Home);
     }
 
@@ -278,7 +275,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
 
         _disposed = true;
         Unsubscribe();
-        StopWatchdog();
+        _watchdog.Stop();
         _lifetime.Dispose();
     }
 
@@ -308,7 +305,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
         {
             // Once a page has loaded the user may be browsing or signing in; a failed sub-navigation
             // must not interrupt that.
-            if (IsFinished || _disposed || _pageLoaded)
+            if (IsFinished || _disposed || _watchdog.PageLoaded)
             {
                 return;
             }
@@ -329,13 +326,11 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
     /// </summary>
     private void NoteNavigation(string url)
     {
-        if (_pageLoaded)
+        if (!_watchdog.MarkPageLoaded())
         {
             return;
         }
 
-        _pageLoaded = true;
-        StopWatchdog();
         if (_unreachable)
         {
             // The page did arrive after all (a slow connection): drop the "could not reach" message.
@@ -347,68 +342,6 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
         if (Mode == SignInMode.Compact && !IsAccountSite(url))
         {
             ExpireSession();
-        }
-    }
-
-    private void StartWatchdog()
-    {
-        StopWatchdog();
-        if (_pageLoaded)
-        {
-            return;
-        }
-
-        var cts = new CancellationTokenSource();
-        _watchdog = cts;
-        NavigationWatchdog = WatchNavigationAsync(cts.Token);
-    }
-
-    private void StopWatchdog()
-    {
-        var cts = _watchdog;
-        _watchdog = null;
-        NavigationWatchdog = null;
-        if (cts is null)
-        {
-            return;
-        }
-
-        try
-        {
-            cts.Cancel();
-        }
-        finally
-        {
-            cts.Dispose();
-        }
-    }
-
-    // Deliberately a real timer rather than IDelay: it must be independent of the "Connected" pause. The
-    // continuation resumes on the UI thread because it is started from there.
-    private async Task WatchNavigationAsync(CancellationToken ct)
-    {
-        try
-        {
-            await Task.Delay(_navigationTimeout, ct);
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
-
-        try
-        {
-            if (ct.IsCancellationRequested || IsFinished || _disposed)
-            {
-                return;
-            }
-
-            _log.Warning("No page finished loading within {Timeout}", _navigationTimeout);
-            FailUnreachable();
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            _log.Error("The navigation watchdog failed: {ExceptionType}", ex.GetType().Name);
         }
     }
 
@@ -458,7 +391,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
 
     private async Task ReadUntilSettledAsync()
     {
-        ReadOutcome outcome;
+        AccountHomeRead outcome;
         do
         {
             _rerun = false;
@@ -468,7 +401,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
                 Message = ReadingMessage;
             }
 
-            outcome = await ReadOnceAsync();
+            outcome = await _reader.ReadAsync(_lifetimeToken, () => IsFinished || _disposed);
         }
         while (_rerun && !IsFinished);
 
@@ -483,52 +416,12 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
         }
         else
         {
-            Fail(outcome.Error ?? ReadFailedMessage);
-        }
-    }
-
-    private async Task<ReadOutcome> ReadOnceAsync()
-    {
-        if (IsFinished || _disposed)
-        {
-            return new ReadOutcome(null, null, null);
-        }
-
-        try
-        {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeToken);
-            timeout.CancelAfter(_readTimeout);
-            var snapshot = await _host.CaptureAsync(timeout.Token).WaitAsync(timeout.Token);
-            if (IsFinished || _disposed)
+            Fail(outcome.Failure switch
             {
-                // Dismissed while capturing: nothing may be stored or buffered.
-                return new ReadOutcome(null, null, null);
-            }
-
-            var result = await _ingestion.IngestAsync(snapshot, timeout.Token);
-            if (IsFinished || _disposed)
-            {
-                return new ReadOutcome(null, null, null);
-            }
-
-            return result.Parse.Outcome == ParseOutcome.Ok && result.Parse.Data is { } identity
-                ? new ReadOutcome(identity.CharacterName, null, identity.Summary)
-                : new ReadOutcome(null, ReadFailedMessage, null);
-        }
-        catch (OperationCanceledException) when (IsFinished || _disposed || _lifetimeToken.IsCancellationRequested)
-        {
-            // Dismissed (or disposed) while reading: not a timeout, so nothing is reported.
-            return new ReadOutcome(null, null, null);
-        }
-        catch (OperationCanceledException)
-        {
-            _log.Warning("Reading the account home page timed out after {Timeout}", _readTimeout);
-            return new ReadOutcome(null, ReadTimedOutMessage, null);
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            _log.Error(ex, "Capturing the account home page failed");
-            return new ReadOutcome(null, $"Could not capture the page: {ex.Message}", null);
+                AccountHomeReadFailure.TimedOut => ReadTimedOutMessage,
+                AccountHomeReadFailure.CaptureFailed => $"Could not capture the page: {outcome.CaptureError}",
+                _ => ReadFailedMessage,
+            });
         }
     }
 
@@ -564,7 +457,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
             return;
         }
 
-        StopWatchdog();
+        _watchdog.Stop();
         _unreachable = false;
         // The message can be long and the page is useful context, so the error always uses the full layout.
         Mode = SignInMode.Full;
@@ -585,7 +478,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
             State = SignInState.Cancelled;
         }
 
-        StopWatchdog();
+        _watchdog.Stop();
         Unsubscribe();
         if (!_disposed)
         {
@@ -594,6 +487,4 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
 
         CloseRequested?.Invoke(this, result);
     }
-
-    private readonly record struct ReadOutcome(string? Name, string? Error, AccountSummary? Summary);
 }

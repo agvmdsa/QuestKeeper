@@ -91,6 +91,8 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(SuccessText), nameof(CompactTitle))]
     private string? _characterName;
 
+    private AccountSummary? _summary;
+
     /// <param name="readTimeout">How long one page read may take; defaults to 10 seconds.</param>
     /// <param name="successDelay">How long "Connected" stays visible before the window closes; defaults to 1.2 seconds.</param>
     /// <param name="navigationTimeout">
@@ -196,7 +198,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
 
         Finish(State switch
         {
-            SignInState.Success => SignInResult.Connected(CharacterName!),
+            SignInState.Success => SignInResult.Connected(CharacterName!, _summary),
             SignInState.Error => SignInResult.Failed(Message),
             _ => SignInResult.Cancelled(),
         });
@@ -477,7 +479,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
 
         if (outcome.Name is { } name)
         {
-            await ShowSuccessAsync(name);
+            await ShowSuccessAsync(name, outcome.Summary);
         }
         else
         {
@@ -489,7 +491,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
     {
         if (IsFinished || _disposed)
         {
-            return new ReadOutcome(null, null);
+            return new ReadOutcome(null, null, null);
         }
 
         try
@@ -500,37 +502,37 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
             if (IsFinished || _disposed)
             {
                 // Dismissed while capturing: nothing may be stored or buffered.
-                return new ReadOutcome(null, null);
+                return new ReadOutcome(null, null, null);
             }
 
             var result = await _ingestion.IngestAsync(snapshot, timeout.Token);
             if (IsFinished || _disposed)
             {
-                return new ReadOutcome(null, null);
+                return new ReadOutcome(null, null, null);
             }
 
             return result.Parse.Outcome == ParseOutcome.Ok && result.Parse.Data is { } identity
-                ? new ReadOutcome(identity.CharacterName, null)
-                : new ReadOutcome(null, ReadFailedMessage);
+                ? new ReadOutcome(identity.CharacterName, null, identity.Summary)
+                : new ReadOutcome(null, ReadFailedMessage, null);
         }
         catch (OperationCanceledException) when (IsFinished || _disposed || _lifetimeToken.IsCancellationRequested)
         {
             // Dismissed (or disposed) while reading: not a timeout, so nothing is reported.
-            return new ReadOutcome(null, null);
+            return new ReadOutcome(null, null, null);
         }
         catch (OperationCanceledException)
         {
             _log.Warning("Reading the account home page timed out after {Timeout}", _readTimeout);
-            return new ReadOutcome(null, ReadTimedOutMessage);
+            return new ReadOutcome(null, ReadTimedOutMessage, null);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             _log.Error(ex, "Capturing the account home page failed");
-            return new ReadOutcome(null, $"Could not capture the page: {ex.Message}");
+            return new ReadOutcome(null, $"Could not capture the page: {ex.Message}", null);
         }
     }
 
-    private async Task ShowSuccessAsync(string name)
+    private async Task ShowSuccessAsync(string name, AccountSummary? summary)
     {
         if (IsFinished || _disposed)
         {
@@ -539,6 +541,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
 
         _rerun = false;
         CharacterName = name;
+        _summary = summary;
         State = SignInState.Success;
         Message = SuccessText;
         try
@@ -551,7 +554,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
             return;
         }
 
-        Finish(SignInResult.Connected(name));
+        Finish(SignInResult.Connected(name, summary));
     }
 
     private void Fail(string message)
@@ -592,5 +595,5 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
         CloseRequested?.Invoke(this, result);
     }
 
-    private readonly record struct ReadOutcome(string? Name, string? Error);
+    private readonly record struct ReadOutcome(string? Name, string? Error, AccountSummary? Summary);
 }

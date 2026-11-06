@@ -1,3 +1,3 @@
 namespace AqwCompanion.Core.Aqw;
 
-public sealed record AccountIdentity(string CharacterName);
+public sealed record AccountIdentity(string CharacterName, AccountSummary? Summary = null);

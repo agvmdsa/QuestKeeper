@@ -190,7 +190,7 @@ public class SignInViewModelTests
         await vm.HandleNavigationAsync(AqwUrls.Home);
 
         Assert.Equal(SignInState.Success, vm.State);
-        Assert.Equal(SignInResult.Connected("Test Hero"), vm.Result);
+        Assert.Equal(SignInResult.Connected("Test Hero", SampleAccount.Summary), vm.Result);
     }
 
     [Fact]
@@ -208,9 +208,9 @@ public class SignInViewModelTests
         Assert.Equal(SignInState.Success, vm.State);
         Assert.Equal("Connected as Test Hero", vm.SuccessText);
         Assert.Equal("Connected as Test Hero", vm.Message);
-        Assert.Equal(new AccountIdentity("Test Hero"), _store.Latest);
+        Assert.Equal(new AccountIdentity("Test Hero", SampleAccount.Summary), _store.Latest);
         Assert.Null(_failures.Latest);
-        Assert.Equal(SignInResult.Connected("Test Hero"), Assert.Single(closed));
+        Assert.Equal(SignInResult.Connected("Test Hero", SampleAccount.Summary), Assert.Single(closed));
         Assert.Equal(SignInOutcome.Connected, vm.Result!.Outcome);
         Assert.Equal(0, _host.Subscribers);
     }
@@ -238,7 +238,7 @@ public class SignInViewModelTests
         await running.WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(1, closed);
-        Assert.Equal(SignInResult.Connected("Test Hero"), vm.Result);
+        Assert.Equal(SignInResult.Connected("Test Hero", SampleAccount.Summary), vm.Result);
     }
 
     [Fact]
@@ -270,7 +270,7 @@ public class SignInViewModelTests
         vm.CancelCommand.Execute(null);
         await running.WaitAsync(TimeSpan.FromSeconds(10));
 
-        Assert.Equal(SignInResult.Connected("Test Hero"), vm.Result);
+        Assert.Equal(SignInResult.Connected("Test Hero", SampleAccount.Summary), vm.Result);
         Assert.True(_delay.LastToken.IsCancellationRequested);
     }
 
@@ -376,7 +376,7 @@ public class SignInViewModelTests
         await vm.HandleNavigationAsync(AqwUrls.Home);
 
         Assert.Equal(2, _host.CaptureCount);
-        Assert.Equal(SignInResult.Connected("Test Hero"), vm.Result);
+        Assert.Equal(SignInResult.Connected("Test Hero", SampleAccount.Summary), vm.Result);
     }
 
     [Fact]
@@ -421,7 +421,7 @@ public class SignInViewModelTests
         await running.WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(2, _host.CaptureCount);
-        Assert.Equal(SignInResult.Connected("Test Hero"), vm.Result);
+        Assert.Equal(SignInResult.Connected("Test Hero", SampleAccount.Summary), vm.Result);
     }
 
     [Fact]
@@ -461,7 +461,7 @@ public class SignInViewModelTests
         await vm.HandleNavigationAsync(AqwUrls.Home);
 
         Assert.Equal(2, _host.CaptureCount);
-        Assert.Equal(SignInResult.Connected("Test Hero"), vm.Result);
+        Assert.Equal(SignInResult.Connected("Test Hero", SampleAccount.Summary), vm.Result);
     }
 
     [Fact]
@@ -674,7 +674,7 @@ public class SignInViewModelTests
         await vm.HandleNavigationAsync(AqwUrls.Home);
 
         await watchdog.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal(SignInResult.Connected("Test Hero"), vm.Result);
+        Assert.Equal(SignInResult.Connected("Test Hero", SampleAccount.Summary), vm.Result);
     }
 
     [Fact]
@@ -863,7 +863,7 @@ public class SignInViewModelTests
         var error = await Record.ExceptionAsync(() => running.WaitAsync(TimeSpan.FromSeconds(10)));
 
         Assert.Null(error);
-        Assert.Equal(SignInResult.Connected("Test Hero"), vm.Result);
+        Assert.Equal(SignInResult.Connected("Test Hero", SampleAccount.Summary), vm.Result);
         Assert.False(LoggedTimeout());
     }
 

@@ -1,3 +1,5 @@
+using AqwCompanion.Core.Aqw;
+
 namespace AqwCompanion.App.SignIn;
 
 public enum SignInOutcome
@@ -7,10 +9,18 @@ public enum SignInOutcome
     Failed,
 }
 
-/// <summary>How the sign-in window ended. <see cref="CharacterName"/> is set only when connected.</summary>
-public sealed record SignInResult(SignInOutcome Outcome, string? CharacterName = null, string? Message = null)
+/// <summary>
+/// How the sign-in window ended. <see cref="CharacterName"/> and <see cref="Summary"/> are set only when connected
+/// (the summary may still be null when the page did not carry it).
+/// </summary>
+public sealed record SignInResult(
+    SignInOutcome Outcome,
+    string? CharacterName = null,
+    string? Message = null,
+    AccountSummary? Summary = null)
 {
-    public static SignInResult Connected(string characterName) => new(SignInOutcome.Connected, characterName);
+    public static SignInResult Connected(string characterName, AccountSummary? summary = null) =>
+        new(SignInOutcome.Connected, characterName, Summary: summary);
 
     public static SignInResult Cancelled() => new(SignInOutcome.Cancelled);
 

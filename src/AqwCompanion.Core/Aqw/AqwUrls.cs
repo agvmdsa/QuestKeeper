@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace AqwCompanion.Core.Aqw;
 
 /// <summary>Addresses of the account.aq.com pages the companion reads.</summary>
@@ -20,6 +22,10 @@ public static class AqwUrls
     public static string CharPage(string characterName) =>
         $"{CharPageBase}?id={Uri.EscapeDataString(characterName)}";
 
+    /// <summary>The public badges list of a character, addressed by the numeric id the character page carries.</summary>
+    public static string Badges(int ccid) =>
+        string.Create(CultureInfo.InvariantCulture, $"{CharPageBase}/Badges?ccid={ccid}");
+
     /// <summary>True for an absolute https URL on the account host whose path is <c>/Home</c> (case-insensitive).</summary>
     public static bool IsAccountHome(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri) && IsAccountPage(uri, "/Home");
@@ -27,6 +33,10 @@ public static class AqwUrls
     /// <summary>True for an absolute https URL on the account host whose path is <c>/CharPage</c> (case-insensitive).</summary>
     public static bool IsCharPage(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri) && IsAccountPage(uri, "/CharPage");
+
+    /// <summary>True for an absolute https URL on the account host whose path is <c>/CharPage/Badges</c> (case-insensitive).</summary>
+    public static bool IsBadges(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && IsAccountPage(uri, "/CharPage/Badges");
 
     internal static bool IsAccountPage(Uri uri, string path) =>
         uri.Scheme == Uri.UriSchemeHttps

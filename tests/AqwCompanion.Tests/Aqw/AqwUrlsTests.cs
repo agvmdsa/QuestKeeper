@@ -71,4 +71,24 @@ public class AqwUrlsTests
     {
         Assert.Equal(expected, AqwUrls.IsAccountHome(url));
     }
+
+    [Fact]
+    public void Badges_addresses_the_badges_list_by_character_id()
+    {
+        Assert.Equal("https://account.aq.com/CharPage/Badges?ccid=3", AqwUrls.Badges(3));
+        Assert.True(AqwUrls.IsBadges(AqwUrls.Badges(123456)));
+    }
+
+    [Theory]
+    [InlineData("https://account.aq.com/CharPage/Badges", true)]
+    [InlineData("https://ACCOUNT.AQ.COM/charpage/badges/?ccid=3", true)]
+    [InlineData("https://account.aq.com/CharPage", false)]
+    [InlineData("https://account.aq.com/CharPage/Inventory?ccid=3", false)]
+    [InlineData("https://evil.example.com/CharPage/Badges", false)]
+    [InlineData("http://account.aq.com/CharPage/Badges", false)]
+    [InlineData("not a url", false)]
+    public void Is_badges_matches_only_the_badges_endpoint_on_the_account_host(string url, bool expected)
+    {
+        Assert.Equal(expected, AqwUrls.IsBadges(url));
+    }
 }

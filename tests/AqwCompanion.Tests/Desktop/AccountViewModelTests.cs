@@ -1,5 +1,8 @@
+using AqwCompanion.App.Badges;
+using AqwCompanion.App.Equipment;
 using AqwCompanion.App.SignIn;
 using AqwCompanion.App.ViewModels;
+using AqwCompanion.Core.Aqw;
 using AqwCompanion.Tests.TestDoubles;
 
 namespace AqwCompanion.Tests.Desktop;
@@ -153,5 +156,240 @@ public class AccountViewModelTests
         Assert.Contains(nameof(AccountViewModel.IsConnected), changed);
         Assert.Contains(nameof(AccountViewModel.NeedsSignIn), changed);
         Assert.Contains(nameof(AccountViewModel.Status), changed);
+    }
+
+    private static CharacterEquipment Equipment(string name, int? characterId) =>
+        new(name, 10, null, null, null, null, null, [new EquipmentSlot("Armor", "Test Armor", null, false)], [], characterId);
+
+    private static CharacterBadges Badges(int count) =>
+        new(Enumerable.Range(1, count)
+            .Select(i => new Badge($"Test Badge {i}", $"Description {i}", i <= 2 ? "Quests" : "Events"))
+            .ToList());
+
+    private static Func<string, Task<EquipmentLoadResult>> Equips(CharacterEquipment equipment) =>
+        _ => Task.FromResult(new EquipmentLoadResult(EquipmentLoadStatus.Loaded, equipment));
+
+    private static Func<int, Task<BadgesLoadResult>> HasBadges(CharacterBadges badges) =>
+        _ => Task.FromResult(new BadgesLoadResult(BadgesLoadStatus.Loaded, badges));
+
+    private async Task<AccountViewModel> ConnectedAsync(
+        Func<string, Task<EquipmentLoadResult>> equipment, Func<int, Task<BadgesLoadResult>> badges)
+    {
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+        var vm = new AccountViewModel(_dialog, new FakeEquipmentLoader(equipment), new FakeBadgesLoader(badges));
+        await vm.SignInCommand.ExecuteAsync(null);
+        return vm;
+    }
+
+    [Fact]
+    public async Task Loads_the_badges_for_the_character_id_after_the_equipment()
+    {
+        var badgesLoader = new FakeBadgesLoader(HasBadges(Badges(7)));
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+        var vm = new AccountViewModel(_dialog, new FakeEquipmentLoader(Equips(Equipment("Test Hero", 3))), badgesLoader);
+
+        await vm.SignInCommand.ExecuteAsync(null);
+
+        Assert.Equal([3], badgesLoader.Requested);
+        Assert.True(vm.HasBadges);
+        Assert.Equal("7 badges", vm.BadgeCountText);
+        Assert.Equal(5, vm.BadgesPreview.Count());
+        Assert.Equal("Test Badge 1", vm.BadgesPreview.First().Title);
+        Assert.Equal(["Quests", "Events"], vm.BadgeGroups.Select(g => g.Category));
+        Assert.Equal(string.Empty, vm.BadgesStatus);
+        Assert.False(vm.HasBadgesStatus);
+        Assert.True(vm.OpenBadgesDetailsCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task A_single_badge_uses_the_singular_count()
+    {
+        var vm = await ConnectedAsync(Equips(Equipment("Test Hero", 3)), HasBadges(Badges(1)));
+
+        Assert.Equal("1 badge", vm.BadgeCountText);
+    }
+
+    [Fact]
+    public async Task Shows_the_loading_text_while_the_badges_are_read()
+    {
+        var gate = new TaskCompletionSource<BadgesLoadResult>();
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+        var vm = new AccountViewModel(
+            _dialog, new FakeEquipmentLoader(Equips(Equipment("Test Hero", 3))), new FakeBadgesLoader(_ => gate.Task));
+
+        var signIn = vm.SignInCommand.ExecuteAsync(null);
+
+        Assert.Equal(AccountViewModel.BadgesLoadingText, vm.BadgesStatus);
+        Assert.True(vm.HasBadgesStatus);
+        Assert.False(vm.HasBadges);
+        gate.SetResult(new BadgesLoadResult(BadgesLoadStatus.Loaded, Badges(2)));
+        await signIn;
+        Assert.Equal(string.Empty, vm.BadgesStatus);
+        Assert.True(vm.HasBadges);
+    }
+
+    [Fact]
+    public async Task An_empty_badge_list_shows_the_none_found_text_and_cannot_open_the_sidebar()
+    {
+        var vm = await ConnectedAsync(Equips(Equipment("Test Hero", 3)), HasBadges(Badges(0)));
+
+        Assert.False(vm.HasBadges);
+        Assert.Equal(AccountViewModel.BadgesNotFoundText, vm.BadgesStatus);
+        Assert.False(vm.OpenBadgesDetailsCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Badges_that_cannot_be_read_show_the_none_found_text()
+    {
+        var vm = await ConnectedAsync(
+            Equips(Equipment("Test Hero", 3)), _ => Task.FromResult(new BadgesLoadResult(BadgesLoadStatus.NotFound)));
+
+        Assert.False(vm.HasBadges);
+        Assert.Equal(AccountViewModel.BadgesNotFoundText, vm.BadgesStatus);
+    }
+
+    [Fact]
+    public async Task Badges_that_cannot_be_fetched_show_the_unavailable_text()
+    {
+        var vm = await ConnectedAsync(
+            Equips(Equipment("Test Hero", 3)), _ => Task.FromResult(new BadgesLoadResult(BadgesLoadStatus.Unavailable)));
+
+        Assert.False(vm.HasBadges);
+        Assert.Equal(AccountViewModel.BadgesUnavailableText, vm.BadgesStatus);
+    }
+
+    [Fact]
+    public async Task Without_a_character_id_the_badges_are_not_requested()
+    {
+        var badgesLoader = new FakeBadgesLoader(HasBadges(Badges(3)));
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+        var vm = new AccountViewModel(_dialog, new FakeEquipmentLoader(Equips(Equipment("Test Hero", null))), badgesLoader);
+
+        await vm.SignInCommand.ExecuteAsync(null);
+
+        Assert.Empty(badgesLoader.Requested);
+        Assert.True(vm.HasEquipment);
+        Assert.Equal(AccountViewModel.BadgesUnavailableText, vm.BadgesStatus);
+    }
+
+    [Fact]
+    public async Task When_the_equipment_is_not_loaded_the_badges_are_not_requested()
+    {
+        var badgesLoader = new FakeBadgesLoader(HasBadges(Badges(3)));
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+        var vm = new AccountViewModel(
+            _dialog,
+            new FakeEquipmentLoader(_ => Task.FromResult(new EquipmentLoadResult(EquipmentLoadStatus.Unavailable))),
+            badgesLoader);
+
+        await vm.SignInCommand.ExecuteAsync(null);
+
+        Assert.Empty(badgesLoader.Requested);
+        Assert.Equal(AccountViewModel.BadgesUnavailableText, vm.BadgesStatus);
+    }
+
+    [Fact]
+    public async Task Badges_are_requested_only_by_sign_in_and_refresh()
+    {
+        var badgesLoader = new FakeBadgesLoader(HasBadges(Badges(3)));
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+        var vm = new AccountViewModel(_dialog, new FakeEquipmentLoader(Equips(Equipment("Test Hero", 3))), badgesLoader);
+        await vm.SignInCommand.ExecuteAsync(null);
+
+        vm.OpenBadgesDetailsCommand.Execute(null);
+        vm.CloseSidebarCommand.Execute(null);
+        Assert.Single(badgesLoader.Requested);
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+        Assert.Equal([3, 3], badgesLoader.Requested);
+    }
+
+    [Fact]
+    public async Task Each_card_opens_the_sidebar_with_its_own_title()
+    {
+        var vm = await ConnectedAsync(Equips(Equipment("Test Hero", 3)), HasBadges(Badges(3)));
+        Assert.False(vm.IsSidebarOpen);
+
+        vm.OpenBadgesDetailsCommand.Execute(null);
+
+        Assert.True(vm.IsSidebarOpen);
+        Assert.Equal("Badges", vm.SidebarTitle);
+        Assert.Equal("Badges details", vm.SidebarAutomationName);
+        Assert.True(vm.IsBadgesSidebar);
+        Assert.False(vm.IsEquippedSidebar);
+
+        vm.CloseSidebarCommand.Execute(null);
+        vm.OpenEquippedDetailsCommand.Execute(null);
+
+        Assert.True(vm.IsSidebarOpen);
+        Assert.Equal("Equipped", vm.SidebarTitle);
+        Assert.Equal("Equipped details", vm.SidebarAutomationName);
+        Assert.True(vm.IsEquippedSidebar);
+        Assert.False(vm.IsBadgesSidebar);
+    }
+
+    [Fact]
+    public async Task Clearing_the_badges_closes_the_badges_sidebar()
+    {
+        var vm = await ConnectedAsync(Equips(Equipment("Test Hero", 3)), HasBadges(Badges(3)));
+        vm.OpenBadgesDetailsCommand.Execute(null);
+
+        vm.Badges = null;
+
+        Assert.False(vm.IsSidebarOpen);
+        Assert.False(vm.OpenBadgesDetailsCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Clearing_the_badges_leaves_the_equipped_sidebar_open()
+    {
+        var vm = await ConnectedAsync(Equips(Equipment("Test Hero", 3)), HasBadges(Badges(3)));
+        vm.OpenEquippedDetailsCommand.Execute(null);
+
+        vm.Badges = null;
+
+        Assert.True(vm.IsSidebarOpen);
+    }
+
+    [Fact]
+    public async Task Clearing_the_equipment_leaves_the_badges_sidebar_open()
+    {
+        var vm = await ConnectedAsync(Equips(Equipment("Test Hero", 3)), HasBadges(Badges(3)));
+        vm.OpenBadgesDetailsCommand.Execute(null);
+
+        vm.Equipment = null;
+
+        Assert.True(vm.IsSidebarOpen);
+        Assert.True(vm.IsBadgesSidebar);
+    }
+
+    [Fact]
+    public async Task A_different_character_clears_the_previous_badges()
+    {
+        var vm = await ConnectedAsync(
+            name => Task.FromResult(name == "Test Hero"
+                ? new EquipmentLoadResult(EquipmentLoadStatus.Loaded, Equipment(name, 3))
+                : new EquipmentLoadResult(EquipmentLoadStatus.Unavailable)),
+            HasBadges(Badges(3)));
+        vm.OpenBadgesDetailsCommand.Execute(null);
+        _dialog.OnShow = Reports(SignInResult.Connected("Other Hero"));
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.False(vm.IsSidebarOpen);
+        Assert.False(vm.HasBadges);
+    }
+
+    [Fact]
+    public async Task Without_a_badges_loader_the_badges_card_stays_empty()
+    {
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+        var vm = new AccountViewModel(_dialog, new FakeEquipmentLoader(Equips(Equipment("Test Hero", 3))));
+
+        await vm.SignInCommand.ExecuteAsync(null);
+
+        Assert.True(vm.HasEquipment);
+        Assert.False(vm.HasBadges);
+        Assert.Equal(string.Empty, vm.BadgesStatus);
     }
 }

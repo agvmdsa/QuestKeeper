@@ -55,6 +55,25 @@
         <TextBlock Grid.Column="1" Text="{Binding ItemName}" TextWrapping="Wrap" />
       </Grid>
     </DataTemplate>
+
+    <DataTemplate x:Key="BadgePreviewRow" x:DataType="aqw:Badge">
+      <TextBlock Text="{Binding Title}" Margin="0,3" TextWrapping="Wrap" />
+    </DataTemplate>
+
+    <DataTemplate x:Key="BadgeRow" x:DataType="aqw:Badge">
+      <StackPanel Spacing="1" Margin="0,4">
+        <TextBlock Text="{Binding Title}" Foreground="{DynamicResource AqwTextBright}" TextWrapping="Wrap" />
+        <TextBlock Text="{Binding Description}" Classes="muted" TextWrapping="Wrap" />
+      </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate x:Key="BadgeGroupRow" x:DataType="aqw:BadgeGroup">
+      <StackPanel Spacing="4" Margin="0,0,0,8">
+        <TextBlock Text="{Binding Category}" FontWeight="SemiBold" Foreground="{DynamicResource AqwAccent}"
+                   TextWrapping="Wrap" />
+        <ItemsControl ItemsSource="{Binding Badges}" ItemTemplate="{StaticResource BadgeRow}" />
+      </StackPanel>
+    </DataTemplate>
   </UserControl.Resources>
 
   <Grid x:Name="Root" ClipToBounds="True">
@@ -113,6 +132,28 @@
               </StackPanel>
             </StackPanel>
           </Border>
+
+          <Border x:Name="BadgesPanel" Classes="card" IsVisible="{Binding IsConnected}" Cursor="Hand">
+            <StackPanel>
+              <Border Classes="cardHeader">
+                <TextBlock Text="Badges" Classes="cardTitle" />
+              </Border>
+              <StackPanel Margin="16" Spacing="12">
+                <TextBlock x:Name="BadgesStatusLine" Text="{Binding BadgesStatus}" TextWrapping="Wrap"
+                           IsVisible="{Binding HasBadgesStatus}" />
+
+                <StackPanel Spacing="12" IsVisible="{Binding HasBadges}">
+                  <TextBlock x:Name="BadgeCountLine" Text="{Binding BadgeCountText}" FontSize="16"
+                             FontWeight="SemiBold" Foreground="{DynamicResource AqwTextBright}" />
+                  <ItemsControl x:Name="BadgesPreviewList" ItemsSource="{Binding BadgesPreview}"
+                                ItemTemplate="{StaticResource BadgePreviewRow}" />
+                  <Button x:Name="ViewAllBadgesButton" Content="View all ›" Command="{Binding OpenBadgesDetailsCommand}"
+                          HorizontalAlignment="Left"
+                          AutomationProperties.Name="View all badges" />
+                </StackPanel>
+              </StackPanel>
+            </StackPanel>
+          </Border>
         </WrapPanel>
       </ScrollViewer>
     </Grid>
@@ -124,7 +165,7 @@
     <Border x:Name="Sidebar" HorizontalAlignment="Right" Width="380" IsVisible="False"
             Background="{DynamicResource AqwSurface}" BorderBrush="{DynamicResource AqwBorder}"
             BorderThickness="1,0,0,0" KeyboardNavigation.TabNavigation="Cycle"
-            AutomationProperties.Name="Equipped details">
+            AutomationProperties.Name="{Binding SidebarAutomationName}">
       <DockPanel>
         <Border DockPanel.Dock="Top" Classes="cardHeader">
           <DockPanel>
@@ -138,22 +179,27 @@
           </DockPanel>
         </Border>
         <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-          <StackPanel Margin="16" Spacing="12" IsVisible="{Binding HasEquipment}">
-            <StackPanel Spacing="2">
-              <TextBlock x:Name="EquipmentTitle" Text="{Binding Equipment.Title}" FontSize="16" FontWeight="SemiBold"
-                         Foreground="{DynamicResource AqwTextBright}" TextWrapping="Wrap" />
-              <TextBlock Text="{Binding Equipment.Summary}" Classes="muted" TextWrapping="Wrap" />
-            </StackPanel>
+          <StackPanel Margin="16" Spacing="12">
+            <StackPanel Spacing="12" IsVisible="{Binding IsEquippedSidebar}">
+              <StackPanel Spacing="2">
+                <TextBlock x:Name="EquipmentTitle" Text="{Binding Equipment.Title}" FontSize="16" FontWeight="SemiBold"
+                           Foreground="{DynamicResource AqwTextBright}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding Equipment.Summary}" Classes="muted" TextWrapping="Wrap" />
+              </StackPanel>
 
-            <ItemsControl x:Name="StandardSlotList" ItemsSource="{Binding Equipment.StandardSlots}"
-                          ItemTemplate="{StaticResource SlotRow}" />
-
-            <StackPanel Spacing="6" IsVisible="{Binding Equipment.HasCustomSlots}">
-              <Separator Background="{DynamicResource AqwBorder}" />
-              <TextBlock Text="Custom appearance" FontWeight="SemiBold" Foreground="{DynamicResource AqwTextBright}" />
-              <ItemsControl x:Name="CustomSlotList" ItemsSource="{Binding Equipment.CustomSlots}"
+              <ItemsControl x:Name="StandardSlotList" ItemsSource="{Binding Equipment.StandardSlots}"
                             ItemTemplate="{StaticResource SlotRow}" />
+
+              <StackPanel Spacing="6" IsVisible="{Binding Equipment.HasCustomSlots}">
+                <Separator Background="{DynamicResource AqwBorder}" />
+                <TextBlock Text="Custom appearance" FontWeight="SemiBold" Foreground="{DynamicResource AqwTextBright}" />
+                <ItemsControl x:Name="CustomSlotList" ItemsSource="{Binding Equipment.CustomSlots}"
+                              ItemTemplate="{StaticResource SlotRow}" />
+              </StackPanel>
             </StackPanel>
+
+            <ItemsControl x:Name="BadgeGroupList" ItemsSource="{Binding BadgeGroups}"
+                          ItemTemplate="{StaticResource BadgeGroupRow}" IsVisible="{Binding IsBadgesSidebar}" />
           </StackPanel>
         </ScrollViewer>
       </DockPanel>

@@ -24,7 +24,17 @@ public partial class AccountView : UserControl
         InitializeComponent();
         DataContextChanged += (_, _) => Attach(DataContext as AccountViewModel);
         Scrim.Tapped += (_, _) => _viewModel?.CloseSidebarCommand.Execute(null);
-        EquippedPanel.Tapped += (_, _) => _viewModel?.OpenEquippedDetailsCommand.Execute(null);
+        EquippedPanel.Tapped += (_, _) => Open(_viewModel?.OpenEquippedDetailsCommand);
+        BadgesPanel.Tapped += (_, _) => Open(_viewModel?.OpenBadgesDetailsCommand);
+    }
+
+    // Executing a relay command ignores its CanExecute, so a card without data must be checked here.
+    private static void Open(System.Windows.Input.ICommand? command)
+    {
+        if (command?.CanExecute(null) == true)
+        {
+            command.Execute(null);
+        }
     }
 
     private void Attach(AccountViewModel? viewModel)
@@ -58,7 +68,7 @@ public partial class AccountView : UserControl
             _opener = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() as InputElement;
             if (_opener is null || ReferenceEquals(_opener, SidebarCloseButton) || Sidebar.IsVisualAncestorOf(_opener))
             {
-                _opener = ViewAllButton;
+                _opener = _viewModel?.IsBadgesSidebar == true ? ViewAllBadgesButton : ViewAllButton;
             }
 
             // While the sidebar is open the cards can be neither clicked nor reached with Tab.

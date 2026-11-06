@@ -1,4 +1,5 @@
 using System.Net;
+using AqwCompanion.App.Badges;
 using AqwCompanion.App.Browser;
 using AqwCompanion.App.Equipment;
 using AqwCompanion.App.SignIn;
@@ -31,9 +32,13 @@ public static class CompositionRoot
         services.AddSingleton<IPageParser<CharacterEquipment>, CharacterEquipmentParser>();
         services.AddSingleton<IResultStore<CharacterEquipment>, LatestResultStore<CharacterEquipment>>();
         services.AddSingleton<IngestionService<CharacterEquipment>>();
+        services.AddSingleton<IPageParser<CharacterBadges>, BadgesParser>();
+        services.AddSingleton<IResultStore<CharacterBadges>, LatestResultStore<CharacterBadges>>();
+        services.AddSingleton<IngestionService<CharacterBadges>>();
         services.AddSingleton<IPageFetcher>(sp => new AccountPageFetcher(
             CreateHttpClient(), AppInfo.Version, sp.GetRequiredService<ILogger<AccountPageFetcher>>()));
         services.AddSingleton<ICharacterEquipmentLoader, CharacterEquipmentLoader>();
+        services.AddSingleton<ICharacterBadgesLoader, CharacterBadgesLoader>();
         services.AddSingleton<IDelay, TaskDelay>();
         services.AddSingleton<ISignInDialog, SignInDialog>();
         services.AddSingleton<AccountViewModel>();

@@ -7,7 +7,8 @@ namespace AqwCompanion.Core.Aqw;
 
 /// <summary>
 /// One read-only GET against account.aq.com. https and the account host only (also for redirects, which are
-/// validated hop by hop), a hard timeout, a size cap and text/html only. No cookies, no credentials.
+/// validated hop by hop), a hard timeout, a size cap and text/html only. The one exception is the public badges
+/// list, which is answered as application/json (and only that). No cookies, no credentials.
 /// The caller supplies an <see cref="HttpClient"/> with automatic redirects and cookies turned off.
 /// </summary>
 public sealed class AccountPageFetcher(HttpClient http, string appVersion, ILogger<AccountPageFetcher> logger) : IPageFetcher
@@ -16,6 +17,8 @@ public sealed class AccountPageFetcher(HttpClient http, string appVersion, ILogg
     public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
 
     private const int MaxRedirects = 3;
+    private const string HtmlType = "text/html";
+    private const string JsonType = "application/json";
 
     public async Task<PageFetchResult> FetchAsync(string url, CancellationToken ct = default)
     {
@@ -31,9 +34,10 @@ public sealed class AccountPageFetcher(HttpClient http, string appVersion, ILogg
         {
             for (var hop = 0; hop <= MaxRedirects; hop++)
             {
+                var expectedType = ExpectedType(uri);
                 using var request = new HttpRequestMessage(HttpMethod.Get, uri);
                 request.Headers.TryAddWithoutValidation("User-Agent", $"AqwCompanion/{appVersion} (read-only personal companion)");
-                request.Headers.TryAddWithoutValidation("Accept", "text/html");
+                request.Headers.TryAddWithoutValidation("Accept", expectedType);
 
                 using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token)
                     .ConfigureAwait(false);
@@ -73,9 +77,12 @@ public sealed class AccountPageFetcher(HttpClient http, string appVersion, ILogg
             return Fail($"The server answered HTTP {(int)response.StatusCode}.");
         }
 
-        if (!string.Equals(response.Content.Headers.ContentType?.MediaType, "text/html", StringComparison.OrdinalIgnoreCase))
+        var expectedType = ExpectedType(uri);
+        if (!string.Equals(response.Content.Headers.ContentType?.MediaType, expectedType, StringComparison.OrdinalIgnoreCase))
         {
-            return Fail("The server did not answer with an HTML page.");
+            return Fail(expectedType == JsonType
+                ? "The server did not answer with JSON data."
+                : "The server did not answer with an HTML page.");
         }
 
         if (response.Content.Headers.ContentLength > MaxBytes)
@@ -100,6 +107,9 @@ public sealed class AccountPageFetcher(HttpClient http, string appVersion, ILogg
         var text = Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
         return PageFetchResult.Success(PageSnapshot.Create(uri.AbsoluteUri, text, appVersion, DateTimeOffset.UtcNow));
     }
+
+    /// <summary>JSON for the badges list and HTML for everything else; decided per hop, so a redirect cannot widen it.</summary>
+    private static string ExpectedType(Uri uri) => AqwUrls.IsBadges(uri.AbsoluteUri) ? JsonType : HtmlType;
 
     private PageFetchResult Fail(string message)
     {

@@ -14,7 +14,8 @@ public enum BadgesLoadStatus
     NotFound,
 }
 
-public sealed record BadgesLoadResult(BadgesLoadStatus Status, CharacterBadges? Badges = null);
+/// <param name="Persisted">True only when the ingestion saved an <c>Ok</c> parse; a suspicious result is shown but never stored.</param>
+public sealed record BadgesLoadResult(BadgesLoadStatus Status, CharacterBadges? Badges = null, bool Persisted = false);
 
 /// <summary>Fetches the public badges list for a character id. Never throws.</summary>
 public interface ICharacterBadgesLoader

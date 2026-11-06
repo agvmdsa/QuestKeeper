@@ -31,6 +31,19 @@ public class CharacterBadgesLoaderTests
         Assert.Equal(["Test Badge"], result.Badges!.Badges.Select(b => b.Title));
         Assert.Equal([AqwUrls.Badges(3)], fetcher.Requested);
         Assert.Single(store.Saved);
+        Assert.True(result.Persisted);
+    }
+
+    [Fact]
+    public async Task A_suspicious_answer_is_loaded_but_not_persisted()
+    {
+        var (loader, _, store) = Build(_ => Page("""[{"sDesc":"d","sCategory":"c"},{"sDesc":"e"}]"""));
+
+        var result = await loader.LoadAsync(3);
+
+        Assert.Equal(BadgesLoadStatus.Loaded, result.Status);
+        Assert.False(result.Persisted);
+        Assert.Empty(store.Saved);
     }
 
     [Fact]

@@ -1,9 +1,11 @@
 using AqwCompanion.App;
 using AqwCompanion.App.Browser;
+using AqwCompanion.App.Persistence;
 using AqwCompanion.App.SignIn;
 using AqwCompanion.App.ViewModels;
 using AqwCompanion.Core.Aqw;
 using AqwCompanion.Core.Ingestion;
+using AqwCompanion.Core.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -47,6 +49,18 @@ public class CompositionRootTests
         Assert.IsType<SignInDialog>(services.GetRequiredService<ISignInDialog>());
         Assert.IsType<TaskDelay>(services.GetRequiredService<IDelay>());
         Assert.False(services.GetRequiredService<WebViewBrowserHost>().IsAttached);
+    }
+
+    [Fact]
+    public void Container_resolves_the_persistence_services_without_creating_the_database_file()
+    {
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
+
+        using var services = CompositionRoot.Build(paths);
+
+        Assert.IsType<LiteDbStoredDataStore>(services.GetRequiredService<IStoredDataStore>());
+        Assert.IsType<AccountDataPersistence>(services.GetRequiredService<IAccountDataPersistence>());
+        Assert.Same(TimeProvider.System, services.GetRequiredService<TimeProvider>());
     }
 
     [Fact]

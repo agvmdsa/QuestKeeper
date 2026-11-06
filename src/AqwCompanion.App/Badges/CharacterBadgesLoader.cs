@@ -21,7 +21,7 @@ public sealed class CharacterBadgesLoader(
 
             var result = await ingestion.IngestAsync(snapshot, ct).ConfigureAwait(false);
             return result.Parse is { Outcome: not ParseOutcome.Failed, Data: { } badges }
-                ? new BadgesLoadResult(BadgesLoadStatus.Loaded, badges)
+                ? new BadgesLoadResult(BadgesLoadStatus.Loaded, badges, result.Persisted)
                 : new BadgesLoadResult(BadgesLoadStatus.NotFound);
         }
         catch (OperationCanceledException)

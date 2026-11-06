@@ -16,7 +16,9 @@ public partial class CompanionApp : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var services = CompositionRoot.Build(AppPaths.ForCurrentUser(AppInfo.ExeName));
-            desktop.MainWindow = new MainWindow { DataContext = services.GetRequiredService<MainViewModel>() };
+            var main = services.GetRequiredService<MainViewModel>();
+            desktop.MainWindow = new MainWindow { DataContext = main };
+            _ = main.Account.RestoreStoredDataAsync();
             desktop.Exit += (_, _) => services.Dispose();
         }
 

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
 using AqwCompanion.Core.Ingestion;
@@ -9,7 +10,7 @@ namespace AqwCompanion.Core.Aqw;
 /// Reads the equipped items from the public character page. The data lives in the <c>FlashVars</c> of the
 /// embedded character viewer. Parsing never throws and nothing parsed is logged.
 /// </summary>
-public sealed class CharacterEquipmentParser : IPageParser<CharacterEquipment>
+public sealed partial class CharacterEquipmentParser : IPageParser<CharacterEquipment>
 {
     public const string FlashVarsParamMarker = "param[name=FlashVars]";
     public const string FlashVarsEmbedMarker = "embed[flashvars]";
@@ -17,6 +18,9 @@ public sealed class CharacterEquipmentParser : IPageParser<CharacterEquipment>
     private const string ParamStrategy = "flashvars-param";
     private const string EmbedStrategy = "flashvars-embed";
     private const int MaxValueLength = 200;
+
+    [GeneratedRegex(@"\bvar\s+ccid\s*=\s*(\d{1,9})\s*;", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex CharacterIdPattern();
 
     private static readonly (string Label, string Key, string IdKey)[] Slots =
     [
@@ -71,7 +75,8 @@ public sealed class CharacterEquipmentParser : IPageParser<CharacterEquipment>
             Get(values, "strClassName"),
             Get(values, "strHairName"),
             slots,
-            ReadColors(values));
+            ReadColors(values),
+            ReadCharacterId(document));
 
         return ParseResult<CharacterEquipment>.Ok(
             equipment,
@@ -80,6 +85,23 @@ public sealed class CharacterEquipmentParser : IPageParser<CharacterEquipment>
 
     private ParseResult<CharacterEquipment> Failed(string reason, IReadOnlyList<string> missing) =>
         ParseResult<CharacterEquipment>.Failed(reason, new ParseDiagnostics(Name, Version, null, missing, 0));
+
+    // The page loads its badges and inventory with the numeric id set in an inline script: "var ccid = 3;".
+    private static int? ReadCharacterId(IDocument document)
+    {
+        foreach (var script in document.QuerySelectorAll("script"))
+        {
+            var match = CharacterIdPattern().Match(script.TextContent);
+            if (match.Success
+                && int.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var id)
+                && id > 0)
+            {
+                return id;
+            }
+        }
+
+        return null;
+    }
 
     private static (string? Value, string? Strategy) FindFlashVars(IDocument document)
     {

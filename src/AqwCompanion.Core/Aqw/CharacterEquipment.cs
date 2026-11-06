@@ -13,7 +13,10 @@ public sealed record CharacterColor(string Label, int Rgb)
     public string Description => $"{Label} color {Hex}";
 }
 
-/// <summary>What the public character page shows as equipped. Colors are only the ones the page provided.</summary>
+/// <summary>
+/// What the public character page shows as equipped. Colors are only the ones the page provided.
+/// <see cref="CharacterId"/> is the numeric id the page uses to load the badges.
+/// </summary>
 public sealed record CharacterEquipment(
     string? Name,
     int? Level,
@@ -23,7 +26,8 @@ public sealed record CharacterEquipment(
     string? ClassName,
     string? HairName,
     IReadOnlyList<EquipmentSlot> Slots,
-    IReadOnlyList<CharacterColor> Colors)
+    IReadOnlyList<CharacterColor> Colors,
+    int? CharacterId = null)
 {
     public IEnumerable<EquipmentSlot> StandardSlots => Slots.Where(slot => !slot.IsCustom);
 

@@ -1,3 +1,4 @@
+using AqwCompanion.App.Infrastructure;
 using Avalonia;
 using Serilog;
 

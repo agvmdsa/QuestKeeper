@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using AqwCompanion.App;
-using AqwCompanion.App.ViewModels;
+using AqwCompanion.App.Diagnostics;
+using AqwCompanion.App.Wiki;
 using AqwCompanion.Core.Diagnostics;
 using AqwCompanion.Core.Ingestion;
 using AqwCompanion.Tests.TestDoubles;

@@ -1,0 +1,42 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:AqwCompanion.App.Shell"
+        xmlns:local="using:AqwCompanion.App"
+        xmlns:account="using:AqwCompanion.App.Account"
+        xmlns:wiki="using:AqwCompanion.App.Wiki"
+        xmlns:diagnostics="using:AqwCompanion.App.Diagnostics"
+        x:Class="AqwCompanion.App.Shell.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="{Binding Title}"
+        Icon="/Assets/app.png"
+        Width="1100" Height="720">
+  <DockPanel>
+    <!-- Plum top bar: the app name on the left, the connected character on the right. -->
+    <Border x:Name="TopBar" DockPanel.Dock="Top" Background="{DynamicResource AqwHeader}"
+            BorderBrush="{DynamicResource AqwBorder}" BorderThickness="0,0,0,1" Padding="16,10">
+      <DockPanel LastChildFill="False">
+        <TextBlock x:Name="AppNameText" DockPanel.Dock="Left" Text="{x:Static local:AppInfo.ProductName}"
+                   FontSize="18" FontWeight="Bold" Foreground="{DynamicResource AqwTextBright}"
+                   VerticalAlignment="Center" />
+        <TextBlock x:Name="CharacterSummaryText" DockPanel.Dock="Right" Text="{Binding Account.ConnectionSummary}"
+                   IsVisible="{Binding Account.IsConnected}" Foreground="{DynamicResource AqwText}"
+                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                   AutomationProperties.Name="Connected character" />
+      </DockPanel>
+    </Border>
+  <TabControl x:Name="Tabs" Padding="0">
+    <TabItem Header="Account">
+      <account:AccountView DataContext="{Binding Account}" />
+    </TabItem>
+    <TabItem Header="Wiki">
+      <wiki:WikiView DataContext="{Binding Wiki}" />
+    </TabItem>
+    <TabItem Header="Tracker">
+      <TextBlock Margin="16" Text="Tracker: coming soon" />
+    </TabItem>
+    <TabItem Header="Diagnostics">
+      <diagnostics:DiagnosticsView DataContext="{Binding Diagnostics}" />
+    </TabItem>
+  </TabControl>
+  </DockPanel>
+</Window>

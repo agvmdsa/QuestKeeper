@@ -1,7 +1,5 @@
-using AqwCompanion.App;
+using AqwCompanion.App.Infrastructure;
 using AqwCompanion.App.SignIn;
-using AqwCompanion.App.ViewModels;
-using AqwCompanion.App.Views;
 using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Ingestion;
 using AqwCompanion.Core.Site;

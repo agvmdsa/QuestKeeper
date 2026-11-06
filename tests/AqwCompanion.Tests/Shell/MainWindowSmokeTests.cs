@@ -1,8 +1,7 @@
 using AqwCompanion.App;
-using AqwCompanion.App.Browser;
-using AqwCompanion.App.Persistence;
-using AqwCompanion.App.ViewModels;
-using AqwCompanion.App.Views;
+using AqwCompanion.App.Account;
+using AqwCompanion.App.Infrastructure.Browser;
+using AqwCompanion.App.Shell;
 using AqwCompanion.Tests.TestDoubles;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;

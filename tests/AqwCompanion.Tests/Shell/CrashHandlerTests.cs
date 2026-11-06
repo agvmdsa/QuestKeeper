@@ -1,4 +1,4 @@
-using AqwCompanion.App;
+using AqwCompanion.App.Infrastructure;
 
 namespace AqwCompanion.Tests.Shell;
 

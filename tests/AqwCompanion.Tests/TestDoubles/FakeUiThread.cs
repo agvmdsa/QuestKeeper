@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using AqwCompanion.App.Browser;
+using AqwCompanion.App.Infrastructure.Browser;
 
 namespace AqwCompanion.Tests.TestDoubles;
 

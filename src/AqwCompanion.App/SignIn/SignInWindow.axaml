@@ -78,7 +78,7 @@
       <ProgressBar x:Name="CompactProgress" IsIndeterminate="True" IsVisible="{Binding ShowCompactProgress}" />
       <Button x:Name="CancelButton" Content="Cancel" Command="{Binding CancelCommand}"
               IsVisible="{Binding ShowCompactProgress}" HorizontalAlignment="Right"
-              AutomationProperties.Name="Cancel updating from account.aq.com" />
+              AutomationProperties.Name="{Binding CancelAutomationName}" />
     </StackPanel>
   </Grid>
 </Window>

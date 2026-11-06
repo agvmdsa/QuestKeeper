@@ -40,6 +40,8 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
     public const string SigningInMessage =
         "Sign in on account.aq.com. This window closes once your character name has been read.";
     public const string UpdatingTitle = "Updating from account.aq.com...";
+    public const string SigningOutTitle = "Signing out of account.aq.com...";
+    public const string SigningOutMessage = "Ending your session on account.aq.com. This window closes when it is done.";
     public const string FullTitle = "Sign in to account.aq.com";
     public const string ReadingMessage = "Reading the character name...";
     public const string SessionExpiredMessage = "Your session expired. Please sign in again.";
@@ -62,6 +64,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
     private readonly CancellationToken _lifetimeToken;
     private readonly NavigationWatchdog _watchdog;
     private readonly AccountHomeReader _reader;
+    private readonly bool _signOut;
     private bool _unreachable;
     private bool _started;
     private bool _startFailed;
@@ -109,6 +112,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
         _host = host;
         _delay = delay;
         _mode = mode;
+        _signOut = mode == SignInMode.SignOut;
         _successDelay = successDelay ?? DefaultSuccessDelay;
         _log = logger ?? Log.Logger;
         _reader = new AccountHomeReader(host, ingestion, readTimeout ?? DefaultReadTimeout, _log);
@@ -127,7 +131,11 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
 
     public bool IsFull => Mode == SignInMode.Full;
 
-    public bool IsCompact => Mode == SignInMode.Compact;
+    /// <summary>The progress layout: a refresh, or a sign-out (which only opens the logout page).</summary>
+    public bool IsCompact => Mode is SignInMode.Compact or SignInMode.SignOut;
+
+    /// <summary>This window only signs out: it opens the logout page and reads nothing.</summary>
+    public bool IsSignOut => _signOut;
 
     public bool IsSuccess => State == SignInState.Success;
 
@@ -144,11 +152,13 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
 
     public bool ShowCompactProgress => IsCompact && !IsSuccess;
 
-    public string WindowTitle => IsCompact ? UpdatingTitle : FullTitle;
+    public string WindowTitle => IsSignOut ? SigningOutTitle : IsCompact ? UpdatingTitle : FullTitle;
+
+    public string CancelAutomationName => IsSignOut ? "Cancel signing out" : "Cancel updating from account.aq.com";
 
     public string SuccessText => $"Connected as {CharacterName}";
 
-    public string CompactTitle => IsSuccess ? SuccessText : UpdatingTitle;
+    public string CompactTitle => IsSuccess ? SuccessText : IsSignOut ? SigningOutTitle : UpdatingTitle;
 
     /// <summary>The running navigation watchdog; null while none is armed. Exposed so tests can await it.</summary>
     internal Task? NavigationWatchdog => _watchdog.Running;
@@ -171,7 +181,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
         State = SignInState.SigningIn;
         Message = InitialMessage(Mode);
         _watchdog.Start();
-        _host.Navigate(AqwUrls.Home);
+        _host.Navigate(StartUrl);
     }
 
     /// <summary>The browser control could not be created (for example the web view runtime is missing).</summary>
@@ -210,11 +220,16 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
             return;
         }
 
+        if (IsSignOut)
+        {
+            Mode = SignInMode.SignOut;
+        }
+
         State = SignInState.SigningIn;
-        Message = SigningInMessage;
+        Message = ProgressMessage;
         _unreachable = false;
         _watchdog.Start();
-        _host.Navigate(AqwUrls.Home);
+        _host.Navigate(StartUrl);
     }
 
     /// <summary>Never throws: every failure ends up in <see cref="Message"/>.</summary>
@@ -222,6 +237,21 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
     {
         if (IsFinished || _disposed || State == SignInState.Success)
         {
+            return;
+        }
+
+        if (IsSignOut)
+        {
+            // About:blank or another site is not the logout request: ignore it so it neither ends the
+            // watchdog nor reports a sign-out that has not happened yet.
+            if (!IsAccountSite(url))
+            {
+                return;
+            }
+
+            NoteNavigation(url);
+            // Whatever loaded, the logout page was requested and has finished: nothing is captured, parsed or stored.
+            Finish(SignInResult.SignedOut());
             return;
         }
 
@@ -279,7 +309,16 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
         _lifetime.Dispose();
     }
 
-    private static string InitialMessage(SignInMode mode) => mode == SignInMode.Compact ? UpdatingTitle : SigningInMessage;
+    private string StartUrl => IsSignOut ? AqwUrls.Exit : AqwUrls.Home;
+
+    private string ProgressMessage => IsSignOut ? SigningOutMessage : SigningInMessage;
+
+    private static string InitialMessage(SignInMode mode) => mode switch
+    {
+        SignInMode.Compact => UpdatingTitle,
+        SignInMode.SignOut => SigningOutMessage,
+        _ => SigningInMessage,
+    };
 
     private static bool IsAccountSite(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri)
@@ -336,7 +375,7 @@ public sealed partial class SignInViewModel : ObservableObject, IDisposable
             // The page did arrive after all (a slow connection): drop the "could not reach" message.
             _unreachable = false;
             State = SignInState.SigningIn;
-            Message = SigningInMessage;
+            Message = ProgressMessage;
         }
 
         if (Mode == SignInMode.Compact && !IsAccountSite(url))

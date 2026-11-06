@@ -43,6 +43,7 @@ public class AqwUrlsTests
         Assert.Equal("https://account.aq.com/AQW/ProgressMembership", AqwUrls.ProgressMembership);
         Assert.Equal("https://account.aq.com/AQW/ProgressCoins", AqwUrls.ProgressCoins);
         Assert.Equal("https://account.aq.com/CharPage", AqwUrls.CharPageBase);
+        Assert.Equal("https://account.aq.com/Login/Exit", AqwUrls.Exit);
     }
 
     [Theory]

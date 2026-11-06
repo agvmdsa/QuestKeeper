@@ -69,6 +69,8 @@
               <StackPanel Margin="16" Spacing="12">
                 <TextBlock x:Name="Headline" Text="{Binding Headline}" FontSize="20" FontWeight="Bold"
                            Foreground="{DynamicResource AqwTextBright}" TextWrapping="Wrap" />
+                <TextBlock x:Name="LastSyncLine" Text="{Binding LastSyncText}" Classes="muted" TextWrapping="Wrap"
+                           IsVisible="{Binding HasLastSync}" AutomationProperties.Name="{Binding LastSyncText}" />
                 <TextBlock x:Name="StatusLine" Text="{Binding Status}" TextWrapping="Wrap" />
                 <TextBlock x:Name="StoredDataNoticeLine" Text="{Binding StoredDataNotice}" Classes="muted"
                            TextWrapping="Wrap" IsVisible="{Binding HasStoredDataNotice}"
@@ -79,18 +81,18 @@
                 <Button x:Name="RefreshButton" Content="Refresh" Command="{Binding RefreshCommand}"
                         IsVisible="{Binding IsConnected}" HorizontalAlignment="Left"
                         AutomationProperties.Name="Refresh the character name from account.aq.com" />
-                <StackPanel x:Name="ForgetPanel" Spacing="8" IsVisible="{Binding IsConnected}">
-                  <Button x:Name="ForgetButton" Content="Forget stored data" Command="{Binding RequestForgetCommand}"
-                          IsVisible="{Binding !IsForgetPending}" HorizontalAlignment="Left"
-                          AutomationProperties.Name="Forget the data stored on this computer" />
-                  <StackPanel x:Name="ForgetConfirmation" Spacing="8" IsVisible="{Binding IsForgetPending}"
-                              AutomationProperties.Name="Confirm forgetting the stored data">
-                    <TextBlock Text="Remove everything the app saved on this computer?" TextWrapping="Wrap" />
+                <StackPanel x:Name="SignOutPanel" Spacing="8" IsVisible="{Binding IsConnected}">
+                  <Button x:Name="SignOutButton" Content="Sign out" Command="{Binding RequestSignOutCommand}"
+                          IsVisible="{Binding !IsSignOutPending}" HorizontalAlignment="Left"
+                          AutomationProperties.Name="Sign out of account.aq.com and remove the data stored on this computer" />
+                  <StackPanel x:Name="SignOutConfirmation" Spacing="8" IsVisible="{Binding IsSignOutPending}"
+                              AutomationProperties.Name="Confirm signing out">
+                    <TextBlock x:Name="SignOutPrompt" Text="Sign out of account.aq.com and remove everything the app saved on this computer?" TextWrapping="Wrap" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                      <Button x:Name="ConfirmForgetButton" Content="Remove" Command="{Binding ConfirmForgetCommand}"
-                              AutomationProperties.Name="Remove the stored data" />
-                      <Button x:Name="CancelForgetButton" Content="Keep" Command="{Binding CancelForgetCommand}"
-                              AutomationProperties.Name="Keep the stored data" />
+                      <Button x:Name="ConfirmSignOutButton" Content="Sign out" Command="{Binding ConfirmSignOutCommand}"
+                              AutomationProperties.Name="Sign out and remove the stored data" />
+                      <Button x:Name="CancelSignOutButton" Content="Keep" Command="{Binding CancelSignOutCommand}"
+                              AutomationProperties.Name="Stay signed in and keep the stored data" />
                     </StackPanel>
                   </StackPanel>
                 </StackPanel>

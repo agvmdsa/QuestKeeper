@@ -42,12 +42,14 @@ public class MainWindowSmokeTests
         Assert.Equal("Not connected", account.FindControl<TextBlock>("Headline")!.Text);
         Assert.True(account.FindControl<Button>("SignInButton")!.IsVisible);
         Assert.False(account.FindControl<Button>("RefreshButton")!.IsVisible);
+        Assert.False(account.FindControl<Button>("SignOutButton")!.IsEffectivelyVisible);
+        Assert.False(account.FindControl<TextBlock>("LastSyncLine")!.IsVisible);
         Assert.Empty(account.GetVisualDescendants().OfType<NativeWebView>());
         Assert.False(services.GetRequiredService<WebViewBrowserHost>().IsAttached);
     }
 
     [AvaloniaFact]
-    public async Task Account_view_shows_the_stored_data_notice_and_the_forget_button_after_a_restore()
+    public async Task Account_view_shows_the_saved_session_honestly_with_sign_out_and_the_last_sync_after_a_restore()
     {
         var at = new DateTimeOffset(2026, 11, 5, 10, 0, 0, TimeSpan.Zero);
         var persistence = new FakeAccountDataPersistence
@@ -62,19 +64,34 @@ public class MainWindowSmokeTests
         await vm.RestoreStoredDataAsync();
         window.UpdateLayout();
 
+        Assert.Equal("Saved data for Test Hero", view.FindControl<TextBlock>("Headline")!.Text);
+        var lastSync = view.FindControl<TextBlock>("LastSyncLine")!;
+        Assert.True(lastSync.IsVisible);
+        Assert.Equal(vm.LastSyncText, lastSync.Text);
+        Assert.StartsWith("Last sync: ", lastSync.Text);
         var notice = view.FindControl<TextBlock>("StoredDataNoticeLine")!;
         Assert.True(notice.IsVisible);
         Assert.Equal(AccountViewModel.StoredDataNoticeText, notice.Text);
-        var forget = view.FindControl<Button>("ForgetButton")!;
-        Assert.True(forget.IsVisible);
-        Assert.Equal("Forget stored data", forget.Content);
-        Assert.True(view.FindControl<Button>("SignInButton")!.IsVisible);
+        Assert.False(view.FindControl<Button>("SignInButton")!.IsVisible);
+        Assert.True(view.FindControl<Button>("RefreshButton")!.IsVisible);
+        var signOut = view.FindControl<Button>("SignOutButton")!;
+        Assert.True(signOut.IsVisible);
+        Assert.Equal("Sign out", signOut.Content);
         Assert.True(view.Named<TextBlock>("SummaryUpdatedLine").IsVisible);
-        Assert.False(view.FindControl<StackPanel>("ForgetConfirmation")!.IsVisible);
+        var confirmation = view.FindControl<StackPanel>("SignOutConfirmation")!;
+        Assert.False(confirmation.IsVisible);
 
-        vm.RequestForgetCommand.Execute(null);
+        vm.RequestSignOutCommand.Execute(null);
 
-        Assert.False(forget.IsVisible);
-        Assert.True(view.FindControl<StackPanel>("ForgetConfirmation")!.IsVisible);
+        Assert.False(signOut.IsVisible);
+        Assert.True(confirmation.IsVisible);
+        Assert.Equal(AccountViewModel.SignOutPromptText, view.FindControl<TextBlock>("SignOutPrompt")!.Text);
+        Assert.Equal("Sign out", view.FindControl<Button>("ConfirmSignOutButton")!.Content);
+        Assert.Equal("Keep", view.FindControl<Button>("CancelSignOutButton")!.Content);
+
+        vm.CancelSignOutCommand.Execute(null);
+
+        Assert.True(signOut.IsVisible);
+        Assert.False(confirmation.IsVisible);
     }
 }

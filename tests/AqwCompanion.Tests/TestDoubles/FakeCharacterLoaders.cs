@@ -1,5 +1,6 @@
 using AqwCompanion.App.Badges;
 using AqwCompanion.App.Equipment;
+using AqwCompanion.App.Inventory;
 
 namespace AqwCompanion.Tests.TestDoubles;
 
@@ -19,6 +20,17 @@ public sealed class FakeBadgesLoader(Func<int, Task<BadgesLoadResult>> load) : I
     public List<int> Requested { get; } = [];
 
     public Task<BadgesLoadResult> LoadAsync(int characterId, CancellationToken ct = default)
+    {
+        Requested.Add(characterId);
+        return load(characterId);
+    }
+}
+
+public sealed class FakeInventoryLoader(Func<int, Task<InventoryLoadResult>> load) : ICharacterInventoryLoader
+{
+    public List<int> Requested { get; } = [];
+
+    public Task<InventoryLoadResult> LoadAsync(int characterId, CancellationToken ct = default)
     {
         Requested.Add(characterId);
         return load(characterId);

@@ -149,4 +149,21 @@ public class BadgesParserTests
         Assert.False(_parser.CanParse(Snapshot("[]", "https://account.aq.com/CharPage?id=Test")));
         Assert.False(_parser.CanParse(Snapshot("[]", "https://account.aq.com/CharPage/Inventory?ccid=3")));
     }
+
+    [Theory]
+    [InlineData(199)]
+    [InlineData(200)]
+    [InlineData(201)]
+    public void A_title_cut_inside_a_surrogate_pair_never_ends_on_a_lone_surrogate(int prefix)
+    {
+        var title = new string('a', prefix) + "\U0001F600" + "tail";
+        var body = System.Text.Json.JsonSerializer.Serialize(new[] { new { sTitle = title, sDesc = "d", sCategory = "c" } });
+
+        var badge = Assert.Single(_parser.Parse(Snapshot(body)).Data!.Badges);
+
+        Assert.True(badge.Title.Length <= 200);
+        Assert.False(char.IsHighSurrogate(badge.Title[^1]));
+        var json = System.Text.Json.JsonSerializer.Serialize(badge, AqwCompanion.App.Infrastructure.Persistence.StoredJson.Options);
+        Assert.Equal(badge, System.Text.Json.JsonSerializer.Deserialize<Badge>(json, AqwCompanion.App.Infrastructure.Persistence.StoredJson.Options));
+    }
 }

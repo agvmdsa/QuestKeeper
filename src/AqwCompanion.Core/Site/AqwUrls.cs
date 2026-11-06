@@ -1,4 +1,5 @@
 using System.Globalization;
+using AqwCompanion.Core.Common;
 
 namespace AqwCompanion.Core.Site;
 
@@ -28,6 +29,10 @@ public static class AqwUrls
     public static string Badges(int ccid) =>
         string.Create(CultureInfo.InvariantCulture, $"{CharPageBase}/Badges?ccid={ccid}");
 
+    /// <summary>The public inventory list of a character, addressed by the numeric id the character page carries.</summary>
+    public static string Inventory(int ccid) =>
+        string.Create(CultureInfo.InvariantCulture, $"{CharPageBase}/Inventory?ccid={ccid}");
+
     /// <summary>True for an absolute https URL on the account host whose path is <c>/Home</c> (case-insensitive).</summary>
     public static bool IsAccountHome(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri) && IsAccountPage(uri, "/Home");
@@ -40,8 +45,12 @@ public static class AqwUrls
     public static bool IsBadges(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri) && IsAccountPage(uri, "/CharPage/Badges");
 
+    /// <summary>True for an absolute https URL on the account host whose path is <c>/CharPage/Inventory</c> (case-insensitive).</summary>
+    public static bool IsInventory(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && IsAccountPage(uri, "/CharPage/Inventory");
+
     internal static bool IsAccountPage(Uri uri, string path) =>
         uri.Scheme == Uri.UriSchemeHttps
-        && string.Equals(uri.Host, AccountHost, StringComparison.OrdinalIgnoreCase)
-        && string.Equals(uri.AbsolutePath.TrimEnd('/'), path, StringComparison.OrdinalIgnoreCase);
+        && uri.Host.EqualsIgnoreCase(AccountHost)
+        && uri.AbsolutePath.TrimEnd('/').EqualsIgnoreCase(path);
 }

@@ -3,6 +3,7 @@
              xmlns:vm="using:AqwCompanion.App.Account"
                                        xmlns:equipmentapp="using:AqwCompanion.App.Equipment"
              xmlns:badgesapp="using:AqwCompanion.App.Badges"
+             xmlns:inventoryapp="using:AqwCompanion.App.Inventory"
              x:Class="AqwCompanion.App.Account.AccountView"
              x:DataType="vm:AccountViewModel">
   <UserControl.KeyBindings>
@@ -47,6 +48,10 @@
 
     <DataTemplate DataType="badgesapp:BadgesCardViewModel">
       <badgesapp:BadgesSidebarContent />
+    </DataTemplate>
+
+    <DataTemplate DataType="inventoryapp:InventoryCardViewModel">
+      <inventoryapp:InventorySidebarContent />
     </DataTemplate>
   </UserControl.DataTemplates>
 
@@ -105,6 +110,7 @@
           <vm:SummaryCardView x:Name="SummaryCard" DataContext="{Binding Summary}" IsVisible="{Binding #Root.((vm:AccountViewModel)DataContext).IsConnected}" />
           <equipmentapp:EquipmentCardView x:Name="EquipmentCard" DataContext="{Binding Equipment}" IsVisible="{Binding #Root.((vm:AccountViewModel)DataContext).IsConnected}" />
           <badgesapp:BadgesCardView x:Name="BadgesCard" DataContext="{Binding Badges}" IsVisible="{Binding #Root.((vm:AccountViewModel)DataContext).IsConnected}" />
+          <inventoryapp:InventoryCardView x:Name="InventoryCard" DataContext="{Binding Inventory}" IsVisible="{Binding #Root.((vm:AccountViewModel)DataContext).IsConnected}" />
         </WrapPanel>
       </ScrollViewer>
     </Grid>

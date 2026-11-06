@@ -48,4 +48,18 @@ public class CharacterEquipmentParserTests
         Assert.Equal(ParseOutcome.Ok, result.Outcome);
         Assert.Null(result.Data!.CharacterId);
     }
+
+    [Fact]
+    public void A_long_value_is_capped_without_splitting_an_emoji()
+    {
+        // 199 letters then an emoji: the 200 character cap would fall in the middle of the surrogate pair.
+        var name = new string('a', 199) + "\U0001F600";
+        var html = $"<html><body><object><param name=\"FlashVars\" value=\"strName=Test Hero&amp;intLevel=10&amp;strArmorName={name}\" /></object></body></html>";
+        var page = PageSnapshot.Create("https://account.aq.com/CharPage?id=Test%20Hero", html, "1.0.0", DateTimeOffset.UnixEpoch);
+
+        var result = _parser.Parse(page);
+
+        var armor = Assert.Single(result.Data!.Slots, slot => slot.Label == "Armor");
+        Assert.Equal(new string('a', 199), armor.ItemName);
+    }
 }

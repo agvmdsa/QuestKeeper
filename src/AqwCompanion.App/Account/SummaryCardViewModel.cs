@@ -1,4 +1,5 @@
 using System.Globalization;
+using AqwCompanion.App.Infrastructure.Formatting;
 using AqwCompanion.Core.Account;
 using CommunityToolkit.Mvvm.ComponentModel;
 

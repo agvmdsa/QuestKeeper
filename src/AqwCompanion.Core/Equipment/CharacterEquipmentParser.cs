@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
+using AqwCompanion.Core.Common;
 using AqwCompanion.Core.Ingestion;
 using AqwCompanion.Core.Site;
 
@@ -108,7 +109,7 @@ public sealed partial class CharacterEquipmentParser : IPageParser<CharacterEqui
     {
         foreach (var param in document.QuerySelectorAll("param"))
         {
-            if (string.Equals(param.GetAttribute("name"), "FlashVars", StringComparison.OrdinalIgnoreCase)
+            if (param.GetAttribute("name").EqualsIgnoreCase("FlashVars")
                 && param.GetAttribute("value") is { Length: > 0 } fromParam)
             {
                 return (fromParam, ParamStrategy);
@@ -145,8 +146,7 @@ public sealed partial class CharacterEquipmentParser : IPageParser<CharacterEqui
     private static string Clean(string raw)
     {
         var value = raw.Contains('%', StringComparison.Ordinal) ? Uri.UnescapeDataString(raw) : raw;
-        value = new string(value.Where(c => !char.IsControl(c)).ToArray()).Trim();
-        return value.Length > MaxValueLength ? value[..MaxValueLength] : value;
+        return TextCleaner.Clean(value, MaxValueLength);
     }
 
     private static List<EquipmentSlot> ReadSlots(Dictionary<string, string> values)
@@ -206,7 +206,7 @@ public sealed partial class CharacterEquipmentParser : IPageParser<CharacterEqui
     private static string? Get(Dictionary<string, string> values, string key) =>
         values.TryGetValue(key, out var value)
         && value.Length > 0
-        && !string.Equals(value, "none", StringComparison.OrdinalIgnoreCase)
+        && !value.EqualsIgnoreCase("none")
             ? value
             : null;
 }

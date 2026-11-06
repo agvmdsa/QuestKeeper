@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
+using AqwCompanion.Core.Common;
 using AqwCompanion.Core.Ingestion;
 using AqwCompanion.Core.Site;
 
@@ -63,7 +64,7 @@ public sealed class AccountHomeParser : IPageParser<AccountIdentity>
         {
             if (Uri.TryCreate(RootUri, anchor.GetAttribute("href"), out var uri)
                 && AqwUrls.IsAccountPage(uri, "/CharPage")
-                && NonBlank(QueryValue(uri.Query, "id")) is { } name)
+                && TextCleaner.NonBlank(QueryValue(uri.Query, "id")) is { } name)
             {
                 return name;
             }
@@ -75,14 +76,14 @@ public sealed class AccountHomeParser : IPageParser<AccountIdentity>
     private static string? FromUsernameRow(IDocument document)
     {
         var label = FindAccountInfoCard(document)?.QuerySelectorAll(".fw-bold")
-            .FirstOrDefault(cell => string.Equals(cell.TextContent.Trim(), "Username:", StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(cell => cell.TextContent.Trim().EqualsIgnoreCase("Username:"));
 
-        return NonBlank(label?.NextElementSibling?.TextContent);
+        return TextCleaner.NonBlank(label?.NextElementSibling?.TextContent);
     }
 
     private static IElement? FindAccountInfoCard(IDocument document) =>
         document.QuerySelectorAll(".tblHeader")
-            .FirstOrDefault(header => string.Equals(header.TextContent.Trim(), "Account Info", StringComparison.OrdinalIgnoreCase))
+            .FirstOrDefault(header => header.TextContent.Trim().EqualsIgnoreCase("Account Info"))
             ?.ParentElement;
 
     /// <summary>
@@ -113,11 +114,11 @@ public sealed class AccountHomeParser : IPageParser<AccountIdentity>
 
     private static IElement? ValueCell(IElement card, string label) =>
         card.QuerySelectorAll(".row > .fw-bold")
-            .FirstOrDefault(cell => string.Equals(cell.TextContent.Trim(), label, StringComparison.OrdinalIgnoreCase))
+            .FirstOrDefault(cell => cell.TextContent.Trim().EqualsIgnoreCase(label))
             ?.NextElementSibling;
 
     private static int? ParseCount(string? text) =>
-        int.TryParse(text?.Trim(), NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var value) && value >= 0
+        NumberParsing.TryParseNonNegativeInt(text, NumberStyles.AllowThousands, out var value)
             ? value
             : null;
 
@@ -140,23 +141,15 @@ public sealed class AccountHomeParser : IPageParser<AccountIdentity>
     }
 
     /// <summary>The text without control characters, trimmed and capped; null when blank.</summary>
-    private static string? Clean(string? value, int maxLength)
-    {
-        var text = new string((value ?? string.Empty).Where(c => !char.IsControl(c)).ToArray()).Trim();
-        if (text.Length == 0)
-        {
-            return null;
-        }
-
-        return text.Length > maxLength ? text[..maxLength] : text;
-    }
+    private static string? Clean(string? value, int maxLength) =>
+        TextCleaner.NonBlank(TextCleaner.Clean(value, maxLength));
 
     private static string? QueryValue(string query, string key)
     {
         foreach (var pair in query.TrimStart('?').Split('&'))
         {
             var separator = pair.IndexOf('=', StringComparison.Ordinal);
-            if (separator > 0 && string.Equals(pair[..separator], key, StringComparison.OrdinalIgnoreCase))
+            if (separator > 0 && pair[..separator].EqualsIgnoreCase(key))
             {
                 return Uri.UnescapeDataString(pair[(separator + 1)..].Replace('+', ' '));
             }
@@ -164,7 +157,4 @@ public sealed class AccountHomeParser : IPageParser<AccountIdentity>
 
         return null;
     }
-
-    private static string? NonBlank(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

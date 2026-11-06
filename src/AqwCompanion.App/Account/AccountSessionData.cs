@@ -3,6 +3,7 @@ using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Badges;
 using AqwCompanion.Core.Equipment;
 using AqwCompanion.Core.Ingestion;
+using AqwCompanion.Core.Inventory;
 
 namespace AqwCompanion.App.Account;
 
@@ -13,6 +14,7 @@ namespace AqwCompanion.App.Account;
 public sealed class AccountSessionData(
     LatestResultStore<CharacterEquipment> equipment,
     LatestResultStore<CharacterBadges> badges,
+    LatestResultStore<CharacterInventory> inventory,
     LatestResultStore<AccountIdentity> identity,
     FailedSnapshotBuffer failures) : IAccountSessionData
 {
@@ -27,12 +29,18 @@ public sealed class AccountSessionData(
         {
             badges.SeedCount(restoredBadges.Count);
         }
+
+        if (restored.Inventory is { } restoredInventory)
+        {
+            inventory.SeedCount(restoredInventory.Count);
+        }
     }
 
     public void Clear()
     {
         equipment.Clear();
         badges.Clear();
+        inventory.Clear();
         identity.Clear();
         failures.Clear();
     }

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using AqwCompanion.Core.Common;
 using AqwCompanion.Core.Ingestion;
 using Microsoft.Extensions.Logging;
 
@@ -7,8 +8,8 @@ namespace AqwCompanion.Core.Site;
 
 /// <summary>
 /// One read-only GET against account.aq.com. https and the account host only (also for redirects, which are
-/// validated hop by hop), a hard timeout, a size cap and text/html only. The one exception is the public badges
-/// list, which is answered as application/json (and only that). No cookies, no credentials.
+/// validated hop by hop), a hard timeout, a size cap and text/html only. The exceptions are the public badges and
+/// inventory lists, which are answered as application/json (and only that). No cookies, no credentials.
 /// The caller supplies an <see cref="HttpClient"/> with automatic redirects and cookies turned off.
 /// </summary>
 public sealed class AccountPageFetcher(HttpClient http, string appVersion, ILogger<AccountPageFetcher> logger) : IPageFetcher
@@ -78,7 +79,7 @@ public sealed class AccountPageFetcher(HttpClient http, string appVersion, ILogg
         }
 
         var expectedType = ExpectedType(uri);
-        if (!string.Equals(response.Content.Headers.ContentType?.MediaType, expectedType, StringComparison.OrdinalIgnoreCase))
+        if (!(response.Content.Headers.ContentType?.MediaType).EqualsIgnoreCase(expectedType))
         {
             return Fail(expectedType == JsonType
                 ? "The server did not answer with JSON data."
@@ -108,8 +109,8 @@ public sealed class AccountPageFetcher(HttpClient http, string appVersion, ILogg
         return PageFetchResult.Success(PageSnapshot.Create(uri.AbsoluteUri, text, appVersion, DateTimeOffset.UtcNow));
     }
 
-    /// <summary>JSON for the badges list and HTML for everything else; decided per hop, so a redirect cannot widen it.</summary>
-    private static string ExpectedType(Uri uri) => AqwUrls.IsBadges(uri.AbsoluteUri) ? JsonType : HtmlType;
+    /// <summary>JSON for the badges list and the inventory list, HTML for everything else; decided per hop, so a redirect cannot widen it.</summary>
+    private static string ExpectedType(Uri uri) => AqwUrls.IsBadges(uri.AbsoluteUri) || AqwUrls.IsInventory(uri.AbsoluteUri) ? JsonType : HtmlType;
 
     private PageFetchResult Fail(string message)
     {
@@ -138,7 +139,7 @@ public sealed class AccountPageFetcher(HttpClient http, string appVersion, ILogg
             || absolute.Scheme != Uri.UriSchemeHttps
             || !absolute.IsDefaultPort
             || absolute.UserInfo.Length != 0
-            || !string.Equals(absolute.Host, AqwUrls.AccountHost, StringComparison.OrdinalIgnoreCase))
+            || !absolute.Host.EqualsIgnoreCase(AqwUrls.AccountHost))
         {
             return false;
         }

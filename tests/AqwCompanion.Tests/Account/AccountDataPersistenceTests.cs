@@ -2,6 +2,7 @@ using AqwCompanion.App.Account;
 using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Badges;
 using AqwCompanion.Core.Equipment;
+using AqwCompanion.Core.Inventory;
 using AqwCompanion.Tests.TestDoubles;
 
 namespace AqwCompanion.Tests.Account;
@@ -11,6 +12,8 @@ public sealed class AccountDataPersistenceTests
     private static readonly DateTimeOffset At = new(2026, 11, 6, 12, 0, 0, TimeSpan.Zero);
     private static readonly AccountSummary Summary = new(100, "Free", "Not a member", 7);
     private static readonly CharacterBadges Badges = new([new Badge("Fake Badge", "A fake description", "Fake Category")]);
+
+    private static readonly CharacterInventory Inventory = new([new InventoryItem("Fake Item", "Item", 3, true, false)]);
 
     private readonly InMemoryStoredDataStore _store = new();
 
@@ -223,5 +226,90 @@ public sealed class AccountDataPersistenceTests
 
         _store.FailNext = true;
         Assert.Null(Record.Exception(() => sut.RemoveBadges()));
+    }
+
+    [Fact]
+    public void Saved_inventory_is_restored_with_its_read_time_together_with_the_equipment()
+    {
+        var sut = Build();
+        sut.SaveIdentity("Fakehero", Summary, At);
+        sut.SaveEquipment(Equipment("Fakehero"), At);
+        sut.SaveInventory(Inventory, At.AddMinutes(3));
+
+        var restored = Assert.IsType<RestoredAccount>(sut.Restore());
+
+        Assert.Equal(Inventory, restored.Inventory);
+        Assert.Equal(At.AddMinutes(3), restored.InventoryReadAtUtc);
+        Assert.True(_store.Items.ContainsKey(AccountDataPersistence.InventoryKey));
+        Assert.Equal("inventory", AccountDataPersistence.InventoryKey);
+    }
+
+    [Fact]
+    public void Inventory_is_not_restored_without_the_equipment_of_the_stored_character()
+    {
+        var sut = Build();
+        sut.SaveIdentity("Fakehero", Summary, At);
+        sut.SaveInventory(Inventory, At);
+
+        var withoutEquipment = Assert.IsType<RestoredAccount>(sut.Restore());
+        Assert.Null(withoutEquipment.Inventory);
+        Assert.Null(withoutEquipment.InventoryReadAtUtc);
+
+        sut.SaveEquipment(Equipment("Someoneelse"), At);
+        var otherEquipment = Assert.IsType<RestoredAccount>(sut.Restore());
+        Assert.Null(otherEquipment.Inventory);
+    }
+
+    [Fact]
+    public void SaveIdentity_for_another_character_removes_the_stored_inventory_but_the_same_character_keeps_it()
+    {
+        var sut = Build();
+        sut.SaveIdentity("Hero A", Summary, At);
+        sut.SaveInventory(Inventory, At);
+
+        sut.SaveIdentity("HERO a", Summary, At.AddMinutes(1));
+        Assert.True(_store.Items.ContainsKey(AccountDataPersistence.InventoryKey));
+
+        Build().SaveIdentity("Hero B", Summary, At);
+        Assert.False(_store.Items.ContainsKey(AccountDataPersistence.InventoryKey));
+    }
+
+    [Fact]
+    public void RemoveInventory_only_removes_its_own_key()
+    {
+        var sut = Build();
+        sut.SaveBadges(Badges, At);
+        sut.SaveInventory(Inventory, At);
+
+        sut.RemoveInventory();
+
+        Assert.False(_store.Items.ContainsKey(AccountDataPersistence.InventoryKey));
+        Assert.True(_store.Items.ContainsKey(AccountDataPersistence.BadgesKey));
+    }
+
+    [Fact]
+    public void Forget_clears_the_stored_inventory()
+    {
+        var sut = Build();
+        sut.SaveIdentity("Fakehero", Summary, At);
+        sut.SaveInventory(Inventory, At);
+
+        Assert.True(sut.Forget());
+
+        Assert.False(_store.Items.ContainsKey(AccountDataPersistence.InventoryKey));
+    }
+
+    [Fact]
+    public void Inventory_store_failures_are_swallowed()
+    {
+        var sut = Build();
+        _store.ThrowOnSave = true;
+        _store.ThrowOnLoad = true;
+
+        Assert.Null(Record.Exception(() =>
+        {
+            sut.SaveInventory(Inventory, At);
+            sut.RemoveInventory();
+        }));
     }
 }

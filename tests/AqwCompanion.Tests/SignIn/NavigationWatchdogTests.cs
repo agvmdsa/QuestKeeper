@@ -102,7 +102,7 @@ public class NavigationWatchdogTests
     }
 
     [Fact]
-    public void Start_replaces_a_running_countdown()
+    public async Task Start_replaces_a_running_countdown()
     {
         var watchdog = new NavigationWatchdog(Slow, _logger, () => false, () => { });
 
@@ -112,7 +112,10 @@ public class NavigationWatchdogTests
 
         Assert.NotNull(first);
         Assert.NotSame(first, watchdog.Running);
-        Assert.True(first!.IsCompleted);
+
+        // Cancelling the first countdown completes it asynchronously, so wait for it instead of checking right away.
+        await first!.WaitAsync(Wait);
+        Assert.True(first.IsCompleted);
         watchdog.Stop();
     }
 

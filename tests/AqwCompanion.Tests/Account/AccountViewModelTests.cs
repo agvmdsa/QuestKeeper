@@ -1085,4 +1085,64 @@ public class AccountViewModelTests
 
         public bool Forget() => true;
     }
+
+    private async Task<(AccountViewModel Vm, List<string> Events)> ConnectedWithEventsAsync()
+    {
+        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
+        var vm = AccountViewModelBuilder.Create(_dialog, persistence: _persistence);
+        await vm.SignInCommand.ExecuteAsync(null);
+        var events = new List<string>();
+        vm.DataForgotten += (_, _) => events.Add("forgotten");
+        return (vm, events);
+    }
+
+    [Fact]
+    public async Task Data_forgotten_is_raised_once_after_a_completed_sign_out()
+    {
+        var (vm, events) = await ConnectedWithEventsAsync();
+        _dialog.OnShow = Reports(SignInResult.SignedOut());
+
+        await SignOutAsync(vm);
+
+        Assert.Equal(["forgotten"], events);
+        Assert.Null(vm.CharacterName);
+    }
+
+    [Fact]
+    public async Task Data_forgotten_is_raised_when_the_site_was_unreachable_but_the_data_was_removed()
+    {
+        var (vm, events) = await ConnectedWithEventsAsync();
+        _dialog.OnShow = Reports(SignInResult.Failed("Could not reach account.aq.com."));
+
+        await SignOutAsync(vm);
+
+        Assert.Equal(["forgotten"], events);
+    }
+
+    [Fact]
+    public async Task Data_forgotten_is_not_raised_when_the_sign_out_is_dismissed()
+    {
+        var (vm, events) = await ConnectedWithEventsAsync();
+        _dialog.OnShow = Reports(SignInResult.Cancelled());
+
+        await SignOutAsync(vm);
+
+        Assert.Empty(events);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Data_forgotten_is_not_raised_when_the_stored_data_could_not_be_removed(bool signedOut)
+    {
+        var (vm, events) = await ConnectedWithEventsAsync();
+        _persistence.ForgetResult = false;
+        _dialog.OnShow = Reports(signedOut ? SignInResult.SignedOut() : SignInResult.Failed("x"));
+
+        await SignOutAsync(vm);
+
+        Assert.Empty(events);
+        Assert.Equal(AccountViewModel.ForgetFailedMessage, vm.Status);
+    }
 }
+

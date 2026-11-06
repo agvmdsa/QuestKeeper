@@ -3,6 +3,7 @@ using AqwCompanion.App.Account;
 using AqwCompanion.App.Badges;
 using AqwCompanion.App.Diagnostics;
 using AqwCompanion.App.Equipment;
+using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure;
 using AqwCompanion.App.Infrastructure.Browser;
 using AqwCompanion.App.Infrastructure.Persistence;
@@ -17,6 +18,7 @@ using AqwCompanion.Core.Equipment;
 using AqwCompanion.Core.Ingestion;
 using AqwCompanion.Core.Inventory;
 using AqwCompanion.Core.Persistence;
+using AqwCompanion.Core.Wiki;
 using AqwCompanion.Core.Site;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -53,7 +55,9 @@ public static class CompositionRoot
         services.AddSingleton<IResultStore<CharacterInventory>>(sp => sp.GetRequiredService<LatestResultStore<CharacterInventory>>());
         services.AddSingleton<IngestionService<CharacterInventory>>();
         services.AddSingleton<IPageFetcher>(sp => new AccountPageFetcher(
-            CreateHttpClient(), AppInfo.Version, sp.GetRequiredService<ILogger<AccountPageFetcher>>()));
+            CreateHttpClient(AccountPageFetcher.Timeout), AppInfo.Version, sp.GetRequiredService<ILogger<AccountPageFetcher>>()));
+        services.AddSingleton<IWikiPageFetcher>(sp => new WikiPageFetcher(
+            CreateHttpClient(WikiPageFetcher.Timeout), AppInfo.Version, sp.GetRequiredService<ILogger<WikiPageFetcher>>()));
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IStoredDataStore>(sp => new LiteDbStoredDataStore(sp.GetRequiredService<AppPaths>().DatabasePath));
         services.AddSingleton<IAccountDataPersistence, AccountDataPersistence>();
@@ -62,6 +66,14 @@ public static class CompositionRoot
         services.AddSingleton<ICharacterBadgesLoader, CharacterBadgesLoader>();
         services.AddSingleton<ICharacterInventoryLoader, CharacterInventoryLoader>();
         services.AddSingleton<IDelay, TaskDelay>();
+        services.AddSingleton<IHardFarmStore, HardFarmStore>();
+        services.AddSingleton<IHardFarmUpdater>(sp => new HardFarmUpdater(
+            sp.GetRequiredService<IWikiPageFetcher>(),
+            sp.GetRequiredService<IHardFarmStore>(),
+            sp.GetRequiredService<IDelay>(),
+            sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton<IUrlLauncher, ProcessUrlLauncher>();
+        services.AddSingleton<HardFarmsViewModel>();
         services.AddSingleton<ISignInDialog, SignInDialog>();
         services.AddSingleton<SidebarViewModel>();
         services.AddSingleton<SummaryCardViewModel>();
@@ -81,7 +93,7 @@ public static class CompositionRoot
     }
 
     /// <summary>One long-lived client: no cookies, no automatic redirects (the fetcher validates each hop).</summary>
-    private static HttpClient CreateHttpClient() =>
+    private static HttpClient CreateHttpClient(TimeSpan timeout) =>
         new(new SocketsHttpHandler
         {
             AllowAutoRedirect = false,
@@ -89,6 +101,6 @@ public static class CompositionRoot
             AutomaticDecompression = DecompressionMethods.All,
         })
         {
-            Timeout = AccountPageFetcher.Timeout,
+            Timeout = timeout,
         };
 }

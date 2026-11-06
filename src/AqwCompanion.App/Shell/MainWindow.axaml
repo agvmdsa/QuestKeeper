@@ -4,6 +4,7 @@
         xmlns:local="using:AqwCompanion.App"
         xmlns:account="using:AqwCompanion.App.Account"
         xmlns:wiki="using:AqwCompanion.App.Wiki"
+        xmlns:hardfarms="using:AqwCompanion.App.HardFarms"
         xmlns:diagnostics="using:AqwCompanion.App.Diagnostics"
         x:Class="AqwCompanion.App.Shell.MainWindow"
         x:DataType="vm:MainViewModel"
@@ -31,8 +32,8 @@
     <TabItem Header="Wiki">
       <wiki:WikiView DataContext="{Binding Wiki}" />
     </TabItem>
-    <TabItem Header="Tracker">
-      <TextBlock Margin="16" Text="Tracker: coming soon" />
+    <TabItem Header="Hard Farms">
+      <hardfarms:HardFarmsView DataContext="{Binding HardFarms}" />
     </TabItem>
     <TabItem Header="Diagnostics">
       <diagnostics:DiagnosticsView DataContext="{Binding Diagnostics}" />

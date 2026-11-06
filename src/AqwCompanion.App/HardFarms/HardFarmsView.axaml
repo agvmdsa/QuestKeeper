@@ -1,0 +1,112 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:hf="using:AqwCompanion.App.HardFarms"
+             x:Class="AqwCompanion.App.HardFarms.HardFarmsView"
+             x:DataType="hf:HardFarmsViewModel">
+  <UserControl.Styles>
+    <Style Selector="TextBlock.muted">
+      <Setter Property="Foreground" Value="{DynamicResource AqwTextMuted}" />
+    </Style>
+    <!-- The badge always carries its meaning in words; the colour only reinforces it. -->
+    <Style Selector="Border.badge">
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="10,2" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AqwBorder}" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.badge.owned">
+      <Setter Property="Background" Value="{DynamicResource AqwSuccess}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AqwSuccessText}" />
+    </Style>
+    <Style Selector="Border.badge.owned > TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource AqwSuccessText}" />
+    </Style>
+    <Style Selector="Border.badge.missing">
+      <Setter Property="Background" Value="{DynamicResource AqwSurfaceRaised}" />
+    </Style>
+    <Style Selector="Border.badge.missing > TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource AqwTextMuted}" />
+    </Style>
+    <Style Selector="Border.badge.unknown">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.badge.unknown > TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource AqwTextSecondary}" />
+    </Style>
+  </UserControl.Styles>
+
+  <UserControl.Resources>
+    <DataTemplate x:Key="HardFarmRowTemplate" x:DataType="hf:HardFarmRow">
+      <Grid ColumnDefinitions="*,100,170,100,Auto" Margin="0,4">
+        <TextBlock x:Name="HardFarmsRowName" Grid.Column="0" Text="{Binding Name}"
+                   Foreground="{DynamicResource AqwTextBright}" TextWrapping="Wrap" VerticalAlignment="Center" />
+        <TextBlock x:Name="HardFarmsRowType" Grid.Column="1" Text="{Binding TypeText}" Classes="muted"
+                   VerticalAlignment="Center" />
+        <TextBlock x:Name="HardFarmsRowGroup" Grid.Column="2" Text="{Binding Group}" Classes="muted"
+                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+        <Border Grid.Column="3" Classes="badge" Classes.owned="{Binding IsOwned}"
+                Classes.missing="{Binding IsMissing}" Classes.unknown="{Binding IsUnknown}">
+          <TextBlock x:Name="HardFarmsRowBadge" Text="{Binding OwnershipText}" FontWeight="SemiBold" />
+        </Border>
+        <Button x:Name="HardFarmsOpenButton" Grid.Column="4" Margin="8,0,0,0" Content="Open on the Wiki"
+                CommandParameter="{Binding}"
+                Command="{Binding $parent[UserControl].((hf:HardFarmsViewModel)DataContext).OpenOnWikiCommand}"
+                AutomationProperties.Name="{Binding Name, StringFormat='Open {0} on the Wiki'}" />
+      </Grid>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <!-- The list sits in the star-sized row of a grid that gets the tab's height, so its panel can virtualize. -->
+  <Grid x:Name="HardFarmsLayout" RowDefinitions="Auto,Auto,Auto,*" Margin="16">
+    <StackPanel Grid.Row="0" Spacing="6" Margin="0,0,0,12">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button x:Name="HardFarmsUpdateButton" Classes="primary" Content="Update from the Wiki"
+                Command="{Binding UpdateCommand}" AutomationProperties.Name="Update the Hard Farming list from the Wiki" />
+        <Button x:Name="HardFarmsCancelButton" Content="Cancel" Command="{Binding CancelCommand}"
+                AutomationProperties.Name="Cancel the update" />
+        <TextBlock x:Name="HardFarmsProgressLine" Text="{Binding ProgressText}" IsVisible="{Binding HasProgress}"
+                   VerticalAlignment="Center" AutomationProperties.Name="{Binding ProgressText}" />
+        <TextBlock x:Name="HardFarmsStatusLine" Text="{Binding StatusText}" IsVisible="{Binding HasStatus}"
+                   VerticalAlignment="Center" TextWrapping="Wrap" AutomationProperties.Name="{Binding StatusText}" />
+      </StackPanel>
+      <TextBlock x:Name="HardFarmsLastUpdatedLine" Text="{Binding LastUpdatedText}" Classes="muted"
+                 IsVisible="{Binding HasList}" AutomationProperties.Name="{Binding LastUpdatedText}" />
+      <TextBlock x:Name="HardFarmsCreditLine" Text="{Binding CreditText}" Classes="muted" TextWrapping="Wrap"
+                 IsVisible="{Binding HasCredit}" AutomationProperties.Name="{Binding CreditText}" />
+    </StackPanel>
+
+    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8" IsVisible="{Binding HasList}">
+      <ComboBox x:Name="HardFarmsTypeFilter" Width="150" ItemsSource="{Binding TypeOptions}"
+                SelectedItem="{Binding TypeFilter, Mode=TwoWay}" AutomationProperties.Name="Filter by item type" />
+      <ComboBox x:Name="HardFarmsGroupFilter" Width="190" ItemsSource="{Binding GroupOptions}"
+                SelectedItem="{Binding GroupFilter, Mode=TwoWay}" AutomationProperties.Name="Filter by group" />
+      <ComboBox x:Name="HardFarmsOwnedFilter" Width="120" ItemsSource="{Binding OwnedOptions}"
+                SelectedItem="{Binding OwnedFilter, Mode=TwoWay}" AutomationProperties.Name="Filter by owned status" />
+      <TextBox x:Name="HardFarmsSearchBox" Width="240" Text="{Binding SearchText, Mode=TwoWay}"
+               Watermark="Search by name" AutomationProperties.Name="Search the Hard Farming list by name" />
+    </StackPanel>
+
+    <StackPanel Grid.Row="2" Margin="0,0,0,8" Spacing="4" IsVisible="{Binding HasList}">
+      <TextBlock x:Name="HardFarmsSummaryLine" Text="{Binding SummaryText}" FontWeight="SemiBold"
+                 Foreground="{DynamicResource AqwTextBright}" />
+      <TextBlock x:Name="HardFarmsNoMatchLine" Text="{x:Static hf:HardFarmsViewModel.NoMatchesText}"
+                 IsVisible="{Binding ShowNoMatches}" />
+    </StackPanel>
+
+    <TextBlock x:Name="HardFarmsEmptyState" Grid.Row="3" Text="{Binding EmptyStateText}" TextWrapping="Wrap"
+               VerticalAlignment="Top" IsVisible="{Binding ShowEmptyState}" />
+
+    <ListBox x:Name="HardFarmsList" Grid.Row="3" ItemsSource="{Binding Rows}" IsVisible="{Binding HasList}"
+             ItemTemplate="{StaticResource HardFarmRowTemplate}" Background="Transparent"
+             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+             AutomationProperties.Name="Hard Farming list">
+      <ListBox.ItemsPanel>
+        <ItemsPanelTemplate>
+          <VirtualizingStackPanel />
+        </ItemsPanelTemplate>
+      </ListBox.ItemsPanel>
+    </ListBox>
+  </Grid>
+</UserControl>

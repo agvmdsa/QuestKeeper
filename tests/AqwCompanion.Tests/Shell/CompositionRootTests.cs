@@ -1,5 +1,6 @@
 using AqwCompanion.App;
 using AqwCompanion.App.Account;
+using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure.Browser;
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Inventory;
@@ -10,6 +11,7 @@ using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Ingestion;
 using AqwCompanion.Core.Inventory;
 using AqwCompanion.Core.Persistence;
+using AqwCompanion.Core.Wiki;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -29,6 +31,19 @@ public class CompositionRootTests
         Assert.NotNull(main.Wiki);
         Assert.NotNull(main.Diagnostics);
         Assert.NotNull(main.Account);
+    }
+
+    [Fact]
+    public void Container_resolves_the_hard_farm_pipeline_and_shares_the_view_model_with_the_shell()
+    {
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
+
+        using var services = CompositionRoot.Build(paths);
+
+        Assert.IsType<WikiPageFetcher>(services.GetRequiredService<IWikiPageFetcher>());
+        Assert.IsType<HardFarmUpdater>(services.GetRequiredService<IHardFarmUpdater>());
+        Assert.IsType<ProcessUrlLauncher>(services.GetRequiredService<IUrlLauncher>());
+        Assert.Same(services.GetRequiredService<HardFarmsViewModel>(), services.GetRequiredService<MainViewModel>().HardFarms);
     }
 
     [Fact]

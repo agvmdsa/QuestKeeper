@@ -269,7 +269,11 @@ public partial class AccountViewModel : ObservableObject
         Sidebar.Reset();
         IsFromStoredData = false;
         Status = doneMessage;
+        DataForgotten?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>Raised after the stored data was removed (sign out); not raised when the user dismissed the window or the removal failed.</summary>
+    public event EventHandler? DataForgotten;
 
     /// <summary>First sign-in: the browser is shown so the user can sign in themselves.</summary>
     [RelayCommand]

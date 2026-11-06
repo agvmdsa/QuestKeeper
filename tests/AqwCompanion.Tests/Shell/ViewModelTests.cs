@@ -1,6 +1,12 @@
 using System.IO.Compression;
 using AqwCompanion.App;
+using AqwCompanion.App.Account;
 using AqwCompanion.App.Diagnostics;
+using AqwCompanion.App.HardFarms;
+using AqwCompanion.App.Inventory;
+using AqwCompanion.App.Shell;
+using AqwCompanion.App.SignIn;
+using AqwCompanion.Core.Wiki;
 using AqwCompanion.App.Wiki;
 using AqwCompanion.Core.Diagnostics;
 using AqwCompanion.Core.Ingestion;
@@ -96,5 +102,30 @@ public sealed class ViewModelTests : IDisposable
         Assert.Equal(Path.Combine(_paths.Root, "logs"), _paths.LogDirectory);
         Assert.Equal(Path.Combine(_paths.Root, "crashes"), _paths.CrashDirectory);
         Assert.Equal(Path.Combine(_paths.Root, "exports"), _paths.ExportDirectory);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Signing_out_resets_the_Hard_Farms_tab_but_a_dismissed_sign_out_does_not(bool completes)
+    {
+        var dialog = new FakeSignInDialog { OnShow = _ => Task.FromResult(SignInResult.Connected("Test Hero")) };
+        var account = AccountViewModelBuilder.Create(dialog, persistence: new FakeAccountDataPersistence());
+        var store = new HardFarmStore(new InMemoryStoredDataStore());
+        store.SaveList(new HardFarmList([new HardFarmGroup("Nation", ["blade-one"])], null), DateTimeOffset.UnixEpoch);
+        var hardFarms = new HardFarmsViewModel(
+            store, new FakeHardFarmUpdater(), new InventoryCardViewModel(new SidebarViewModel()), new FakeUrlLauncher());
+        await hardFarms.RestoreAsync();
+        var main = new MainViewModel(
+            account, new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer()), hardFarms);
+        await account.SignInCommand.ExecuteAsync(null);
+        Assert.Single(main.HardFarms.Rows);
+        dialog.OnShow = _ => Task.FromResult(completes ? SignInResult.SignedOut() : SignInResult.Cancelled());
+
+        account.RequestSignOutCommand.Execute(null);
+        await account.ConfirmSignOutCommand.ExecuteAsync(null);
+
+        Assert.Equal(completes, main.HardFarms.Rows.Count == 0);
+        Assert.Equal(completes, main.HardFarms.ShowEmptyState);
     }
 }

@@ -18,6 +18,7 @@ public partial class CompanionApp : Application
             var main = services.GetRequiredService<MainViewModel>();
             desktop.MainWindow = new MainWindow { DataContext = main };
             _ = main.Account.RestoreStoredDataAsync();
+            _ = main.HardFarms.RestoreAsync();
             desktop.Exit += (_, _) => services.Dispose();
         }
 

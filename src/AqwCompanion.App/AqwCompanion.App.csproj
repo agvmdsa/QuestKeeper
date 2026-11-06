@@ -4,6 +4,7 @@
     <AssemblyName>$(ProductExeName)</AssemblyName>
     <RootNamespace>AqwCompanion.App</RootNamespace>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
   <ItemGroup>

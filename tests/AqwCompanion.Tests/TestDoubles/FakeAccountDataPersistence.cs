@@ -1,6 +1,8 @@
 using AqwCompanion.App;
 using AqwCompanion.App.Persistence;
-using AqwCompanion.Core.Aqw;
+using AqwCompanion.Core.Account;
+using AqwCompanion.Core.Badges;
+using AqwCompanion.Core.Equipment;
 
 namespace AqwCompanion.Tests.TestDoubles;
 

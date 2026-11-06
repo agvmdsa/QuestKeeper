@@ -1,4 +1,4 @@
-using AqwCompanion.Core.Aqw;
+using AqwCompanion.Core.Account;
 
 namespace AqwCompanion.Tests.TestDoubles;
 

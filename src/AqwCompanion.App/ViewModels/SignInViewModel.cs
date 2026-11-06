@@ -1,7 +1,8 @@
 using AqwCompanion.App.Browser;
 using AqwCompanion.App.SignIn;
-using AqwCompanion.Core.Aqw;
+using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Ingestion;
+using AqwCompanion.Core.Site;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Serilog;

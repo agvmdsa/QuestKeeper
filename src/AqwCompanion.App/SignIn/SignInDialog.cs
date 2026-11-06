@@ -1,7 +1,7 @@
 using AqwCompanion.App.Browser;
 using AqwCompanion.App.ViewModels;
 using AqwCompanion.App.Views;
-using AqwCompanion.Core.Aqw;
+using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Ingestion;
 using Avalonia;
 using Avalonia.Controls;

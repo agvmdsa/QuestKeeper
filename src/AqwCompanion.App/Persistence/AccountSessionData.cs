@@ -1,4 +1,6 @@
-using AqwCompanion.Core.Aqw;
+using AqwCompanion.Core.Account;
+using AqwCompanion.Core.Badges;
+using AqwCompanion.Core.Equipment;
 using AqwCompanion.Core.Ingestion;
 
 namespace AqwCompanion.App.Persistence;

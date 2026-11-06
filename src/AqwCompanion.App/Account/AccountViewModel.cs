@@ -2,8 +2,6 @@ using System.Globalization;
 using AqwCompanion.App.Badges;
 using AqwCompanion.App.Equipment;
 using AqwCompanion.App.SignIn;
-using AqwCompanion.Core.Account;
-using AqwCompanion.Core.Badges;
 using AqwCompanion.Core.Equipment;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -13,7 +11,8 @@ namespace AqwCompanion.App.Account;
 
 /// <summary>
 /// The Account tab: a card that says whether the character name is known and opens the sign-in window.
-/// The browser lives only in that window; this view model just applies what the window reports.
+/// The browser lives only in that window; this view model just applies what the window reports and
+/// hands the data to the card view models.
 /// </summary>
 public partial class AccountViewModel : ObservableObject
 {
@@ -22,25 +21,10 @@ public partial class AccountViewModel : ObservableObject
     public const string ReadMessage = "Character name read from the account home page.";
     public const string CancelledMessage = "Cancelled. Nothing was changed.";
     public const string FailedFallbackMessage = "The character name could not be updated.";
-    public const string EquipmentLoadingText = "Loading equipment...";
-    public const string EquipmentUnavailableText = "Could not load the character page. Try Refresh again.";
-    public const string EquipmentNotFoundText = "No equipment found on the character page.";
-    public const string BadgesLoadingText = "Loading badges...";
-    public const string BadgesUnavailableText = "Could not load the badges. Try Refresh again.";
-    public const string BadgesNotFoundText = "No badges found for this character.";
-    public const string SummaryUnavailableText = "Not available. Try Refresh.";
-    public const string MissingValueText = "\u2014";
     public const string StoredDataMessage = "Showing the data from your last session.";
     public const string StoredDataNoticeText = "Showing data saved on this computer. Refresh to update it.";
     public const string ForgottenMessage = "Stored data was removed from this computer.";
     public const string ForgetFailedMessage = "Could not remove the stored data. Close other copies of the app and try again.";
-
-    /// <summary>Which card the details sidebar is showing.</summary>
-    public enum SidebarCard
-    {
-        Equipped,
-        Badges,
-    }
 
     private readonly ISignInDialog _dialog;
     private readonly ICharacterEquipmentLoader? _equipmentLoader;
@@ -60,54 +44,16 @@ public partial class AccountViewModel : ObservableObject
     private string? _characterName;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(
-        nameof(HasSummary), nameof(AdventureCoinsText), nameof(AccountTypeText), nameof(MembershipText), nameof(GearsOfDoomText))]
-    private AccountSummary? _summary;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasEquipment), nameof(ConnectionSummary), nameof(EquippedPreviewSlots))]
-    [NotifyCanExecuteChangedFor(nameof(OpenEquippedDetailsCommand))]
-    private CharacterEquipment? _equipment;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasBadges), nameof(BadgeCountText), nameof(BadgesPreview), nameof(BadgeGroups))]
-    [NotifyCanExecuteChangedFor(nameof(OpenBadgesDetailsCommand))]
-    private CharacterBadges? _badges;
-
-    [ObservableProperty]
-    private bool _isSidebarOpen;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SidebarTitle), nameof(SidebarAutomationName), nameof(IsEquippedSidebar), nameof(IsBadgesSidebar))]
-    private SidebarCard _sidebarContent = SidebarCard.Equipped;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasEquipmentStatus))]
-    private string _equipmentStatus = string.Empty;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasBadgesStatus))]
-    private string _badgesStatus = string.Empty;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SummaryUpdatedText), nameof(HasSummaryUpdatedText))]
-    private DateTimeOffset? _identityReadAt;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(EquipmentUpdatedText), nameof(HasEquipmentUpdatedText))]
-    private DateTimeOffset? _equipmentReadAt;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(BadgesUpdatedText), nameof(HasBadgesUpdatedText))]
-    private DateTimeOffset? _badgesReadAt;
-
-    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StoredDataNotice), nameof(HasStoredDataNotice), nameof(ShowSignIn))]
     private bool _isFromStoredData;
 
     [ObservableProperty]
     private bool _isForgetPending;
 
+    /// <param name="summary">The account summary card.</param>
+    /// <param name="equipment">The equipped card.</param>
+    /// <param name="badges">The badges card.</param>
+    /// <param name="sidebar">The details sidebar the cards open.</param>
     /// <param name="equipmentLoader">Reads the equipped items once the name is known; without it the panel stays empty.</param>
     /// <param name="badgesLoader">Reads the badges once the equipment has been read; without it the badges card stays empty.</param>
     /// <param name="persistence">Keeps the last read data on disk; without it nothing is stored or restored.</param>
@@ -115,6 +61,10 @@ public partial class AccountViewModel : ObservableObject
     /// <param name="session">Follows restore and forget for the in-memory session data; without it nothing is seeded or cleared.</param>
     public AccountViewModel(
         ISignInDialog dialog,
+        SummaryCardViewModel summary,
+        EquipmentCardViewModel equipment,
+        BadgesCardViewModel badges,
+        SidebarViewModel sidebar,
         ICharacterEquipmentLoader? equipmentLoader = null,
         ICharacterBadgesLoader? badgesLoader = null,
         IAccountDataPersistence? persistence = null,
@@ -123,55 +73,32 @@ public partial class AccountViewModel : ObservableObject
     {
         _session = session;
         _dialog = dialog;
+        Summary = summary;
+        Equipment = equipment;
+        Badges = badges;
+        Sidebar = sidebar;
         _equipmentLoader = equipmentLoader;
         _badgesLoader = badgesLoader;
         _persistence = persistence;
         _clock = clock ?? TimeProvider.System;
+        equipment.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(EquipmentCardViewModel.Data))
+            {
+                OnPropertyChanged(nameof(ConnectionSummary));
+            }
+        };
     }
 
-    public bool HasEquipment => Equipment is not null;
+    public SummaryCardViewModel Summary { get; }
 
-    public bool HasEquipmentStatus => EquipmentStatus.Length > 0;
+    public EquipmentCardViewModel Equipment { get; }
 
-    /// <summary>True when there is at least one badge to show; an empty list is reported through the status text.</summary>
-    public bool HasBadges => Badges is { Count: > 0 };
+    public BadgesCardViewModel Badges { get; }
 
-    public bool HasBadgesStatus => BadgesStatus.Length > 0;
-
-    public bool HasSummary => Summary is not null;
-
-    /// <summary>AdventureCoins with thousands separators, or a dash when the page did not carry it.</summary>
-    public string AdventureCoinsText =>
-        Summary?.AdventureCoins is { } coins ? coins.ToString("N0", CultureInfo.InvariantCulture) : MissingValueText;
-
-    public string AccountTypeText => Summary?.AccountType ?? MissingValueText;
-
-    /// <summary>The page's own membership line, date included.</summary>
-    public string MembershipText => Summary?.MembershipStatus ?? MissingValueText;
-
-    public string GearsOfDoomText =>
-        Summary?.GearsOfDoom is { } gears ? gears.ToString(CultureInfo.InvariantCulture) : MissingValueText;
+    public SidebarViewModel Sidebar { get; }
 
     public bool IsConnected => CharacterName is not null;
-
-    /// <summary>The first few standard slots, shown on the dashboard card.</summary>
-    public IEnumerable<EquipmentSlot> EquippedPreviewSlots => Equipment?.StandardSlots.Take(5) ?? [];
-
-    /// <summary>The first few badges, shown on the dashboard card.</summary>
-    public IEnumerable<Badge> BadgesPreview => Badges?.Preview ?? [];
-
-    /// <summary>All badges grouped by category, shown in the sidebar.</summary>
-    public IReadOnlyList<BadgeGroup> BadgeGroups => Badges?.GroupedByCategory ?? [];
-
-    public string BadgeCountText => Badges is { Count: 1 } ? "1 badge" : $"{Badges?.Count ?? 0} badges";
-
-    public bool IsEquippedSidebar => SidebarContent == SidebarCard.Equipped;
-
-    public bool IsBadgesSidebar => SidebarContent == SidebarCard.Badges;
-
-    public string SidebarTitle => IsBadgesSidebar ? "Badges" : "Equipped";
-
-    public string SidebarAutomationName => $"{SidebarTitle} details";
 
     /// <summary>The top bar text: "name · Lv level · faction"; level and faction appear once the character page is read.</summary>
     public string ConnectionSummary
@@ -184,7 +111,7 @@ public partial class AccountViewModel : ObservableObject
             }
 
             var parts = new List<string>(3) { CharacterName };
-            if (Equipment is { } equipment && string.Equals(equipment.Name, CharacterName, StringComparison.OrdinalIgnoreCase))
+            if (Equipment.Data is { } equipment && string.Equals(equipment.Name, CharacterName, StringComparison.OrdinalIgnoreCase))
             {
                 if (equipment.Level is { } level)
                 {
@@ -210,57 +137,7 @@ public partial class AccountViewModel : ObservableObject
 
     public bool HasStoredDataNotice => IsFromStoredData;
 
-    public string SummaryUpdatedText => UpdatedText(IdentityReadAt);
-
-    public bool HasSummaryUpdatedText => IdentityReadAt is not null;
-
-    public string EquipmentUpdatedText => UpdatedText(EquipmentReadAt);
-
-    public bool HasEquipmentUpdatedText => EquipmentReadAt is not null;
-
-    public string BadgesUpdatedText => UpdatedText(BadgesReadAt);
-
-    public bool HasBadgesUpdatedText => BadgesReadAt is not null;
-
-    private static string UpdatedText(DateTimeOffset? at) =>
-        at is { } value ? "Last updated " + value.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) : string.Empty;
-
     public string Headline => CharacterName is null ? NotConnectedText : $"Connected as {CharacterName}";
-
-    /// <summary>Opens the equipped details sidebar; only possible while there is equipment to show.</summary>
-    [RelayCommand(CanExecute = nameof(HasEquipment))]
-    private void OpenEquippedDetails()
-    {
-        SidebarContent = SidebarCard.Equipped;
-        IsSidebarOpen = true;
-    }
-
-    /// <summary>Opens the badges sidebar; only possible while there are badges to show.</summary>
-    [RelayCommand(CanExecute = nameof(HasBadges))]
-    private void OpenBadgesDetails()
-    {
-        SidebarContent = SidebarCard.Badges;
-        IsSidebarOpen = true;
-    }
-
-    [RelayCommand]
-    private void CloseSidebar() => IsSidebarOpen = false;
-
-    partial void OnEquipmentChanged(CharacterEquipment? value)
-    {
-        if (value is null && IsEquippedSidebar)
-        {
-            IsSidebarOpen = false;
-        }
-    }
-
-    partial void OnBadgesChanged(CharacterBadges? value)
-    {
-        if (value is not { Count: > 0 } && IsBadgesSidebar)
-        {
-            IsSidebarOpen = false;
-        }
-    }
 
     /// <summary>
     /// Shows the data kept from the last session. Called once at startup; reads the disk off the UI thread, never throws,
@@ -282,12 +159,12 @@ public partial class AccountViewModel : ObservableObject
             }
 
             CharacterName = restored.CharacterName;
-            Summary = restored.Summary;
-            Equipment = restored.Equipment;
-            Badges = restored.Badges;
-            IdentityReadAt = restored.IdentityReadAtUtc;
-            EquipmentReadAt = restored.Equipment is null ? null : restored.EquipmentReadAtUtc;
-            BadgesReadAt = restored.Badges is null ? null : restored.BadgesReadAtUtc;
+            Summary.Data = restored.Summary;
+            Equipment.Data = restored.Equipment;
+            Badges.Data = restored.Badges;
+            Summary.ReadAt = restored.IdentityReadAtUtc;
+            Equipment.ReadAt = restored.Equipment is null ? null : restored.EquipmentReadAtUtc;
+            Badges.ReadAt = restored.Badges is null ? null : restored.BadgesReadAtUtc;
             IsFromStoredData = true;
             Status = StoredDataMessage;
             _session?.Seed(restored);
@@ -324,17 +201,11 @@ public partial class AccountViewModel : ObservableObject
 
         _characterLoad?.Cancel();
         _session?.Clear();
-        SidebarContent = SidebarCard.Equipped;
         CharacterName = null;
-        Summary = null;
-        Equipment = null;
-        Badges = null;
-        IdentityReadAt = null;
-        EquipmentReadAt = null;
-        BadgesReadAt = null;
-        EquipmentStatus = string.Empty;
-        BadgesStatus = string.Empty;
-        IsSidebarOpen = false;
+        Summary.Clear();
+        Equipment.Clear();
+        Badges.Clear();
+        Sidebar.Reset();
         IsFromStoredData = false;
         IsForgetPending = false;
         Status = ForgottenMessage;
@@ -393,18 +264,18 @@ public partial class AccountViewModel : ObservableObject
         using var load = new CancellationTokenSource();
         _characterLoad = load;
 
-        if (!string.Equals(Equipment?.Name, name, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(Equipment.Data?.Name, name, StringComparison.OrdinalIgnoreCase))
         {
-            Equipment = null;
-            Badges = null;
-            EquipmentReadAt = null;
-            BadgesReadAt = null;
+            Equipment.Data = null;
+            Badges.Data = null;
+            Equipment.ReadAt = null;
+            Badges.ReadAt = null;
         }
 
-        EquipmentStatus = EquipmentLoadingText;
-        if (_badgesLoader is not null && Badges is null)
+        Equipment.Status = EquipmentCardViewModel.LoadingText;
+        if (_badgesLoader is not null && Badges.Data is null)
         {
-            BadgesStatus = BadgesLoadingText;
+            Badges.Status = BadgesCardViewModel.LoadingText;
         }
 
         try
@@ -418,24 +289,24 @@ public partial class AccountViewModel : ObservableObject
             switch (loaded.Status)
             {
                 case EquipmentLoadStatus.Loaded:
-                    Equipment = loaded.Equipment;
-                    EquipmentStatus = string.Empty;
-                    EquipmentReadAt = null;
+                    Equipment.Data = loaded.Equipment;
+                    Equipment.Status = string.Empty;
+                    Equipment.ReadAt = null;
                     if (loaded is { Persisted: true, Equipment: { } toSave })
                     {
                         var now = _clock.GetUtcNow();
                         _persistence?.SaveEquipment(toSave, now);
-                        EquipmentReadAt = now;
+                        Equipment.ReadAt = now;
                     }
 
                     break;
                 case EquipmentLoadStatus.NotFound:
-                    Equipment = null;
-                    EquipmentReadAt = null;
-                    EquipmentStatus = EquipmentNotFoundText;
+                    Equipment.Data = null;
+                    Equipment.ReadAt = null;
+                    Equipment.Status = EquipmentCardViewModel.NotFoundText;
                     break;
                 default:
-                    EquipmentStatus = EquipmentUnavailableText;
+                    Equipment.Status = EquipmentCardViewModel.UnavailableText;
                     break;
             }
 
@@ -450,8 +321,8 @@ public partial class AccountViewModel : ObservableObject
             Log.Error("Showing the character details failed: {ExceptionType}", ex.GetType().Name);
             if (!load.IsCancellationRequested)
             {
-                EquipmentStatus = EquipmentUnavailableText;
-                BadgesStatus = _badgesLoader is not null ? BadgesUnavailableText : string.Empty;
+                Equipment.Status = EquipmentCardViewModel.UnavailableText;
+                Badges.Status = _badgesLoader is not null ? BadgesCardViewModel.UnavailableText : string.Empty;
             }
         }
         finally
@@ -473,7 +344,7 @@ public partial class AccountViewModel : ObservableObject
 
         if (characterId is not { } id)
         {
-            BadgesStatus = BadgesUnavailableText;
+            Badges.Status = BadgesCardViewModel.UnavailableText;
             return;
         }
 
@@ -486,16 +357,16 @@ public partial class AccountViewModel : ObservableObject
         switch (loaded.Status)
         {
             case BadgesLoadStatus.Loaded:
-                Badges = loaded.Badges;
-                BadgesStatus = loaded.Badges is { Count: > 0 } ? string.Empty : BadgesNotFoundText;
-                BadgesReadAt = null;
+                Badges.Data = loaded.Badges;
+                Badges.Status = loaded.Badges is { Count: > 0 } ? string.Empty : BadgesCardViewModel.NotFoundText;
+                Badges.ReadAt = null;
                 if (loaded.Persisted)
                 {
                     if (loaded.Badges is { Count: > 0 } toSave)
                     {
                         var now = _clock.GetUtcNow();
                         _persistence?.SaveBadges(toSave, now);
-                        BadgesReadAt = now;
+                        Badges.ReadAt = now;
                     }
                     else
                     {
@@ -505,12 +376,12 @@ public partial class AccountViewModel : ObservableObject
 
                 break;
             case BadgesLoadStatus.NotFound:
-                Badges = null;
-                BadgesReadAt = null;
-                BadgesStatus = BadgesNotFoundText;
+                Badges.Data = null;
+                Badges.ReadAt = null;
+                Badges.Status = BadgesCardViewModel.NotFoundText;
                 break;
             default:
-                BadgesStatus = BadgesUnavailableText;
+                Badges.Status = BadgesCardViewModel.UnavailableText;
                 break;
         }
     }
@@ -524,18 +395,18 @@ public partial class AccountViewModel : ObservableObject
                 if (CharacterName is not null && !string.Equals(CharacterName, name, StringComparison.OrdinalIgnoreCase))
                 {
                     // The stored records of the previous character are removed by SaveIdentity.
-                    Equipment = null;
-                    Badges = null;
-                    EquipmentReadAt = null;
-                    BadgesReadAt = null;
+                    Equipment.Data = null;
+                    Badges.Data = null;
+                    Equipment.ReadAt = null;
+                    Badges.ReadAt = null;
                 }
 
                 // A successful read replaces the summary, so a different character never shows the old one.
                 CharacterName = name;
-                Summary = result.Summary;
+                Summary.Data = result.Summary;
                 var now = _clock.GetUtcNow();
                 _persistence?.SaveIdentity(name, result.Summary, now);
-                IdentityReadAt = now;
+                Summary.ReadAt = now;
                 IsFromStoredData = false;
                 Status = ReadMessage;
                 break;

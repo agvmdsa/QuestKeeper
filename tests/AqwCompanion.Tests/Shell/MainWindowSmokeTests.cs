@@ -54,12 +54,13 @@ public class MainWindowSmokeTests
         {
             ToRestore = new RestoredAccount("Test Hero", SampleAccount.Summary, at, null, null, null, null),
         };
-        var vm = new AccountViewModel(new FakeSignInDialog(), persistence: persistence);
+        var vm = AccountViewModelBuilder.Create(new FakeSignInDialog(), persistence: persistence);
         var view = new AccountView { DataContext = vm };
         var window = new Window { Content = view };
         window.Show();
 
         await vm.RestoreStoredDataAsync();
+        window.UpdateLayout();
 
         var notice = view.FindControl<TextBlock>("StoredDataNoticeLine")!;
         Assert.True(notice.IsVisible);
@@ -68,7 +69,7 @@ public class MainWindowSmokeTests
         Assert.True(forget.IsVisible);
         Assert.Equal("Forget stored data", forget.Content);
         Assert.True(view.FindControl<Button>("SignInButton")!.IsVisible);
-        Assert.True(view.FindControl<TextBlock>("SummaryUpdatedLine")!.IsVisible);
+        Assert.True(view.Named<TextBlock>("SummaryUpdatedLine").IsVisible);
         Assert.False(view.FindControl<StackPanel>("ForgetConfirmation")!.IsVisible);
 
         vm.RequestForgetCommand.Execute(null);

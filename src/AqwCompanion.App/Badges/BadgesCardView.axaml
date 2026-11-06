@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:badges="using:AqwCompanion.Core.Badges"
+             xmlns:badgesapp="using:AqwCompanion.App.Badges"
+             x:Class="AqwCompanion.App.Badges.BadgesCardView"
+             x:DataType="badgesapp:BadgesCardViewModel">
+  <UserControl.Resources>
+    <DataTemplate x:Key="BadgePreviewRow" x:DataType="badges:Badge">
+      <TextBlock Text="{Binding Title}" Margin="0,3" TextWrapping="Wrap" />
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <Border x:Name="BadgesPanel" Classes="card" Cursor="Hand">
+    <StackPanel>
+      <Border Classes="cardHeader">
+        <TextBlock Text="Badges" Classes="cardTitle" />
+      </Border>
+      <StackPanel Margin="16" Spacing="12">
+        <TextBlock x:Name="BadgesStatusLine" Text="{Binding Status}" TextWrapping="Wrap"
+                   IsVisible="{Binding HasStatus}" />
+
+        <StackPanel Spacing="12" IsVisible="{Binding HasData}">
+          <TextBlock x:Name="BadgeCountLine" Text="{Binding CountText}" FontSize="16"
+                     FontWeight="SemiBold" Foreground="{DynamicResource AqwTextBright}" />
+          <ItemsControl x:Name="BadgesPreviewList" ItemsSource="{Binding Preview}"
+                        ItemTemplate="{StaticResource BadgePreviewRow}" />
+          <Button x:Name="ViewAllBadgesButton" Content="View all ›" Command="{Binding OpenDetailsCommand}"
+                  HorizontalAlignment="Left"
+                  AutomationProperties.Name="View all badges" />
+        </StackPanel>
+
+        <TextBlock x:Name="BadgesUpdatedLine" Text="{Binding UpdatedText}" Classes="muted"
+                   TextWrapping="Wrap" IsVisible="{Binding HasUpdatedText}"
+                   AutomationProperties.Name="{Binding UpdatedText}" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</UserControl>

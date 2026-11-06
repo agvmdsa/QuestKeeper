@@ -1,0 +1,33 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aqw="using:AqwCompanion.Core.Equipment"
+             xmlns:equipmentapp="using:AqwCompanion.App.Equipment"
+             x:Class="AqwCompanion.App.Equipment.EquipmentSidebarContent"
+             x:DataType="equipmentapp:EquipmentCardViewModel">
+  <UserControl.Resources>
+    <DataTemplate x:Key="SlotRow" x:DataType="aqw:EquipmentSlot">
+      <Grid ColumnDefinitions="130,*" Margin="0,3">
+        <TextBlock Grid.Column="0" Text="{Binding Label}" Classes="muted" TextWrapping="Wrap" />
+        <TextBlock Grid.Column="1" Text="{Binding ItemName}" TextWrapping="Wrap" />
+      </Grid>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <StackPanel Spacing="12">
+    <StackPanel Spacing="2">
+      <TextBlock x:Name="EquipmentTitle" Text="{Binding Data.Title}" FontSize="16" FontWeight="SemiBold"
+                 Foreground="{DynamicResource AqwTextBright}" TextWrapping="Wrap" />
+      <TextBlock Text="{Binding Data.Summary}" Classes="muted" TextWrapping="Wrap" />
+    </StackPanel>
+
+    <ItemsControl x:Name="StandardSlotList" ItemsSource="{Binding Data.StandardSlots}"
+                  ItemTemplate="{StaticResource SlotRow}" />
+
+    <StackPanel Spacing="6" IsVisible="{Binding Data.HasCustomSlots}">
+      <Separator Background="{DynamicResource AqwBorder}" />
+      <TextBlock Text="Custom appearance" FontWeight="SemiBold" Foreground="{DynamicResource AqwTextBright}" />
+      <ItemsControl x:Name="CustomSlotList" ItemsSource="{Binding Data.CustomSlots}"
+                    ItemTemplate="{StaticResource SlotRow}" />
+    </StackPanel>
+  </StackPanel>
+</UserControl>

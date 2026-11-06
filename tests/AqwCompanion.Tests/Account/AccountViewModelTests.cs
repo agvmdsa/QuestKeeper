@@ -14,7 +14,7 @@ public class AccountViewModelTests
 {
     private readonly FakeSignInDialog _dialog = new();
 
-    private AccountViewModel Build() => new(_dialog);
+    private AccountViewModel Build() => AccountViewModelBuilder.Create(_dialog);
 
     private static Func<SignInMode, Task<SignInResult>> Reports(SignInResult result) =>
         _ => Task.FromResult(result);
@@ -179,7 +179,7 @@ public class AccountViewModelTests
         Func<string, Task<EquipmentLoadResult>> equipment, Func<int, Task<BadgesLoadResult>> badges)
     {
         _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
-        var vm = new AccountViewModel(_dialog, new FakeEquipmentLoader(equipment), new FakeBadgesLoader(badges));
+        var vm = AccountViewModelBuilder.Create(_dialog, new FakeEquipmentLoader(equipment), new FakeBadgesLoader(badges));
         await vm.SignInCommand.ExecuteAsync(null);
         return vm;
     }
@@ -189,27 +189,19 @@ public class AccountViewModelTests
     {
         var badgesLoader = new FakeBadgesLoader(HasBadges(Badges(7)));
         _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
-        var vm = new AccountViewModel(_dialog, new FakeEquipmentLoader(Equips(Equipment("Test Hero", 3))), badgesLoader);
+        var vm = AccountViewModelBuilder.Create(_dialog, new FakeEquipmentLoader(Equips(Equipment("Test Hero", 3))), badgesLoader);
 
         await vm.SignInCommand.ExecuteAsync(null);
 
         Assert.Equal([3], badgesLoader.Requested);
-        Assert.True(vm.HasBadges);
-        Assert.Equal("7 badges", vm.BadgeCountText);
-        Assert.Equal(5, vm.BadgesPreview.Count());
-        Assert.Equal("Test Badge 1", vm.BadgesPreview.First().Title);
-        Assert.Equal(["Quests", "Events"], vm.BadgeGroups.Select(g => g.Category));
-        Assert.Equal(string.Empty, vm.BadgesStatus);
-        Assert.False(vm.HasBadgesStatus);
-        Assert.True(vm.OpenBadgesDetailsCommand.CanExecute(null));
-    }
-
-    [Fact]
-    public async Task A_single_badge_uses_the_singular_count()
-    {
-        var vm = await ConnectedAsync(Equips(Equipment("Test Hero", 3)), HasBadges(Badges(1)));
-
-        Assert.Equal("1 badge", vm.BadgeCountText);
+        Assert.True(vm.Badges.HasData);
+        Assert.Equal("7 badges", vm.Badges.CountText);
+        Assert.Equal(5, vm.Badges.Preview.Count());
+        Assert.Equal("Test Badge 1", vm.Badges.Preview.First().Title);
+        Assert.Equal(["Quests", "Events"], vm.Badges.Groups.Select(g => g.Category));
+        Assert.Equal(string.Empty, vm.Badges.Status);
+        Assert.False(vm.Badges.HasStatus);
+        Assert.True(vm.Badges.OpenDetailsCommand.CanExecute(null));
     }
 
     [Fact]
@@ -217,18 +209,18 @@ public class AccountViewModelTests
     {
         var gate = new TaskCompletionSource<BadgesLoadResult>();
         _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
-        var vm = new AccountViewModel(
+        var vm = AccountViewModelBuilder.Create(
             _dialog, new FakeEquipmentLoader(Equips(Equipment("Test Hero", 3))), new FakeBadgesLoader(_ => gate.Task));
 
         var signIn = vm.SignInCommand.ExecuteAsync(null);
 
-        Assert.Equal(AccountViewModel.BadgesLoadingText, vm.BadgesStatus);
-        Assert.True(vm.HasBadgesStatus);
-        Assert.False(vm.HasBadges);
+        Assert.Equal(BadgesCardViewModel.LoadingText, vm.Badges.Status);
+        Assert.True(vm.Badges.HasStatus);
+        Assert.False(vm.Badges.HasData);
         gate.SetResult(new BadgesLoadResult(BadgesLoadStatus.Loaded, Badges(2)));
         await signIn;
-        Assert.Equal(string.Empty, vm.BadgesStatus);
-        Assert.True(vm.HasBadges);
+        Assert.Equal(string.Empty, vm.Badges.Status);
+        Assert.True(vm.Badges.HasData);
     }
 
     [Fact]
@@ -236,9 +228,9 @@ public class AccountViewModelTests
     {
         var vm = await ConnectedAsync(Equips(Equipment("Test Hero", 3)), HasBadges(Badges(0)));
 
-        Assert.False(vm.HasBadges);
-        Assert.Equal(AccountViewModel.BadgesNotFoundText, vm.BadgesStatus);
-        Assert.False(vm.OpenBadgesDetailsCommand.CanExecute(null));
+        Assert.False(vm.Badges.HasData);
+        Assert.Equal(BadgesCardViewModel.NotFoundText, vm.Badges.Status);
+        Assert.False(vm.Badges.OpenDetailsCommand.CanExecute(null));
     }
 
     [Fact]
@@ -247,8 +239,8 @@ public class AccountViewModelTests
         var vm = await ConnectedAsync(
             Equips(Equipment("Test Hero", 3)), _ => Task.FromResult(new BadgesLoadResult(BadgesLoadStatus.NotFound)));
 
-        Assert.False(vm.HasBadges);
-        Assert.Equal(AccountViewModel.BadgesNotFoundText, vm.BadgesStatus);
+        Assert.False(vm.Badges.HasData);
+        Assert.Equal(BadgesCardViewModel.NotFoundText, vm.Badges.Status);
     }
 
     [Fact]
@@ -257,8 +249,8 @@ public class AccountViewModelTests
         var vm = await ConnectedAsync(
             Equips(Equipment("Test Hero", 3)), _ => Task.FromResult(new BadgesLoadResult(BadgesLoadStatus.Unavailable)));
 
-        Assert.False(vm.HasBadges);
-        Assert.Equal(AccountViewModel.BadgesUnavailableText, vm.BadgesStatus);
+        Assert.False(vm.Badges.HasData);
+        Assert.Equal(BadgesCardViewModel.UnavailableText, vm.Badges.Status);
     }
 
     [Fact]
@@ -266,13 +258,13 @@ public class AccountViewModelTests
     {
         var badgesLoader = new FakeBadgesLoader(HasBadges(Badges(3)));
         _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
-        var vm = new AccountViewModel(_dialog, new FakeEquipmentLoader(Equips(Equipment("Test Hero", null))), badgesLoader);
+        var vm = AccountViewModelBuilder.Create(_dialog, new FakeEquipmentLoader(Equips(Equipment("Test Hero", null))), badgesLoader);
 
         await vm.SignInCommand.ExecuteAsync(null);
 
         Assert.Empty(badgesLoader.Requested);
-        Assert.True(vm.HasEquipment);
-        Assert.Equal(AccountViewModel.BadgesUnavailableText, vm.BadgesStatus);
+        Assert.True(vm.Equipment.HasData);
+        Assert.Equal(BadgesCardViewModel.UnavailableText, vm.Badges.Status);
     }
 
     [Fact]
@@ -280,7 +272,7 @@ public class AccountViewModelTests
     {
         var badgesLoader = new FakeBadgesLoader(HasBadges(Badges(3)));
         _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
-        var vm = new AccountViewModel(
+        var vm = AccountViewModelBuilder.Create(
             _dialog,
             new FakeEquipmentLoader(_ => Task.FromResult(new EquipmentLoadResult(EquipmentLoadStatus.Unavailable))),
             badgesLoader);
@@ -288,7 +280,7 @@ public class AccountViewModelTests
         await vm.SignInCommand.ExecuteAsync(null);
 
         Assert.Empty(badgesLoader.Requested);
-        Assert.Equal(AccountViewModel.BadgesUnavailableText, vm.BadgesStatus);
+        Assert.Equal(BadgesCardViewModel.UnavailableText, vm.Badges.Status);
     }
 
     [Fact]
@@ -296,74 +288,15 @@ public class AccountViewModelTests
     {
         var badgesLoader = new FakeBadgesLoader(HasBadges(Badges(3)));
         _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
-        var vm = new AccountViewModel(_dialog, new FakeEquipmentLoader(Equips(Equipment("Test Hero", 3))), badgesLoader);
+        var vm = AccountViewModelBuilder.Create(_dialog, new FakeEquipmentLoader(Equips(Equipment("Test Hero", 3))), badgesLoader);
         await vm.SignInCommand.ExecuteAsync(null);
 
-        vm.OpenBadgesDetailsCommand.Execute(null);
-        vm.CloseSidebarCommand.Execute(null);
+        vm.Badges.OpenDetailsCommand.Execute(null);
+        vm.Sidebar.CloseCommand.Execute(null);
         Assert.Single(badgesLoader.Requested);
 
         await vm.RefreshCommand.ExecuteAsync(null);
         Assert.Equal([3, 3], badgesLoader.Requested);
-    }
-
-    [Fact]
-    public async Task Each_card_opens_the_sidebar_with_its_own_title()
-    {
-        var vm = await ConnectedAsync(Equips(Equipment("Test Hero", 3)), HasBadges(Badges(3)));
-        Assert.False(vm.IsSidebarOpen);
-
-        vm.OpenBadgesDetailsCommand.Execute(null);
-
-        Assert.True(vm.IsSidebarOpen);
-        Assert.Equal("Badges", vm.SidebarTitle);
-        Assert.Equal("Badges details", vm.SidebarAutomationName);
-        Assert.True(vm.IsBadgesSidebar);
-        Assert.False(vm.IsEquippedSidebar);
-
-        vm.CloseSidebarCommand.Execute(null);
-        vm.OpenEquippedDetailsCommand.Execute(null);
-
-        Assert.True(vm.IsSidebarOpen);
-        Assert.Equal("Equipped", vm.SidebarTitle);
-        Assert.Equal("Equipped details", vm.SidebarAutomationName);
-        Assert.True(vm.IsEquippedSidebar);
-        Assert.False(vm.IsBadgesSidebar);
-    }
-
-    [Fact]
-    public async Task Clearing_the_badges_closes_the_badges_sidebar()
-    {
-        var vm = await ConnectedAsync(Equips(Equipment("Test Hero", 3)), HasBadges(Badges(3)));
-        vm.OpenBadgesDetailsCommand.Execute(null);
-
-        vm.Badges = null;
-
-        Assert.False(vm.IsSidebarOpen);
-        Assert.False(vm.OpenBadgesDetailsCommand.CanExecute(null));
-    }
-
-    [Fact]
-    public async Task Clearing_the_badges_leaves_the_equipped_sidebar_open()
-    {
-        var vm = await ConnectedAsync(Equips(Equipment("Test Hero", 3)), HasBadges(Badges(3)));
-        vm.OpenEquippedDetailsCommand.Execute(null);
-
-        vm.Badges = null;
-
-        Assert.True(vm.IsSidebarOpen);
-    }
-
-    [Fact]
-    public async Task Clearing_the_equipment_leaves_the_badges_sidebar_open()
-    {
-        var vm = await ConnectedAsync(Equips(Equipment("Test Hero", 3)), HasBadges(Badges(3)));
-        vm.OpenBadgesDetailsCommand.Execute(null);
-
-        vm.Equipment = null;
-
-        Assert.True(vm.IsSidebarOpen);
-        Assert.True(vm.IsBadgesSidebar);
     }
 
     [Fact]
@@ -374,38 +307,26 @@ public class AccountViewModelTests
                 ? new EquipmentLoadResult(EquipmentLoadStatus.Loaded, Equipment(name, 3))
                 : new EquipmentLoadResult(EquipmentLoadStatus.Unavailable)),
             HasBadges(Badges(3)));
-        vm.OpenBadgesDetailsCommand.Execute(null);
+        vm.Badges.OpenDetailsCommand.Execute(null);
         _dialog.OnShow = Reports(SignInResult.Connected("Other Hero"));
 
         await vm.RefreshCommand.ExecuteAsync(null);
 
-        Assert.False(vm.IsSidebarOpen);
-        Assert.False(vm.HasBadges);
+        Assert.False(vm.Sidebar.IsOpen);
+        Assert.False(vm.Badges.HasData);
     }
 
     [Fact]
     public async Task Without_a_badges_loader_the_badges_card_stays_empty()
     {
         _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
-        var vm = new AccountViewModel(_dialog, new FakeEquipmentLoader(Equips(Equipment("Test Hero", 3))));
+        var vm = AccountViewModelBuilder.Create(_dialog, new FakeEquipmentLoader(Equips(Equipment("Test Hero", 3))));
 
         await vm.SignInCommand.ExecuteAsync(null);
 
-        Assert.True(vm.HasEquipment);
-        Assert.False(vm.HasBadges);
-        Assert.Equal(string.Empty, vm.BadgesStatus);
-    }
-
-    [Fact]
-    public void Without_a_summary_the_card_texts_are_dashes()
-    {
-        var vm = Build();
-
-        Assert.False(vm.HasSummary);
-        Assert.Equal(AccountViewModel.MissingValueText, vm.AdventureCoinsText);
-        Assert.Equal(AccountViewModel.MissingValueText, vm.AccountTypeText);
-        Assert.Equal(AccountViewModel.MissingValueText, vm.MembershipText);
-        Assert.Equal(AccountViewModel.MissingValueText, vm.GearsOfDoomText);
+        Assert.True(vm.Equipment.HasData);
+        Assert.False(vm.Badges.HasData);
+        Assert.Equal(string.Empty, vm.Badges.Status);
     }
 
     [Fact]
@@ -416,26 +337,11 @@ public class AccountViewModelTests
 
         await vm.SignInCommand.ExecuteAsync(null);
 
-        Assert.True(vm.HasSummary);
-        Assert.Equal("1,234,567", vm.AdventureCoinsText);
-        Assert.Equal("LEGEND", vm.AccountTypeText);
-        Assert.Equal("Membership Expired: Tuesday, January 2, 2030", vm.MembershipText);
-        Assert.Equal("7", vm.GearsOfDoomText);
-    }
-
-    [Fact]
-    public async Task Missing_summary_fields_show_a_dash_while_the_others_show()
-    {
-        _dialog.OnShow = Reports(SignInResult.Connected("Test Hero", new AccountSummary(5, null, null, null)));
-        var vm = Build();
-
-        await vm.SignInCommand.ExecuteAsync(null);
-
-        Assert.True(vm.HasSummary);
-        Assert.Equal("5", vm.AdventureCoinsText);
-        Assert.Equal(AccountViewModel.MissingValueText, vm.AccountTypeText);
-        Assert.Equal(AccountViewModel.MissingValueText, vm.MembershipText);
-        Assert.Equal(AccountViewModel.MissingValueText, vm.GearsOfDoomText);
+        Assert.True(vm.Summary.HasData);
+        Assert.Equal("1,234,567", vm.Summary.AdventureCoinsText);
+        Assert.Equal("LEGEND", vm.Summary.AccountTypeText);
+        Assert.Equal("Membership Expired: Tuesday, January 2, 2030", vm.Summary.MembershipText);
+        Assert.Equal("7", vm.Summary.GearsOfDoomText);
     }
 
     [Fact]
@@ -447,7 +353,7 @@ public class AccountViewModelTests
         await vm.SignInCommand.ExecuteAsync(null);
 
         Assert.True(vm.IsConnected);
-        Assert.False(vm.HasSummary);
+        Assert.False(vm.Summary.HasData);
     }
 
     [Fact]
@@ -462,7 +368,7 @@ public class AccountViewModelTests
         _dialog.OnShow = Reports(SignInResult.Cancelled());
         await vm.RefreshCommand.ExecuteAsync(null);
 
-        Assert.Equal(SampleAccount.Summary, vm.Summary);
+        Assert.Equal(SampleAccount.Summary, vm.Summary.Data);
     }
 
     [Fact]
@@ -476,7 +382,7 @@ public class AccountViewModelTests
 
         await vm.RefreshCommand.ExecuteAsync(null);
 
-        Assert.Equal(newer, vm.Summary);
+        Assert.Equal(newer, vm.Summary.Data);
     }
 
     [Fact]
@@ -490,8 +396,8 @@ public class AccountViewModelTests
         await vm.RefreshCommand.ExecuteAsync(null);
 
         Assert.Equal("Other Hero", vm.CharacterName);
-        Assert.Null(vm.Summary);
-        Assert.False(vm.HasSummary);
+        Assert.Null(vm.Summary.Data);
+        Assert.False(vm.Summary.HasData);
     }
 
     // ---- Local persistence ----
@@ -505,7 +411,7 @@ public class AccountViewModelTests
 
     private AccountViewModel BuildPersisted(
         Func<string, Task<EquipmentLoadResult>>? equipment = null, Func<int, Task<BadgesLoadResult>>? badges = null) =>
-        new(
+        AccountViewModelBuilder.Create(
             _dialog,
             equipment is null ? null : new FakeEquipmentLoader(equipment),
             badges is null ? null : new FakeBadgesLoader(badges),
@@ -532,30 +438,37 @@ public class AccountViewModelTests
         var vm = BuildPersisted();
         var changed = new List<string?>();
         vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        var summaryChanged = new List<string?>();
+        vm.Summary.PropertyChanged += (_, e) => summaryChanged.Add(e.PropertyName);
+        var equipmentChanged = new List<string?>();
+        vm.Equipment.PropertyChanged += (_, e) => equipmentChanged.Add(e.PropertyName);
+        var badgesChanged = new List<string?>();
+        vm.Badges.PropertyChanged += (_, e) => badgesChanged.Add(e.PropertyName);
 
         await vm.RestoreStoredDataAsync();
 
         Assert.True(vm.IsConnected);
         Assert.Equal("Test Hero", vm.CharacterName);
-        Assert.Equal(SampleAccount.Summary, vm.Summary);
-        Assert.Equal("Test Hero", vm.Equipment!.Name);
-        Assert.Equal(3, vm.Badges!.Count);
+        Assert.Equal(SampleAccount.Summary, vm.Summary.Data);
+        Assert.Equal("Test Hero", vm.Equipment.Data!.Name);
+        Assert.Equal(3, vm.Badges.Data!.Count);
         Assert.True(vm.IsFromStoredData);
         Assert.Equal(AccountViewModel.StoredDataMessage, vm.Status);
         Assert.Equal(AccountViewModel.StoredDataNoticeText, vm.StoredDataNotice);
         Assert.True(vm.HasStoredDataNotice);
-        Assert.Equal(ExpectedUpdated(Earlier), vm.SummaryUpdatedText);
-        Assert.Equal(ExpectedUpdated(Earlier.AddMinutes(1)), vm.EquipmentUpdatedText);
-        Assert.Equal(ExpectedUpdated(Earlier.AddMinutes(2)), vm.BadgesUpdatedText);
-        Assert.True(vm.HasSummaryUpdatedText && vm.HasEquipmentUpdatedText && vm.HasBadgesUpdatedText);
+        Assert.Equal(ExpectedUpdated(Earlier), vm.Summary.UpdatedText);
+        Assert.Equal(ExpectedUpdated(Earlier.AddMinutes(1)), vm.Equipment.UpdatedText);
+        Assert.Equal(ExpectedUpdated(Earlier.AddMinutes(2)), vm.Badges.UpdatedText);
+        Assert.True(vm.Summary.HasUpdatedText && vm.Equipment.HasUpdatedText && vm.Badges.HasUpdatedText);
         Assert.True(vm.ShowSignIn);
         Assert.False(vm.NeedsSignIn);
         Assert.Contains(nameof(AccountViewModel.ShowSignIn), changed);
         Assert.Contains(nameof(AccountViewModel.StoredDataNotice), changed);
         Assert.Contains(nameof(AccountViewModel.HasStoredDataNotice), changed);
-        Assert.Contains(nameof(AccountViewModel.SummaryUpdatedText), changed);
-        Assert.Contains(nameof(AccountViewModel.HasEquipmentUpdatedText), changed);
-        Assert.Contains(nameof(AccountViewModel.BadgesUpdatedText), changed);
+        Assert.Contains(nameof(SummaryCardViewModel.UpdatedText), summaryChanged);
+        Assert.Contains(nameof(EquipmentCardViewModel.HasUpdatedText), equipmentChanged);
+        Assert.Contains(nameof(BadgesCardViewModel.UpdatedText), badgesChanged);
+        Assert.Contains(nameof(AccountViewModel.ConnectionSummary), changed);
         Assert.DoesNotContain(_persistence.Calls, c => c.StartsWith("Save", StringComparison.Ordinal));
     }
 
@@ -571,7 +484,7 @@ public class AccountViewModelTests
         Assert.Equal(AccountViewModel.SignedOutMessage, vm.Status);
         Assert.True(vm.ShowSignIn);
         Assert.Equal(string.Empty, vm.StoredDataNotice);
-        Assert.Equal(string.Empty, vm.SummaryUpdatedText);
+        Assert.Equal(string.Empty, vm.Summary.UpdatedText);
     }
 
     [Fact]
@@ -590,7 +503,7 @@ public class AccountViewModelTests
 
         Assert.Equal("Other Hero", vm.CharacterName);
         Assert.False(vm.IsFromStoredData);
-        Assert.Null(vm.Equipment);
+        Assert.Null(vm.Equipment.Data);
         Assert.Equal(AccountViewModel.ReadMessage, vm.Status);
     }
 
@@ -611,7 +524,7 @@ public class AccountViewModelTests
         Assert.Equal(string.Empty, vm.StoredDataNotice);
         Assert.False(vm.HasStoredDataNotice);
         Assert.False(vm.ShowSignIn);
-        Assert.Equal(ExpectedUpdated(Now), vm.SummaryUpdatedText);
+        Assert.Equal(ExpectedUpdated(Now), vm.Summary.UpdatedText);
         Assert.Equal(AccountViewModel.ReadMessage, vm.Status);
     }
 
@@ -629,11 +542,11 @@ public class AccountViewModelTests
         // The stored equipment and badges are removed by the coordinator when the identity changes.
         Assert.Equal(["SaveIdentity:Other Hero"], _persistence.Calls);
         Assert.Equal("Other Hero", vm.CharacterName);
-        Assert.Null(vm.Equipment);
-        Assert.Null(vm.Badges);
-        Assert.Equal(string.Empty, vm.EquipmentUpdatedText);
-        Assert.Equal(string.Empty, vm.BadgesUpdatedText);
-        Assert.Equal(ExpectedUpdated(Now), vm.SummaryUpdatedText);
+        Assert.Null(vm.Equipment.Data);
+        Assert.Null(vm.Badges.Data);
+        Assert.Equal(string.Empty, vm.Equipment.UpdatedText);
+        Assert.Equal(string.Empty, vm.Badges.UpdatedText);
+        Assert.Equal(ExpectedUpdated(Now), vm.Summary.UpdatedText);
     }
 
     [Fact]
@@ -674,8 +587,8 @@ public class AccountViewModelTests
         await vm.SignInCommand.ExecuteAsync(null);
 
         Assert.Equal((equipment, Now), _persistence.SavedEquipment.Single());
-        Assert.Equal(ExpectedUpdated(Now), vm.EquipmentUpdatedText);
-        Assert.True(vm.HasEquipmentUpdatedText);
+        Assert.Equal(ExpectedUpdated(Now), vm.Equipment.UpdatedText);
+        Assert.True(vm.Equipment.HasUpdatedText);
     }
 
     [Fact]
@@ -686,10 +599,10 @@ public class AccountViewModelTests
 
         await vm.SignInCommand.ExecuteAsync(null);
 
-        Assert.True(vm.HasEquipment);
+        Assert.True(vm.Equipment.HasData);
         Assert.Empty(_persistence.SavedEquipment);
         Assert.DoesNotContain("RemoveEquipment", _persistence.Calls);
-        Assert.Equal(string.Empty, vm.EquipmentUpdatedText);
+        Assert.Equal(string.Empty, vm.Equipment.UpdatedText);
     }
 
     [Fact]
@@ -704,9 +617,9 @@ public class AccountViewModelTests
         await vm.RefreshCommand.ExecuteAsync(null);
 
         Assert.Equal(["SaveIdentity:Test Hero"], _persistence.Calls);
-        Assert.Null(vm.Equipment);
-        Assert.Equal(string.Empty, vm.EquipmentUpdatedText);
-        Assert.Equal(AccountViewModel.EquipmentNotFoundText, vm.EquipmentStatus);
+        Assert.Null(vm.Equipment.Data);
+        Assert.Equal(string.Empty, vm.Equipment.UpdatedText);
+        Assert.Equal(EquipmentCardViewModel.NotFoundText, vm.Equipment.Status);
     }
 
     [Fact]
@@ -721,8 +634,8 @@ public class AccountViewModelTests
         await vm.RefreshCommand.ExecuteAsync(null);
 
         Assert.Equal(["SaveIdentity:Test Hero"], _persistence.Calls);
-        Assert.NotNull(vm.Equipment);
-        Assert.Equal(ExpectedUpdated(Earlier.AddMinutes(1)), vm.EquipmentUpdatedText);
+        Assert.NotNull(vm.Equipment.Data);
+        Assert.Equal(ExpectedUpdated(Earlier.AddMinutes(1)), vm.Equipment.UpdatedText);
     }
 
     [Fact]
@@ -735,8 +648,8 @@ public class AccountViewModelTests
         await vm.SignInCommand.ExecuteAsync(null);
 
         Assert.Equal((badges, Now), _persistence.SavedBadges.Single());
-        Assert.Equal(ExpectedUpdated(Now), vm.BadgesUpdatedText);
-        Assert.True(vm.HasBadgesUpdatedText);
+        Assert.Equal(ExpectedUpdated(Now), vm.Badges.UpdatedText);
+        Assert.True(vm.Badges.HasUpdatedText);
     }
 
     [Fact]
@@ -747,10 +660,10 @@ public class AccountViewModelTests
 
         await vm.SignInCommand.ExecuteAsync(null);
 
-        Assert.True(vm.HasBadges);
+        Assert.True(vm.Badges.HasData);
         Assert.Empty(_persistence.SavedBadges);
         Assert.DoesNotContain("RemoveBadges", _persistence.Calls);
-        Assert.Equal(string.Empty, vm.BadgesUpdatedText);
+        Assert.Equal(string.Empty, vm.Badges.UpdatedText);
     }
 
     [Fact]
@@ -766,7 +679,7 @@ public class AccountViewModelTests
 
         Assert.Contains("RemoveBadges", _persistence.Calls);
         Assert.Empty(_persistence.SavedBadges);
-        Assert.Equal(string.Empty, vm.BadgesUpdatedText);
+        Assert.Equal(string.Empty, vm.Badges.UpdatedText);
     }
 
     [Fact]
@@ -782,9 +695,9 @@ public class AccountViewModelTests
         await vm.RefreshCommand.ExecuteAsync(null);
 
         Assert.DoesNotContain("RemoveBadges", _persistence.Calls);
-        Assert.Null(vm.Badges);
-        Assert.Equal(string.Empty, vm.BadgesUpdatedText);
-        Assert.Equal(AccountViewModel.BadgesNotFoundText, vm.BadgesStatus);
+        Assert.Null(vm.Badges.Data);
+        Assert.Equal(string.Empty, vm.Badges.UpdatedText);
+        Assert.Equal(BadgesCardViewModel.NotFoundText, vm.Badges.Status);
     }
 
     [Fact]
@@ -815,28 +728,28 @@ public class AccountViewModelTests
         await vm.RefreshCommand.ExecuteAsync(null);
 
         Assert.DoesNotContain("RemoveBadges", _persistence.Calls);
-        Assert.NotNull(vm.Badges);
+        Assert.NotNull(vm.Badges.Data);
     }
 
     [Fact]
     public async Task Updated_texts_use_local_time_and_are_empty_without_a_read_time()
     {
         var vm = BuildPersisted();
-        Assert.Equal(string.Empty, vm.SummaryUpdatedText);
-        Assert.Equal(string.Empty, vm.EquipmentUpdatedText);
-        Assert.Equal(string.Empty, vm.BadgesUpdatedText);
-        Assert.False(vm.HasSummaryUpdatedText);
-        Assert.False(vm.HasEquipmentUpdatedText);
-        Assert.False(vm.HasBadgesUpdatedText);
+        Assert.Equal(string.Empty, vm.Summary.UpdatedText);
+        Assert.Equal(string.Empty, vm.Equipment.UpdatedText);
+        Assert.Equal(string.Empty, vm.Badges.UpdatedText);
+        Assert.False(vm.Summary.HasUpdatedText);
+        Assert.False(vm.Equipment.HasUpdatedText);
+        Assert.False(vm.Badges.HasUpdatedText);
 
         _persistence.ToRestore = StoredAccount() with { EquipmentReadAtUtc = null, Badges = null, BadgesReadAtUtc = null };
         await vm.RestoreStoredDataAsync();
 
-        Assert.Equal("Last updated " + Earlier.ToLocalTime().ToString("g", CultureInfo.CurrentCulture), vm.SummaryUpdatedText);
-        Assert.Equal(string.Empty, vm.EquipmentUpdatedText);
-        Assert.Equal(string.Empty, vm.BadgesUpdatedText);
-        Assert.True(vm.HasSummaryUpdatedText);
-        Assert.False(vm.HasEquipmentUpdatedText);
+        Assert.Equal("Last updated " + Earlier.ToLocalTime().ToString("g", CultureInfo.CurrentCulture), vm.Summary.UpdatedText);
+        Assert.Equal(string.Empty, vm.Equipment.UpdatedText);
+        Assert.Equal(string.Empty, vm.Badges.UpdatedText);
+        Assert.True(vm.Summary.HasUpdatedText);
+        Assert.False(vm.Equipment.HasUpdatedText);
     }
 
     [Fact]
@@ -845,9 +758,9 @@ public class AccountViewModelTests
         _persistence.ToRestore = StoredAccount();
         var vm = BuildPersisted();
         await vm.RestoreStoredDataAsync();
-        vm.OpenBadgesDetailsCommand.Execute(null);
-        vm.EquipmentStatus = "x";
-        vm.BadgesStatus = "y";
+        vm.Badges.OpenDetailsCommand.Execute(null);
+        vm.Equipment.Status = "x";
+        vm.Badges.Status = "y";
         _persistence.Calls.Clear();
 
         vm.RequestForgetCommand.Execute(null);
@@ -865,15 +778,15 @@ public class AccountViewModelTests
         Assert.Equal(["Forget"], _persistence.Calls);
         Assert.False(vm.IsForgetPending);
         Assert.Null(vm.CharacterName);
-        Assert.Null(vm.Summary);
-        Assert.Null(vm.Equipment);
-        Assert.Null(vm.Badges);
-        Assert.Equal(string.Empty, vm.SummaryUpdatedText);
-        Assert.Equal(string.Empty, vm.EquipmentUpdatedText);
-        Assert.Equal(string.Empty, vm.BadgesUpdatedText);
-        Assert.Equal(string.Empty, vm.EquipmentStatus);
-        Assert.Equal(string.Empty, vm.BadgesStatus);
-        Assert.False(vm.IsSidebarOpen);
+        Assert.Null(vm.Summary.Data);
+        Assert.Null(vm.Equipment.Data);
+        Assert.Null(vm.Badges.Data);
+        Assert.Equal(string.Empty, vm.Summary.UpdatedText);
+        Assert.Equal(string.Empty, vm.Equipment.UpdatedText);
+        Assert.Equal(string.Empty, vm.Badges.UpdatedText);
+        Assert.Equal(string.Empty, vm.Equipment.Status);
+        Assert.Equal(string.Empty, vm.Badges.Status);
+        Assert.False(vm.Sidebar.IsOpen);
         Assert.False(vm.IsFromStoredData);
         Assert.Equal(string.Empty, vm.StoredDataNotice);
         Assert.Equal(AccountViewModel.ForgottenMessage, vm.Status);
@@ -917,27 +830,28 @@ public class AccountViewModelTests
         Assert.False(vm.IsForgetPending);
         Assert.Equal(AccountViewModel.ForgetFailedMessage, vm.Status);
         Assert.Equal("Test Hero", vm.CharacterName);
-        Assert.NotNull(vm.Summary);
-        Assert.NotNull(vm.Equipment);
-        Assert.NotNull(vm.Badges);
+        Assert.NotNull(vm.Summary.Data);
+        Assert.NotNull(vm.Equipment.Data);
+        Assert.NotNull(vm.Badges.Data);
         Assert.True(vm.IsFromStoredData);
         Assert.Equal(0, _session.ClearCalls);
     }
 
     [Fact]
-    public async Task Forget_that_succeeds_clears_the_session_data_and_resets_the_sidebar_card()
+    public async Task Forget_that_succeeds_clears_the_session_data_and_resets_the_sidebar()
     {
         _persistence.ToRestore = StoredAccount();
         var vm = BuildPersisted();
         await vm.RestoreStoredDataAsync();
-        vm.OpenBadgesDetailsCommand.Execute(null);
-        Assert.Equal(AccountViewModel.SidebarCard.Badges, vm.SidebarContent);
+        vm.Badges.OpenDetailsCommand.Execute(null);
+        Assert.Same(vm.Badges, vm.Sidebar.Content);
         vm.RequestForgetCommand.Execute(null);
 
         vm.ConfirmForgetCommand.Execute(null);
 
         Assert.Equal(1, _session.ClearCalls);
-        Assert.Equal(AccountViewModel.SidebarCard.Equipped, vm.SidebarContent);
+        Assert.Null(vm.Sidebar.Content);
+        Assert.Equal(string.Empty, vm.Sidebar.Title);
         Assert.Equal(AccountViewModel.ForgottenMessage, vm.Status);
     }
 
@@ -959,16 +873,16 @@ public class AccountViewModelTests
         var vm = BuildPersisted(_ => gate.Task, BadgesPersisted(Badges(2)));
 
         var signingIn = vm.SignInCommand.ExecuteAsync(null);
-        Assert.Equal(AccountViewModel.EquipmentLoadingText, vm.EquipmentStatus);
+        Assert.Equal(EquipmentCardViewModel.LoadingText, vm.Equipment.Status);
         vm.RequestForgetCommand.Execute(null);
         vm.ConfirmForgetCommand.Execute(null);
         gate.SetResult(new EquipmentLoadResult(EquipmentLoadStatus.Loaded, Equipment("Test Hero", 3), true));
         await signingIn;
 
         Assert.Null(vm.CharacterName);
-        Assert.Null(vm.Equipment);
-        Assert.Null(vm.Badges);
-        Assert.Equal(string.Empty, vm.EquipmentStatus);
+        Assert.Null(vm.Equipment.Data);
+        Assert.Null(vm.Badges.Data);
+        Assert.Equal(string.Empty, vm.Equipment.Status);
         Assert.Equal(AccountViewModel.ForgottenMessage, vm.Status);
         Assert.Empty(_persistence.SavedEquipment);
         Assert.Empty(_persistence.SavedBadges);
@@ -977,14 +891,14 @@ public class AccountViewModelTests
     [Fact]
     public async Task Persistence_is_optional()
     {
-        var vm = new AccountViewModel(_dialog, null, null, null, new FixedTimeProvider(Now));
+        var vm = AccountViewModelBuilder.Create(_dialog, null, null, null, new FixedTimeProvider(Now));
 
         await vm.RestoreStoredDataAsync();
         Assert.False(vm.IsConnected);
 
         _dialog.OnShow = Reports(SignInResult.Connected("Test Hero", SampleAccount.Summary));
         await vm.SignInCommand.ExecuteAsync(null);
-        Assert.Equal(ExpectedUpdated(Now), vm.SummaryUpdatedText);
+        Assert.Equal(ExpectedUpdated(Now), vm.Summary.UpdatedText);
 
         vm.RequestForgetCommand.Execute(null);
         vm.ConfirmForgetCommand.Execute(null);
@@ -995,7 +909,7 @@ public class AccountViewModelTests
     [Fact]
     public async Task A_persistence_that_throws_never_breaks_restore()
     {
-        var vm = new AccountViewModel(_dialog, persistence: new ThrowingPersistence());
+        var vm = AccountViewModelBuilder.Create(_dialog, persistence: new ThrowingPersistence());
 
         var error = await Record.ExceptionAsync(vm.RestoreStoredDataAsync);
 

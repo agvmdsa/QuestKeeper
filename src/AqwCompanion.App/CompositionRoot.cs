@@ -57,6 +57,10 @@ public static class CompositionRoot
         services.AddSingleton<ICharacterBadgesLoader, CharacterBadgesLoader>();
         services.AddSingleton<IDelay, TaskDelay>();
         services.AddSingleton<ISignInDialog, SignInDialog>();
+        services.AddSingleton<SidebarViewModel>();
+        services.AddSingleton<SummaryCardViewModel>();
+        services.AddSingleton<EquipmentCardViewModel>();
+        services.AddSingleton<BadgesCardViewModel>();
         services.AddSingleton<AccountViewModel>();
         services.AddSingleton<WikiViewModel>();
         services.AddSingleton<DiagnosticsViewModel>();

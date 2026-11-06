@@ -1,4 +1,4 @@
-using AqwCompanion.Core.Aqw;
+using AqwCompanion.Core.Badges;
 
 namespace AqwCompanion.App.Badges;
 

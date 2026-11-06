@@ -1,7 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:AqwCompanion.App.ViewModels"
-             xmlns:aqw="using:AqwCompanion.Core.Aqw"
+             xmlns:aqw="using:AqwCompanion.Core.Equipment"
+             xmlns:badges="using:AqwCompanion.Core.Badges"
              x:Class="AqwCompanion.App.Views.AccountView"
              x:DataType="vm:AccountViewModel">
   <UserControl.KeyBindings>
@@ -56,18 +57,18 @@
       </Grid>
     </DataTemplate>
 
-    <DataTemplate x:Key="BadgePreviewRow" x:DataType="aqw:Badge">
+    <DataTemplate x:Key="BadgePreviewRow" x:DataType="badges:Badge">
       <TextBlock Text="{Binding Title}" Margin="0,3" TextWrapping="Wrap" />
     </DataTemplate>
 
-    <DataTemplate x:Key="BadgeRow" x:DataType="aqw:Badge">
+    <DataTemplate x:Key="BadgeRow" x:DataType="badges:Badge">
       <StackPanel Spacing="1" Margin="0,4">
         <TextBlock Text="{Binding Title}" Foreground="{DynamicResource AqwTextBright}" TextWrapping="Wrap" />
         <TextBlock Text="{Binding Description}" Classes="muted" TextWrapping="Wrap" />
       </StackPanel>
     </DataTemplate>
 
-    <DataTemplate x:Key="BadgeGroupRow" x:DataType="aqw:BadgeGroup">
+    <DataTemplate x:Key="BadgeGroupRow" x:DataType="badges:BadgeGroup">
       <StackPanel Spacing="4" Margin="0,0,0,8">
         <TextBlock Text="{Binding Category}" FontWeight="SemiBold" Foreground="{DynamicResource AqwAccent}"
                    TextWrapping="Wrap" />

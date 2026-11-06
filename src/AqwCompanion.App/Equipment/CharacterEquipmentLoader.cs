@@ -1,5 +1,6 @@
-using AqwCompanion.Core.Aqw;
+using AqwCompanion.Core.Equipment;
 using AqwCompanion.Core.Ingestion;
+using AqwCompanion.Core.Site;
 using Serilog;
 
 namespace AqwCompanion.App.Equipment;

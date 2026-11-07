@@ -5,6 +5,7 @@
         xmlns:account="using:AqwCompanion.App.Account"
         xmlns:wiki="using:AqwCompanion.App.Wiki"
         xmlns:hardfarms="using:AqwCompanion.App.HardFarms"
+        xmlns:reputation="using:AqwCompanion.App.Reputation"
         xmlns:diagnostics="using:AqwCompanion.App.Diagnostics"
         x:Class="AqwCompanion.App.Shell.MainWindow"
         x:DataType="vm:MainViewModel"
@@ -34,6 +35,9 @@
     </TabItem>
     <TabItem Header="Hard Farms">
       <hardfarms:HardFarmsView DataContext="{Binding HardFarms}" />
+    </TabItem>
+    <TabItem Header="Reputation">
+      <reputation:ReputationView DataContext="{Binding Reputation}" />
     </TabItem>
     <TabItem Header="Diagnostics">
       <diagnostics:DiagnosticsView DataContext="{Binding Diagnostics}" />

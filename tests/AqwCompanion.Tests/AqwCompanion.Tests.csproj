@@ -10,6 +10,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Update="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Reputation\Samples\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

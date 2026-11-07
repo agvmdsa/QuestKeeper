@@ -8,6 +8,7 @@ using AqwCompanion.App.Infrastructure;
 using AqwCompanion.App.Infrastructure.Browser;
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Inventory;
+using AqwCompanion.App.Reputation;
 using AqwCompanion.App.Shell;
 using AqwCompanion.App.SignIn;
 using AqwCompanion.App.Wiki;
@@ -91,6 +92,9 @@ public static class CompositionRoot
                     Dispatcher.UIThread.Post(action);
                 }
             }));
+        services.AddSingleton<IReputationStore, ReputationStore>();
+        services.AddSingleton<IReputationFilePicker, ReputationFilePicker>();
+        services.AddSingleton<ReputationViewModel>();
         services.AddSingleton<ISignInDialog, SignInDialog>();
         services.AddSingleton<SidebarViewModel>();
         services.AddSingleton<SummaryCardViewModel>();

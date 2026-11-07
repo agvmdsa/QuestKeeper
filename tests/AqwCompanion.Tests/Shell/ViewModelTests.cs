@@ -4,12 +4,14 @@ using AqwCompanion.App.Account;
 using AqwCompanion.App.Diagnostics;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Inventory;
+using AqwCompanion.App.Reputation;
 using AqwCompanion.App.Shell;
 using AqwCompanion.App.SignIn;
 using AqwCompanion.Core.Wiki;
 using AqwCompanion.App.Wiki;
 using AqwCompanion.Core.Diagnostics;
 using AqwCompanion.Core.Ingestion;
+using AqwCompanion.Core.Reputation;
 using AqwCompanion.Tests.TestDoubles;
 
 namespace AqwCompanion.Tests.Shell;
@@ -107,7 +109,7 @@ public sealed class ViewModelTests : IDisposable
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task Signing_out_resets_the_Hard_Farms_tab_but_a_dismissed_sign_out_does_not(bool completes)
+    public async Task Signing_out_resets_the_Hard_Farms_and_Reputation_tabs_but_a_dismissed_sign_out_does_not(bool completes)
     {
         var dialog = new FakeSignInDialog { OnShow = _ => Task.FromResult(SignInResult.Connected("Test Hero")) };
         var account = AccountViewModelBuilder.Create(dialog, persistence: new FakeAccountDataPersistence());
@@ -116,10 +118,17 @@ public sealed class ViewModelTests : IDisposable
         var hardFarms = new HardFarmsViewModel(
             store, new FakeHardFarmSync(), new InventoryCardViewModel(new SidebarViewModel()), new FakeUrlLauncher());
         await hardFarms.RestoreAsync();
+        var reputationStore = new ReputationStore(new InMemoryStoredDataStore());
+        reputationStore.Save(new StoredReputation(
+            new ReputationSnapshot([new FactionStanding(1, "Good", 5, 10, 20, 0)], null), "rep.json", DateTimeOffset.UnixEpoch));
+        var reputation = new ReputationViewModel(reputationStore, new FakeReputationFilePicker(), TimeProvider.System);
+        await reputation.RestoreAsync();
         var main = new MainViewModel(
-            account, new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer()), hardFarms);
+            account, new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer()), hardFarms,
+            reputation);
         await account.SignInCommand.ExecuteAsync(null);
         Assert.Single(main.HardFarms.Rows);
+        Assert.Single(main.Reputation.Items);
         dialog.OnShow = _ => Task.FromResult(completes ? SignInResult.SignedOut() : SignInResult.Cancelled());
 
         account.RequestSignOutCommand.Execute(null);
@@ -127,5 +136,7 @@ public sealed class ViewModelTests : IDisposable
 
         Assert.Equal(completes, main.HardFarms.Rows.Count == 0);
         Assert.Equal(completes, main.HardFarms.ShowEmptyState);
+        Assert.Equal(completes, main.Reputation.Items.Count == 0);
+        Assert.Equal(completes, main.Reputation.IsEmpty);
     }
 }

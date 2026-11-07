@@ -19,6 +19,7 @@ public partial class CompanionApp : Application
             desktop.MainWindow = new MainWindow { DataContext = main };
             _ = main.Account.RestoreStoredDataAsync();
             _ = main.HardFarms.RestoreAsync();
+            _ = main.Reputation.RestoreAsync();
             desktop.Exit += (_, _) => services.Dispose();
         }
 

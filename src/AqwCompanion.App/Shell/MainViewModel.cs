@@ -19,7 +19,6 @@ public sealed class MainViewModel
 
         // The Hard Farms and Reputation data are kept with the account's saved data, so they go when that is removed.
         account.DataForgotten += (_, _) => hardFarms.Reset();
-        account.DataForgotten += (_, _) => reputation.Reset();
     }
 
     public string Title { get; } = AppInfo.ProductName;

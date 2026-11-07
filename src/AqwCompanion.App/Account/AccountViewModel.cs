@@ -6,6 +6,7 @@ using AqwCompanion.App.Inventory;
 using AqwCompanion.App.SignIn;
 using AqwCompanion.Core.Common;
 using AqwCompanion.Core.Equipment;
+using AqwCompanion.Core.Forgetting;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Serilog;
@@ -37,6 +38,7 @@ public partial class AccountViewModel : ObservableObject
     private readonly ICharacterBadgesLoader? _badgesLoader;
     private readonly ICharacterInventoryLoader? _inventoryLoader;
     private readonly IAccountDataPersistence? _persistence;
+    private readonly ForgetCoordinator? _forgetting;
     private readonly TimeProvider _clock;
     private readonly IAccountSessionData? _session;
     private bool _dialogOpen;
@@ -68,6 +70,7 @@ public partial class AccountViewModel : ObservableObject
     /// <param name="persistence">Keeps the last read data on disk; without it nothing is stored or restored.</param>
     /// <param name="clock">Source of the read times; the system clock by default.</param>
     /// <param name="session">Follows restore and sign-out for the in-memory session data; without it nothing is seeded or cleared.</param>
+    /// <param name="forgetting">Orders Forgetting on sign-out across the features; without it only the stored data is removed.</param>
     public AccountViewModel(
         ISignInDialog dialog,
         SummaryCardViewModel summary,
@@ -80,8 +83,10 @@ public partial class AccountViewModel : ObservableObject
         ICharacterInventoryLoader? inventoryLoader = null,
         IAccountDataPersistence? persistence = null,
         TimeProvider? clock = null,
-        IAccountSessionData? session = null)
+        IAccountSessionData? session = null,
+        ForgetCoordinator? forgetting = null)
     {
+        _forgetting = forgetting;
         _session = session;
         _dialog = dialog;
         Summary = summary;
@@ -253,7 +258,8 @@ public partial class AccountViewModel : ObservableObject
     /// <summary>Deletes the stored data and returns to the not-connected state; keeps everything when the deletion fails.</summary>
     private void RemoveLocalData(string doneMessage)
     {
-        if (_persistence is not null && !_persistence.Forget())
+        var result = (_forgetting ?? new ForgetCoordinator(() => _persistence?.Forget() ?? true, () => [])).Forget();
+        if (!result.StoredDataRemoved)
         {
             Status = ForgetFailedMessage;
             return;
@@ -268,7 +274,9 @@ public partial class AccountViewModel : ObservableObject
         Inventory.Clear();
         Sidebar.Reset();
         IsFromStoredData = false;
-        Status = doneMessage;
+        Status = result.IsComplete
+            ? doneMessage
+            : doneMessage + " Some data could not be removed: " + string.Join(", ", result.NotForgotten) + ".";
         DataForgotten?.Invoke(this, EventArgs.Empty);
     }
 

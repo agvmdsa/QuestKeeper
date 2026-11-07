@@ -16,6 +16,7 @@ using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Badges;
 using AqwCompanion.Core.Diagnostics;
 using AqwCompanion.Core.Equipment;
+using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Ingestion;
 using AqwCompanion.Core.Inventory;
 using AqwCompanion.Core.Persistence;
@@ -96,6 +97,9 @@ public static class CompositionRoot
         services.AddSingleton<IReputationFilePicker, ReputationFilePicker>();
         services.AddSingleton<IReputationAutoSource>(sp => new ReputationFileSource(sp.GetRequiredService<AppPaths>()));
         services.AddSingleton<ReputationViewModel>();
+        services.AddSingleton(sp => new ForgetCoordinator(
+            () => sp.GetRequiredService<IAccountDataPersistence>().Forget(),
+            () => [sp.GetRequiredService<ReputationViewModel>()]));
         services.AddSingleton<ISignInDialog, SignInDialog>();
         services.AddSingleton<SidebarViewModel>();
         services.AddSingleton<SummaryCardViewModel>();

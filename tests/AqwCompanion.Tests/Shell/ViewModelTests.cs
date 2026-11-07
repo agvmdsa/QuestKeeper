@@ -10,6 +10,7 @@ using AqwCompanion.App.SignIn;
 using AqwCompanion.Core.Wiki;
 using AqwCompanion.App.Wiki;
 using AqwCompanion.Core.Diagnostics;
+using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Ingestion;
 using AqwCompanion.Core.Reputation;
 using AqwCompanion.Tests.TestDoubles;
@@ -109,10 +110,13 @@ public sealed class ViewModelTests : IDisposable
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task Signing_out_resets_the_Hard_Farms_and_Reputation_tabs_but_a_dismissed_sign_out_does_not(bool completes)
+    public async Task Signing_out_forgets_the_Hard_Farms_and_Reputation_tabs_but_a_dismissed_sign_out_does_not(bool completes)
     {
         var dialog = new FakeSignInDialog { OnShow = _ => Task.FromResult(SignInResult.Connected("Test Hero")) };
-        var account = AccountViewModelBuilder.Create(dialog, persistence: new FakeAccountDataPersistence());
+        var persistence = new FakeAccountDataPersistence();
+        ReputationViewModel? reputationRef = null;
+        var account = AccountViewModelBuilder.Create(
+            dialog, persistence: persistence, forgetting: new ForgetCoordinator(persistence.Forget, () => [reputationRef!]));
         var store = new HardFarmStore(new InMemoryStoredDataStore());
         store.SaveList(new HardFarmList([new HardFarmGroup("Nation", ["blade-one"])], null), DateTimeOffset.UnixEpoch);
         var hardFarms = new HardFarmsViewModel(
@@ -122,6 +126,7 @@ public sealed class ViewModelTests : IDisposable
         reputationStore.Save(new StoredReputation(
             new ReputationSnapshot([new FactionStanding(1, "Good", 5, 10, 20, 0)], null), "rep.json", DateTimeOffset.UnixEpoch));
         var reputation = new ReputationViewModel(reputationStore, new FakeReputationFilePicker(), new FakeReputationAutoSource(), TimeProvider.System);
+        reputationRef = reputation;
         await reputation.RestoreAsync();
         var main = new MainViewModel(
             account, new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer()), hardFarms,
@@ -144,12 +149,16 @@ public sealed class ViewModelTests : IDisposable
     public async Task Signing_out_deletes_the_reputation_file_the_game_client_wrote()
     {
         var dialog = new FakeSignInDialog { OnShow = _ => Task.FromResult(SignInResult.Connected("Test Hero")) };
-        var account = AccountViewModelBuilder.Create(dialog, persistence: new FakeAccountDataPersistence());
+        var persistence = new FakeAccountDataPersistence();
+        ReputationViewModel? reputationRef = null;
+        var account = AccountViewModelBuilder.Create(
+            dialog, persistence: persistence, forgetting: new ForgetCoordinator(persistence.Forget, () => [reputationRef!]));
         var source = new ReputationFileSource(_paths);
         Directory.CreateDirectory(_paths.ReputationDirectory);
         File.WriteAllText(source.Path, "{}");
         var reputation = new ReputationViewModel(
             new ReputationStore(new InMemoryStoredDataStore()), new FakeReputationFilePicker(), source, TimeProvider.System);
+        reputationRef = reputation;
         var main = new MainViewModel(
             account, new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer()),
             new HardFarmsViewModel(

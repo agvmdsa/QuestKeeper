@@ -3,6 +3,7 @@ using AqwCompanion.App.Badges;
 using AqwCompanion.App.Equipment;
 using AqwCompanion.App.Inventory;
 using AqwCompanion.App.SignIn;
+using AqwCompanion.Core.Forgetting;
 
 namespace AqwCompanion.Tests.TestDoubles;
 
@@ -16,7 +17,8 @@ public static class AccountViewModelBuilder
         IAccountDataPersistence? persistence = null,
         TimeProvider? clock = null,
         IAccountSessionData? session = null,
-        ICharacterInventoryLoader? inventoryLoader = null)
+        ICharacterInventoryLoader? inventoryLoader = null,
+        ForgetCoordinator? forgetting = null)
     {
         var sidebar = new SidebarViewModel();
         return new AccountViewModel(
@@ -31,6 +33,7 @@ public static class AccountViewModelBuilder
             inventoryLoader,
             persistence,
             clock,
-            session);
+            session,
+            forgetting);
     }
 }

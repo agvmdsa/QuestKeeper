@@ -204,14 +204,15 @@ public class ReputationViewTests
     }
 
     [AvaloniaFact]
-    public async Task Reset_returns_the_view_to_the_empty_state()
+    public async Task Forget_returns_the_view_to_the_empty_state()
     {
         var h = Build();
         h.Picker.Returns("""{"schema":1,"factions":[{"factionId":1,"name":"Good","rank":1,"rep":1,"repToRank":1}]}""");
         await h.Vm.ImportCommand.ExecuteAsync(null);
         SettleUntil(h.Window, () => !h.View.Named<TextBlock>("ReputationEmptyState").IsEffectivelyVisible, "the list to be shown");
 
-        h.Vm.Reset();
+        h.Vm.Quiesce();
+        h.Vm.Forget();
         SettleUntil(h.Window, () => h.View.Named<TextBlock>("ReputationEmptyState").IsEffectivelyVisible, "the empty state to return");
 
         Assert.False(h.View.Named<Border>("ReputationCard").IsEffectivelyVisible);

@@ -197,13 +197,14 @@ public class ReputationViewModelTests
     }
 
     [Fact]
-    public async Task Reset_returns_to_the_empty_state()
+    public async Task Forget_returns_to_the_empty_state()
     {
         var f = new Fixture();
         f.Picker.Returns(TwoFactions);
         await f.Vm.ImportCommand.ExecuteAsync(null);
 
-        f.Vm.Reset();
+        f.Vm.Quiesce();
+        f.Vm.Forget();
 
         Assert.True(f.Vm.IsEmpty);
         Assert.Empty(f.Vm.Items);
@@ -224,7 +225,8 @@ public class ReputationViewModelTests
         };
         var import = f.Vm.ImportCommand.ExecuteAsync(null);
 
-        f.Vm.Reset();
+        f.Vm.Quiesce();
+        f.Vm.Forget();
         release.SetResult();
         await import;
 
@@ -239,7 +241,8 @@ public class ReputationViewModelTests
         f.Store.Save(new StoredReputation(new ReputationSnapshot([new FactionStanding(1, "Good", 1, 1, 1, 0)], null), "a.json", At));
         var restore = f.Vm.RestoreAsync();
 
-        f.Vm.Reset();
+        f.Vm.Quiesce();
+        f.Vm.Forget();
         await restore;
 
         Assert.True(f.Vm.IsEmpty);

@@ -1,5 +1,6 @@
 using AqwCompanion.App.Infrastructure.Formatting;
 using AqwCompanion.Core.Common;
+using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Reputation;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -13,7 +14,7 @@ namespace AqwCompanion.App.Reputation;
 /// previous data as it was, and the data is kept with the account's saved data.
 /// </summary>
 public partial class ReputationViewModel(IReputationStore store, IReputationFilePicker picker, IReputationAutoSource autoSource, TimeProvider clock)
-    : ObservableObject
+    : ObservableObject, IForgettable
 {
     public const string EmptyText = "Import a reputation file (JSON, schema 1) to see your faction standings here.";
     public const string ImportText = "Import reputation file…";
@@ -29,6 +30,7 @@ public partial class ReputationViewModel(IReputationStore store, IReputationFile
 
     private int _epoch;
     private bool _refreshing;
+    private bool _quiesced;
     private (DateTimeOffset LastWriteTimeUtc, long Length)? _lastAutoRead;
 
     [ObservableProperty]
@@ -64,7 +66,7 @@ public partial class ReputationViewModel(IReputationStore store, IReputationFile
 
     public bool HasError => ErrorText.Length > 0;
 
-    /// <summary>Loads the stored reputation in the background. Does nothing after <see cref="Reset"/> or when data is already shown.</summary>
+    /// <summary>Loads the stored reputation in the background. Does nothing after <see cref="Forget"/> or when data is already shown.</summary>
     public async Task RestoreAsync()
     {
         var epoch = _epoch;
@@ -77,8 +79,20 @@ public partial class ReputationViewModel(IReputationStore store, IReputationFile
         Apply(stored);
     }
 
-    /// <summary>The account's saved data was removed: forgets the standings and returns to the empty state. Answers of an import that started before this call are ignored.</summary>
-    public void Reset()
+    public string Name => "Reputation";
+
+    /// <summary>Stops taking part in work: answers of an import or refresh that started before this call are ignored and new ones do nothing. Undone by <see cref="Resume"/>.</summary>
+    public void Quiesce()
+    {
+        _quiesced = true;
+        _epoch++;
+    }
+
+    /// <summary>Undoes <see cref="Quiesce"/> when the stored data could not be removed.</summary>
+    public void Resume() => _quiesced = false;
+
+    /// <summary>The account's saved data was removed: forgets the standings, deletes the game client's file and returns to the empty state.</summary>
+    public void Forget()
     {
         _epoch++;
         Items = [];
@@ -89,6 +103,7 @@ public partial class ReputationViewModel(IReputationStore store, IReputationFile
         CheckedLine = string.Empty;
         _lastAutoRead = null;
         autoSource.Delete();
+        _quiesced = false;
     }
 
     /// <summary>
@@ -98,7 +113,7 @@ public partial class ReputationViewModel(IReputationStore store, IReputationFile
     [RelayCommand]
     private async Task RefreshAsync()
     {
-        if (_refreshing)
+        if (_refreshing || _quiesced)
         {
             return;
         }
@@ -193,6 +208,11 @@ public partial class ReputationViewModel(IReputationStore store, IReputationFile
     [RelayCommand]
     private async Task ImportAsync()
     {
+        if (_quiesced)
+        {
+            return;
+        }
+
         var epoch = _epoch;
         PickedFile? picked;
         try

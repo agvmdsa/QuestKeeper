@@ -180,13 +180,14 @@ public class ReputationAutoRefreshTests
     }
 
     [Fact]
-    public async Task Reset_deletes_the_file_and_forgets_the_last_read_so_the_same_file_is_read_again()
+    public async Task Forget_deletes_the_file_and_forgets_the_last_read_so_the_same_file_is_read_again()
     {
         var f = new Fixture();
         f.Auto.Returns(OneFaction, Older);
         await f.Vm.RefreshCommand.ExecuteAsync(null);
 
-        f.Vm.Reset();
+        f.Vm.Quiesce();
+        f.Vm.Forget();
 
         Assert.Equal(1, f.Auto.DeleteCalls);
         Assert.True(f.Vm.IsEmpty);
@@ -209,7 +210,8 @@ public class ReputationAutoRefreshTests
         };
         var refresh = f.Vm.RefreshCommand.ExecuteAsync(null);
 
-        f.Vm.Reset();
+        f.Vm.Quiesce();
+        f.Vm.Forget();
         release.SetResult();
         await refresh;
 

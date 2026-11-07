@@ -28,18 +28,22 @@ public class ReputationViewTests
         public required Window Window { get; init; }
 
         public required FakeReputationFilePicker Picker { get; init; }
+
+        public required FakeReputationAutoSource Auto { get; init; }
     }
 
     private static Host Build()
     {
         var picker = new FakeReputationFilePicker();
-        var vm = new ReputationViewModel(new ReputationStore(new InMemoryStoredDataStore()), picker, new FixedClock());
+        var auto = new FakeReputationAutoSource();
+        var vm = new ReputationViewModel(new ReputationStore(new InMemoryStoredDataStore()), picker, auto, new FixedClock());
         var view = new ReputationView { DataContext = vm };
         var window = new Window { Width = 1100, Height = 700, Content = view };
         window.Show();
         window.UpdateLayout();
         Flush();
-        return new Host { Vm = vm, View = view, Window = window, Picker = picker };
+        SettleUntil(window, () => vm.CheckedLine.Length > 0, "the first refresh on opening to finish");
+        return new Host { Vm = vm, View = view, Window = window, Picker = picker, Auto = auto };
     }
 
     private sealed class FixedClock : TimeProvider
@@ -102,6 +106,40 @@ public class ReputationViewTests
         Assert.False(h.View.Named<Border>("ReputationCard").IsEffectivelyVisible);
         Assert.False(h.View.Named<TextBlock>("ReputationImportedLine").IsEffectivelyVisible);
         Assert.False(h.View.Named<TextBlock>("ReputationErrorLine").IsEffectivelyVisible);
+    }
+
+    [AvaloniaFact]
+    public void The_tab_reads_the_game_client_file_when_it_becomes_visible_and_shows_the_data()
+    {
+        var picker = new FakeReputationFilePicker();
+        var auto = new FakeReputationAutoSource();
+        auto.Returns("""{"schema":1,"factions":[{"factionId":1,"name":"Good","rank":2,"rep":5,"repToRank":9}]}""");
+        var vm = new ReputationViewModel(new ReputationStore(new InMemoryStoredDataStore()), picker, auto, new FixedClock());
+        var view = new ReputationView { DataContext = vm, IsVisible = false };
+        var window = new Window { Width = 1100, Height = 700, Content = view };
+        window.Show();
+        window.UpdateLayout();
+        Flush();
+        Assert.Equal(0, auto.OpenCalls);
+
+        view.IsVisible = true;
+        SettleUntil(window, () => view.GetVisualDescendants().OfType<ListBox>().Any()
+            && view.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Name == "ReputationRowName" && t.Text == "Good"), "the standings to appear");
+
+        Assert.Equal("1 factions loaded from the game client.", view.Named<TextBlock>("ReputationStatusLine").Text);
+        Assert.Equal(1, auto.OpenCalls);
+        Assert.True(view.Named<TextBlock>("ReputationCheckedLine").IsEffectivelyVisible);
+    }
+
+    [AvaloniaFact]
+    public void The_refresh_button_has_an_accessible_name_and_the_expected_path_can_be_selected()
+    {
+        var h = Build();
+
+        var refresh = h.View.Named<Button>("ReputationRefreshButton");
+        Assert.Equal(ReputationViewModel.RefreshAccessibleName, AutomationProperties.GetName(refresh));
+        var path = h.View.Named<SelectableTextBlock>("ReputationPathLine");
+        Assert.Contains(h.Auto.Path, path.Text);
     }
 
     [AvaloniaFact]

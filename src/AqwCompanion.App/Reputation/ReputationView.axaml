@@ -43,11 +43,17 @@
       <StackPanel Orientation="Horizontal" Spacing="8">
         <Button x:Name="ReputationImportButton" Classes="primary" Content="{x:Static rep:ReputationViewModel.ImportText}"
                 Command="{Binding ImportCommand}" AutomationProperties.Name="{x:Static rep:ReputationViewModel.ImportAccessibleName}" />
+        <Button x:Name="ReputationRefreshButton" Content="{x:Static rep:ReputationViewModel.RefreshText}"
+                Command="{Binding RefreshCommand}" AutomationProperties.Name="{x:Static rep:ReputationViewModel.RefreshAccessibleName}" />
         <TextBlock x:Name="ReputationStatusLine" Text="{Binding StatusText}" IsVisible="{Binding HasStatus}"
                    VerticalAlignment="Center" TextWrapping="Wrap" AutomationProperties.Name="{Binding StatusText}" />
       </StackPanel>
       <TextBlock x:Name="ReputationErrorLine" Text="{Binding ErrorText}" IsVisible="{Binding HasError}"
                  Foreground="{DynamicResource AqwDangerText}" TextWrapping="Wrap" AutomationProperties.Name="{Binding ErrorText}" />
+      <SelectableTextBlock x:Name="ReputationPathLine" Text="{Binding ExpectedPath, StringFormat='Game client file: {0}'}" Foreground="{DynamicResource AqwTextMuted}"
+                 TextWrapping="Wrap" AutomationProperties.Name="Game client file path" />
+      <TextBlock x:Name="ReputationCheckedLine" Text="{Binding CheckedLine}" Classes="muted"
+                 IsVisible="{Binding HasChecked}" AutomationProperties.Name="{Binding CheckedLine}" />
       <TextBlock x:Name="ReputationImportedLine" Text="{Binding ImportedLine}" Classes="muted"
                  IsVisible="{Binding HasData}" AutomationProperties.Name="{Binding ImportedLine}" />
     </StackPanel>

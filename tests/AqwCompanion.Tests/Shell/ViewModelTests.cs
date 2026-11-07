@@ -121,7 +121,7 @@ public sealed class ViewModelTests : IDisposable
         var reputationStore = new ReputationStore(new InMemoryStoredDataStore());
         reputationStore.Save(new StoredReputation(
             new ReputationSnapshot([new FactionStanding(1, "Good", 5, 10, 20, 0)], null), "rep.json", DateTimeOffset.UnixEpoch));
-        var reputation = new ReputationViewModel(reputationStore, new FakeReputationFilePicker(), TimeProvider.System);
+        var reputation = new ReputationViewModel(reputationStore, new FakeReputationFilePicker(), new FakeReputationAutoSource(), TimeProvider.System);
         await reputation.RestoreAsync();
         var main = new MainViewModel(
             account, new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer()), hardFarms,
@@ -138,5 +138,31 @@ public sealed class ViewModelTests : IDisposable
         Assert.Equal(completes, main.HardFarms.ShowEmptyState);
         Assert.Equal(completes, main.Reputation.Items.Count == 0);
         Assert.Equal(completes, main.Reputation.IsEmpty);
+    }
+
+    [Fact]
+    public async Task Signing_out_deletes_the_reputation_file_the_game_client_wrote()
+    {
+        var dialog = new FakeSignInDialog { OnShow = _ => Task.FromResult(SignInResult.Connected("Test Hero")) };
+        var account = AccountViewModelBuilder.Create(dialog, persistence: new FakeAccountDataPersistence());
+        var source = new ReputationFileSource(_paths);
+        Directory.CreateDirectory(_paths.ReputationDirectory);
+        File.WriteAllText(source.Path, "{}");
+        var reputation = new ReputationViewModel(
+            new ReputationStore(new InMemoryStoredDataStore()), new FakeReputationFilePicker(), source, TimeProvider.System);
+        var main = new MainViewModel(
+            account, new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer()),
+            new HardFarmsViewModel(
+                new HardFarmStore(new InMemoryStoredDataStore()), new FakeHardFarmSync(), new InventoryCardViewModel(new SidebarViewModel()), new FakeUrlLauncher()),
+            reputation);
+        await account.SignInCommand.ExecuteAsync(null);
+        Assert.True(File.Exists(source.Path));
+        dialog.OnShow = _ => Task.FromResult(SignInResult.SignedOut());
+
+        account.RequestSignOutCommand.Execute(null);
+        await account.ConfirmSignOutCommand.ExecuteAsync(null);
+
+        Assert.False(File.Exists(source.Path));
+        Assert.NotNull(main.Reputation);
     }
 }

@@ -34,6 +34,18 @@ public class CompositionRootTests
     }
 
     [Fact]
+    public void Container_resolves_the_reputation_file_source_at_the_fixed_path()
+    {
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
+
+        using var services = CompositionRoot.Build(paths);
+
+        var source = services.GetRequiredService<AqwCompanion.App.Reputation.IReputationAutoSource>();
+        Assert.Equal(Path.Combine(paths.Root, "reputation", "reputation.json"), source.Path);
+        Assert.Same(services.GetRequiredService<MainViewModel>().Reputation, services.GetRequiredService<AqwCompanion.App.Reputation.ReputationViewModel>());
+    }
+
+    [Fact]
     public void Container_resolves_the_hard_farm_pipeline_and_shares_the_view_model_with_the_shell()
     {
         var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));

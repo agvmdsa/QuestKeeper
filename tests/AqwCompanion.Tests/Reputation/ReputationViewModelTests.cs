@@ -19,12 +19,14 @@ public class ReputationViewModelTests
 
         public FakeReputationFilePicker Picker { get; } = new();
 
+        public FakeReputationAutoSource Auto { get; } = new();
+
         public ReputationViewModel Vm { get; }
 
         public Fixture()
         {
             Store = new ReputationStore(Inner);
-            Vm = new ReputationViewModel(Store, Picker, new FixedClock(At));
+            Vm = new ReputationViewModel(Store, Picker, Auto, new FixedClock(At));
         }
     }
 

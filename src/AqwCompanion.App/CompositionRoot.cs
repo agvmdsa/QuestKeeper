@@ -94,6 +94,7 @@ public static class CompositionRoot
             }));
         services.AddSingleton<IReputationStore, ReputationStore>();
         services.AddSingleton<IReputationFilePicker, ReputationFilePicker>();
+        services.AddSingleton<IReputationAutoSource>(sp => new ReputationFileSource(sp.GetRequiredService<AppPaths>()));
         services.AddSingleton<ReputationViewModel>();
         services.AddSingleton<ISignInDialog, SignInDialog>();
         services.AddSingleton<SidebarViewModel>();

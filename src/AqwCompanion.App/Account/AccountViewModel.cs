@@ -18,7 +18,7 @@ namespace AqwCompanion.App.Account;
 /// The browser lives only in that window; this view model just applies what the window reports and
 /// hands the data to the card view models.
 /// </summary>
-public partial class AccountViewModel : ObservableObject
+public partial class AccountViewModel : ObservableObject, IForgettable
 {
     public const string NotConnectedText = "Not connected";
     public const string SignedOutMessage = "Sign in to let the app read your character name from account.aq.com.";
@@ -38,7 +38,7 @@ public partial class AccountViewModel : ObservableObject
     private readonly ICharacterBadgesLoader? _badgesLoader;
     private readonly ICharacterInventoryLoader? _inventoryLoader;
     private readonly IAccountDataPersistence? _persistence;
-    private readonly ForgetCoordinator? _forgetting;
+    private readonly ForgetCoordinator _forgetting;
     private readonly TimeProvider _clock;
     private readonly IAccountSessionData? _session;
     private bool _dialogOpen;
@@ -70,7 +70,7 @@ public partial class AccountViewModel : ObservableObject
     /// <param name="persistence">Keeps the last read data on disk; without it nothing is stored or restored.</param>
     /// <param name="clock">Source of the read times; the system clock by default.</param>
     /// <param name="session">Follows restore and sign-out for the in-memory session data; without it nothing is seeded or cleared.</param>
-    /// <param name="forgetting">Orders Forgetting on sign-out across the features; without it only the stored data is removed.</param>
+    /// <param name="forgetting">Orders Forgetting on sign-out across the features; without it only this view model and the stored data are forgotten.</param>
     public AccountViewModel(
         ISignInDialog dialog,
         SummaryCardViewModel summary,
@@ -86,7 +86,7 @@ public partial class AccountViewModel : ObservableObject
         IAccountSessionData? session = null,
         ForgetCoordinator? forgetting = null)
     {
-        _forgetting = forgetting;
+        _forgetting = forgetting ?? new ForgetCoordinator(() => _persistence?.Forget() ?? true, () => [this]);
         _session = session;
         _dialog = dialog;
         Summary = summary;
@@ -255,17 +255,34 @@ public partial class AccountViewModel : ObservableObject
         }
     }
 
-    /// <summary>Deletes the stored data and returns to the not-connected state; keeps everything when the deletion fails.</summary>
+    /// <summary>
+    /// Forgets everything through the <see cref="ForgetCoordinator"/>: stops work, removes the stored data, then clears memory.
+    /// Keeps everything when the stored data could not be removed.
+    /// </summary>
     private void RemoveLocalData(string doneMessage)
     {
-        var result = (_forgetting ?? new ForgetCoordinator(() => _persistence?.Forget() ?? true, () => [])).Forget();
+        var result = _forgetting.Forget();
         if (!result.StoredDataRemoved)
         {
             Status = ForgetFailedMessage;
             return;
         }
 
-        _characterLoad?.Cancel();
+        Status = result.IsComplete
+            ? doneMessage
+            : doneMessage + " Some data could not be removed: " + string.Join(", ", result.NotForgotten) + ".";
+    }
+
+    string IForgettable.Name => "Account";
+
+    void IForgettable.Quiesce() => _characterLoad?.Cancel();
+
+    void IForgettable.Resume()
+    {
+    }
+
+    void IForgettable.Forget()
+    {
         _session?.Clear();
         CharacterName = null;
         Summary.Clear();
@@ -274,14 +291,7 @@ public partial class AccountViewModel : ObservableObject
         Inventory.Clear();
         Sidebar.Reset();
         IsFromStoredData = false;
-        Status = result.IsComplete
-            ? doneMessage
-            : doneMessage + " Some data could not be removed: " + string.Join(", ", result.NotForgotten) + ".";
-        DataForgotten?.Invoke(this, EventArgs.Empty);
     }
-
-    /// <summary>Raised after the stored data was removed (sign out); not raised when the user dismissed the window or the removal failed.</summary>
-    public event EventHandler? DataForgotten;
 
     /// <summary>First sign-in: the browser is shown so the user can sign in themselves.</summary>
     [RelayCommand]

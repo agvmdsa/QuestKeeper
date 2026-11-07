@@ -6,6 +6,7 @@ using AqwCompanion.App.SignIn;
 using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Badges;
 using AqwCompanion.Core.Equipment;
+using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Inventory;
 using AqwCompanion.Tests.TestDoubles;
 
@@ -1086,63 +1087,89 @@ public class AccountViewModelTests
         public bool Forget() => true;
     }
 
-    private async Task<(AccountViewModel Vm, List<string> Events)> ConnectedWithEventsAsync()
+    /// <summary>A connected view model whose coordinator also orders a recording participant and the persistence removal.</summary>
+    private async Task<(AccountViewModel Vm, List<string> Log, RecordingForgettable Other)> ConnectedWithParticipantAsync()
     {
+        var log = new List<string>();
+        var other = new RecordingForgettable("Other", log);
+        AccountViewModel? vm = null;
+        var coordinator = new ForgetCoordinator(
+            () =>
+            {
+                log.Add("RemoveStoredData");
+                return _persistence.Forget();
+            },
+            () => [other, (IForgettable)vm!]);
         _dialog.OnShow = Reports(SignInResult.Connected("Test Hero"));
-        var vm = AccountViewModelBuilder.Create(_dialog, persistence: _persistence);
+        vm = AccountViewModelBuilder.Create(_dialog, persistence: _persistence, forgetting: coordinator);
         await vm.SignInCommand.ExecuteAsync(null);
-        var events = new List<string>();
-        vm.DataForgotten += (_, _) => events.Add("forgotten");
-        return (vm, events);
+        return (vm, log, other);
     }
 
     [Fact]
-    public async Task Data_forgotten_is_raised_once_after_a_completed_sign_out()
+    public async Task A_completed_sign_out_stops_work_then_removes_the_data_then_forgets()
     {
-        var (vm, events) = await ConnectedWithEventsAsync();
+        var (vm, log, _) = await ConnectedWithParticipantAsync();
         _dialog.OnShow = Reports(SignInResult.SignedOut());
 
         await SignOutAsync(vm);
 
-        Assert.Equal(["forgotten"], events);
+        Assert.Equal(["Quiesce:Other", "RemoveStoredData", "Forget:Other"], log);
         Assert.Null(vm.CharacterName);
+        Assert.Equal(AccountViewModel.SignOutCompleteMessage, vm.Status);
     }
 
     [Fact]
-    public async Task Data_forgotten_is_raised_when_the_site_was_unreachable_but_the_data_was_removed()
+    public async Task The_other_features_are_forgotten_when_the_site_was_unreachable_but_the_data_was_removed()
     {
-        var (vm, events) = await ConnectedWithEventsAsync();
+        var (vm, log, _) = await ConnectedWithParticipantAsync();
         _dialog.OnShow = Reports(SignInResult.Failed("Could not reach account.aq.com."));
 
         await SignOutAsync(vm);
 
-        Assert.Equal(["forgotten"], events);
+        Assert.Equal(["Quiesce:Other", "RemoveStoredData", "Forget:Other"], log);
+        Assert.Null(vm.CharacterName);
     }
 
     [Fact]
-    public async Task Data_forgotten_is_not_raised_when_the_sign_out_is_dismissed()
+    public async Task Nothing_is_forgotten_when_the_sign_out_is_dismissed()
     {
-        var (vm, events) = await ConnectedWithEventsAsync();
+        var (vm, log, _) = await ConnectedWithParticipantAsync();
         _dialog.OnShow = Reports(SignInResult.Cancelled());
 
         await SignOutAsync(vm);
 
-        Assert.Empty(events);
+        Assert.Empty(log);
+        Assert.Equal("Test Hero", vm.CharacterName);
     }
 
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task Data_forgotten_is_not_raised_when_the_stored_data_could_not_be_removed(bool signedOut)
+    public async Task When_the_stored_data_could_not_be_removed_nothing_is_cleared_and_the_participants_resume(bool signedOut)
     {
-        var (vm, events) = await ConnectedWithEventsAsync();
+        var (vm, log, _) = await ConnectedWithParticipantAsync();
         _persistence.ForgetResult = false;
         _dialog.OnShow = Reports(signedOut ? SignInResult.SignedOut() : SignInResult.Failed("x"));
 
         await SignOutAsync(vm);
 
-        Assert.Empty(events);
+        Assert.Equal(["Quiesce:Other", "RemoveStoredData", "Resume:Other"], log);
         Assert.Equal(AccountViewModel.ForgetFailedMessage, vm.Status);
+        Assert.Equal("Test Hero", vm.CharacterName);
+    }
+
+    [Fact]
+    public async Task A_feature_that_could_not_be_forgotten_is_named_in_the_status_and_the_account_is_still_cleared()
+    {
+        var (vm, log, other) = await ConnectedWithParticipantAsync();
+        other.ThrowOnForget = true;
+        _dialog.OnShow = Reports(SignInResult.SignedOut());
+
+        await SignOutAsync(vm);
+
+        Assert.Equal(AccountViewModel.SignOutCompleteMessage + " Some data could not be removed: Other.", vm.Status);
+        Assert.Null(vm.CharacterName);
+        Assert.Contains("Forget:Other", log);
     }
 }
-

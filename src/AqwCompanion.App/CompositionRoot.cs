@@ -99,7 +99,7 @@ public static class CompositionRoot
         services.AddSingleton<ReputationViewModel>();
         services.AddSingleton(sp => new ForgetCoordinator(
             () => sp.GetRequiredService<IAccountDataPersistence>().Forget(),
-            () => [sp.GetRequiredService<HardFarmsViewModel>(), sp.GetRequiredService<ReputationViewModel>()]));
+            () => [sp.GetRequiredService<AccountViewModel>(), sp.GetRequiredService<HardFarmsViewModel>(), sp.GetRequiredService<ReputationViewModel>()]));
         services.AddSingleton<ISignInDialog, SignInDialog>();
         services.AddSingleton<SidebarViewModel>();
         services.AddSingleton<SummaryCardViewModel>();

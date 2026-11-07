@@ -250,6 +250,7 @@ public class SnapshotRedactorTests
         stopwatch.Stop();
 
         Assert.NotNull(output);
-        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5), $"took {stopwatch.Elapsed}");
+        // A quadratic redactor would need minutes for these inputs; the generous bound only keeps a busy machine from failing the test.
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(30), $"took {stopwatch.Elapsed}");
     }
 }

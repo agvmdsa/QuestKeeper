@@ -129,7 +129,7 @@ public class ReputationViewTests
         Assert.Equal(["alchemy", "Evil", "Example Guild", "Good"], TextsNamed(h, "ReputationRowName"));
         Assert.Equal(["10", "3", "1", "5"], TextsNamed(h, "ReputationRowRank"));
         Assert.Equal(["0", "410", "80", "1,234"], TextsNamed(h, "ReputationRowRep"));
-        Assert.Equal(["0", "1,000", "200", "5,000"], TextsNamed(h, "ReputationRowToNext"));
+        Assert.Equal(["0", "975", "200", "5,000"], TextsNamed(h, "ReputationRowToNext"));
         var line = h.View.Named<TextBlock>("ReputationImportedLine");
         Assert.True(line.IsEffectivelyVisible);
         Assert.StartsWith("Imported ", line.Text);

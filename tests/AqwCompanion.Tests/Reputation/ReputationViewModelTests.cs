@@ -9,7 +9,7 @@ public class ReputationViewModelTests
     private static readonly DateTimeOffset At = new(2030, 3, 1, 8, 30, 0, TimeSpan.Zero);
 
     private const string TwoFactions =
-        """{"schema":1,"factions":[{"factionId":2,"name":"evil","rank":1,"rep":1500,"repToRank":2000},{"factionId":1,"name":"Good","rank":5,"rep":10,"repToRank":20}]}""";
+        """{"schema":1,"factions":[{"factionId":2,"name":"evil","rank":1,"rep":1500,"repToRank":2000,"spillRep":500},{"factionId":1,"name":"Good","rank":5,"rep":10,"repToRank":20}]}""";
 
     private sealed class Fixture
     {
@@ -81,7 +81,8 @@ public class ReputationViewModelTests
 
         Assert.Equal(["evil", "Good"], f.Vm.Items.Select(r => r.Name));
         Assert.Equal("1,500", f.Vm.Items[0].Rep);
-        Assert.Equal("2,000", f.Vm.Items[0].ToNextRank);
+        Assert.Equal("1,500", f.Vm.Items[0].ToNextRank);
+        Assert.Equal("20", f.Vm.Items[1].ToNextRank);
         Assert.True(f.Vm.HasData);
         Assert.Equal(string.Empty, f.Vm.ErrorText);
         Assert.Equal("2 factions imported.", f.Vm.StatusText);

@@ -114,13 +114,15 @@ public sealed class ViewModelTests : IDisposable
     {
         var dialog = new FakeSignInDialog { OnShow = _ => Task.FromResult(SignInResult.Connected("Test Hero")) };
         var persistence = new FakeAccountDataPersistence();
+        HardFarmsViewModel? hardFarmsRef = null;
         ReputationViewModel? reputationRef = null;
         var account = AccountViewModelBuilder.Create(
-            dialog, persistence: persistence, forgetting: new ForgetCoordinator(persistence.Forget, () => [reputationRef!]));
+            dialog, persistence: persistence, forgetting: new ForgetCoordinator(persistence.Forget, () => [hardFarmsRef!, reputationRef!]));
         var store = new HardFarmStore(new InMemoryStoredDataStore());
         store.SaveList(new HardFarmList([new HardFarmGroup("Nation", ["blade-one"])], null), DateTimeOffset.UnixEpoch);
         var hardFarms = new HardFarmsViewModel(
             store, new FakeHardFarmSync(), new InventoryCardViewModel(new SidebarViewModel()), new FakeUrlLauncher());
+        hardFarmsRef = hardFarms;
         await hardFarms.RestoreAsync();
         var reputationStore = new ReputationStore(new InMemoryStoredDataStore());
         reputationStore.Save(new StoredReputation(

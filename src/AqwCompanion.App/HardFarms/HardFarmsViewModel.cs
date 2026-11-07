@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Globalization;
 using AqwCompanion.App.Infrastructure.Formatting;
 using AqwCompanion.App.Inventory;
+using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Inventory;
 using AqwCompanion.Core.Wiki;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -20,7 +21,7 @@ public enum HardFarmsState
 /// The Hard Farms tab: the imported list with item types and what the character already owns. The sync reports from the
 /// thread pool, so the app passes <c>onUiThread</c> to run what it reports on the UI thread (without it, inline).
 /// </summary>
-public partial class HardFarmsViewModel : ObservableObject
+public partial class HardFarmsViewModel : ObservableObject, IForgettable
 {
     public const string EmptyText = "Click 'Update from the Wiki' to import the Hard Farming list. The list shows up in a few seconds; the item types keep arriving for a minute or two.";
     public const string UpdateText = "Update from the Wiki";
@@ -55,8 +56,11 @@ public partial class HardFarmsViewModel : ObservableObject
     private IReadOnlyList<string> _pending = [];
     private bool _everRead;
 
-    // Bumped by Reset: work that started before it must not bring data back.
+    // Bumped by Quiesce and Forget: work that started before it must not bring data back.
     private int _epoch;
+
+    // Set by Quiesce: the update command does nothing until Resume or Forget.
+    private bool _quiesced;
 
     // Bumped whenever data is applied: a restore that started earlier must not overwrite it.
     private int _dataVersion;
@@ -172,13 +176,18 @@ public partial class HardFarmsViewModel : ObservableObject
         OnPropertyChanged(nameof(PendingText));
     }
 
-    private bool CanUpdate() => State == HardFarmsState.Idle;
+    private bool CanUpdate() => State == HardFarmsState.Idle && !_quiesced;
 
     private bool CanCancel() => State == HardFarmsState.Updating;
 
     [RelayCommand(CanExecute = nameof(CanUpdate))]
     private async Task UpdateAsync()
     {
+        if (_quiesced)
+        {
+            return;
+        }
+
         using var cts = new CancellationTokenSource();
         _updateCts = cts;
         var epoch = _epoch;
@@ -225,7 +234,7 @@ public partial class HardFarmsViewModel : ObservableObject
 
         if (epoch != _epoch)
         {
-            // Reset ran meanwhile: the data was forgotten, so nothing of this run is shown or kept in view.
+            // Forgetting ran meanwhile: the data was forgotten, so nothing of this run is shown or kept in view.
             return;
         }
 
@@ -272,7 +281,7 @@ public partial class HardFarmsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Loads the stored list and type table in the background. Does nothing after <see cref="Reset"/> or when a list is already
+    /// Loads the stored list and type table in the background. Does nothing after <see cref="Forget"/> or when a list is already
     /// shown; when an update brought newer types meanwhile, those are kept.
     /// </summary>
     public async Task RestoreAsync()
@@ -295,16 +304,41 @@ public partial class HardFarmsViewModel : ObservableObject
         }
     }
 
+    public string Name => "Hard Farms";
+
     /// <summary>
-    /// The account's saved data was removed: cancels a running update, forgets the list, the types and the filters and returns
-    /// to the empty state. Answers of work that started before this call are ignored.
+    /// Stops a running update and makes its late answers have no effect; the update command does nothing until <see cref="Resume"/>.
+    /// Removes no data. Pressing Update again after <see cref="Resume"/> starts over.
     /// </summary>
-    public void Reset()
+    public void Quiesce()
     {
+        _quiesced = true;
         _epoch++;
         _dataVersion++;
         _updateCts?.Cancel();
         _updateCts = null;
+        ProgressText = string.Empty;
+        State = HardFarmsState.Idle;
+        UpdateCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>Undoes <see cref="Quiesce"/> when the stored data could not be removed.</summary>
+    public void Resume()
+    {
+        _quiesced = false;
+        UpdateCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// The account's saved data was removed: forgets the list, the types and the filters and returns to the empty state.
+    /// Answers of work that started before this call are ignored.
+    /// </summary>
+    public void Forget()
+    {
+        _epoch++;
+        _dataVersion++;
+        _updateCts = null;
+        _quiesced = false;
         _list = null;
         _types = WikiTypeTable.Empty;
         _listReadAt = null;
@@ -326,6 +360,7 @@ public partial class HardFarmsViewModel : ObservableObject
         State = HardFarmsState.Idle;
         Refilter();
         NotifyPending();
+        UpdateCommand.NotifyCanExecuteChanged();
     }
 
     // A drop-down can write null back when its items are replaced; that means "All".

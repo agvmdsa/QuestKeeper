@@ -16,9 +16,6 @@ public sealed class MainViewModel
         Diagnostics = diagnostics;
         HardFarms = hardFarms;
         Reputation = reputation;
-
-        // The Hard Farms and Reputation data are kept with the account's saved data, so they go when that is removed.
-        account.DataForgotten += (_, _) => hardFarms.Reset();
     }
 
     public string Title { get; } = AppInfo.ProductName;

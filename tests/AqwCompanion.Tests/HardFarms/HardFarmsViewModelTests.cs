@@ -402,7 +402,7 @@ public class HardFarmsViewModelTests
         Assert.Equal(["item-299", "item-2990", "item-2991", "item-2992", "item-2993", "item-2994", "item-2995", "item-2996", "item-2997", "item-2998", "item-2999"], vm.Rows.Select(r => r.Slug));
     }
 
-    // --- Reset (the account's data was forgotten) ---------------------------------------------------------------
+    // --- Forgetting (the account's data was removed) ---------------------------------------------------
 
     private sealed class GatedStore(IHardFarmStore inner) : IHardFarmStore
     {
@@ -450,7 +450,7 @@ public class HardFarmsViewModelTests
     }
 
     [Fact]
-    public async Task Reset_returns_to_the_empty_state_with_unfiltered_options_and_no_texts()
+    public async Task Forget_returns_to_the_empty_state_with_unfiltered_options_and_no_texts()
     {
         var vm = await Loaded();
         _inventory.Data = Owns("Blade One");
@@ -460,7 +460,9 @@ public class HardFarmsViewModelTests
         vm.SearchText = "blade";
         Assert.NotEmpty(vm.CreditText);
 
-        vm.Reset();
+        vm.Quiesce();
+
+        vm.Forget();
 
         Assert.Empty(vm.Rows);
         Assert.False(vm.HasList);
@@ -484,11 +486,12 @@ public class HardFarmsViewModelTests
     }
 
     [Fact]
-    public async Task After_Reset_a_new_list_shows_with_unknown_ownership_until_an_inventory_is_read()
+    public async Task After_Forget_a_new_list_shows_with_unknown_ownership_until_an_inventory_is_read()
     {
         var vm = await Loaded();
         _inventory.Data = Owns("Blade One");
-        vm.Reset();
+        vm.Quiesce();
+        vm.Forget();
         _inventory.Data = null;
         _sync.Gate = new TaskCompletionSource();
         _sync.Result = new SyncResult(SyncStatus.Updated, "Stored.", []);
@@ -541,14 +544,15 @@ public class HardFarmsViewModelTests
     }
 
     [Fact]
-    public async Task Reset_cancels_a_running_update_and_its_late_callbacks_and_answer_do_not_bring_the_data_back()
+    public async Task Forget_cancels_a_running_update_and_its_late_callbacks_and_answer_do_not_bring_the_data_back()
     {
         var sync = new StubbornSync();
         var vm = new HardFarmsViewModel(_store, sync, _inventory, _launcher);
 
         var run = vm.UpdateCommand.ExecuteAsync(null);
         Assert.True(vm.IsUpdating);
-        vm.Reset();
+        vm.Quiesce();
+        vm.Forget();
 
         var call = sync.Calls.Single();
         Assert.True(call.Token.IsCancellationRequested);
@@ -572,12 +576,13 @@ public class HardFarmsViewModelTests
     }
 
     [Fact]
-    public async Task A_cancelled_old_run_does_not_disturb_an_update_started_after_Reset()
+    public async Task A_cancelled_old_run_does_not_disturb_an_update_started_after_Forget()
     {
         var sync = new StubbornSync();
         var vm = new HardFarmsViewModel(_store, sync, _inventory, _launcher);
         var oldRun = vm.UpdateCommand.ExecuteAsync(null);
-        vm.Reset();
+        vm.Quiesce();
+        vm.Forget();
         var newRun = vm.UpdateCommand.ExecuteAsync(null);
         Assert.Equal(2, sync.Calls.Count);
         Assert.True(vm.IsUpdating);
@@ -601,7 +606,7 @@ public class HardFarmsViewModelTests
     }
 
     [Fact]
-    public async Task A_late_restore_after_Reset_does_not_bring_the_stored_data_back()
+    public async Task A_late_restore_after_Forget_does_not_bring_the_stored_data_back()
     {
         _store.SaveList(List(), At);
         var gated = new GatedStore(_store);
@@ -609,7 +614,8 @@ public class HardFarmsViewModelTests
 
         var restore = vm.RestoreAsync();
         await gated.Entered.Task;
-        vm.Reset();
+        vm.Quiesce();
+        vm.Forget();
         gated.Release.SetResult();
         await restore;
 
@@ -910,7 +916,7 @@ public class HardFarmsViewModelTests
     }
 
     [Fact]
-    public async Task What_the_sync_reports_goes_through_the_UI_thread_hook_and_a_late_one_after_Reset_does_nothing()
+    public async Task What_the_sync_reports_goes_through_the_UI_thread_hook_and_a_late_one_after_Forget_does_nothing()
     {
         var queue = new Queue<Action>();
         var vm = new HardFarmsViewModel(_store, _sync, _inventory, _launcher, queue.Enqueue);
@@ -935,7 +941,8 @@ public class HardFarmsViewModelTests
         Assert.Equal(5, vm.Rows.Count);
 
         await Task.Run(() => _sync.Saved!(new SyncUpdate(null, null, WikiTypeTable.Empty, null)));
-        vm.Reset();
+        vm.Quiesce();
+        vm.Forget();
         queue.Dequeue()();
         _sync.Gate.SetResult();
         await run;
@@ -945,13 +952,15 @@ public class HardFarmsViewModelTests
     }
 
     [Fact]
-    public async Task Reset_forgets_the_pending_pages_and_goes_back_to_Update_from_the_Wiki()
+    public async Task Forget_forgets_the_pending_pages_and_goes_back_to_Update_from_the_Wiki()
     {
         _sync.Pending = ThreePending;
         var vm = await Loaded();
         Assert.True(vm.ShowPending);
 
-        vm.Reset();
+        vm.Quiesce();
+
+        vm.Forget();
 
         Assert.False(vm.ShowPending);
         Assert.Equal("Update from the Wiki", vm.UpdateButtonText);

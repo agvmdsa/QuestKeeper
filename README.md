@@ -62,6 +62,67 @@ dotnet run --project src/AqwCompanion.App   # run the app
 
 Releases are built by `.github/workflows/release.yml` when a `vX.Y.Z` tag is pushed: tests, a self-contained single-file `win-x64` publish, and a zip with its `SHA256SUMS.txt`. The version comes from the tag (MinVer).
 
+## Reputation proof of concept (branch `poc/reputation-discovery`)
+
+The account website does not show faction reputation, so this branch tries a different source: a JSON file you export yourself from the game. The **Reputation** tab only imports and shows that file. It makes no network calls and never touches the game, a session or credentials. The app builds and runs on macOS and Windows; only collecting the data needs Windows.
+
+> Collecting the data means running the game inside a third-party client ([Skua](https://github.com/auqw/Skua)), which is a different risk class from the rest of this app: it is probably not allowed by the game's terms and can get an account banned. Use a throwaway account, and do it knowingly. Skua has no license, so none of its code is in this repository and it is not distributed with the app.
+
+On the Windows machine:
+
+1. Clone and run this branch: `git clone -b poc/reputation-discovery https://github.com/agvmdsa/aqw-companion.git`, then `dotnet run --project src/AqwCompanion.App` (needs the .NET 10 SDK).
+2. Install Skua yourself from its official releases and log in with the throwaway account. Skua needs a Flash runtime (its readme explains CleanFlash).
+3. Save this as `ReputationExport.cs` in Skua's scripts folder (`%APPDATA%\Skua\Scripts`), then in Skua press **Load script** and **Start**, and leave it running while you play. Every 5 seconds it checks your factions and rewrites `%LOCALAPPDATA%\AqwCompanion\reputation\reputation.json` only when something changed (never with an empty list, and never half-written):
+
+   ```csharp
+   using System;
+   using System.Collections.Generic;
+   using System.IO;
+   using Newtonsoft.Json;
+   using Skua.Core.Interfaces;
+
+   public class Script
+   {
+       public void ScriptMain(IScriptInterface Bot)
+       {
+           var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AqwCompanion", "reputation");
+           Directory.CreateDirectory(dir);
+           var file = Path.Combine(dir, "reputation.json");
+           var tmp = file + ".tmp";
+           var last = "";
+           Bot.Log("Reputation export running, writing " + file);
+           while (!Bot.ShouldExit)
+           {
+               try
+               {
+                   var rows = new List<object>();
+                   foreach (var f in Bot.Reputation.FactionList)
+                       rows.Add(new { factionId = f.ID, name = f.Name, rank = f.Rank, rep = f.TotalRep, repToRank = f.RequiredRep, spillRep = f.Rep });
+                   var key = JsonConvert.SerializeObject(rows);
+                   if (rows.Count > 0 && key != last)
+                   {
+                       var json = JsonConvert.SerializeObject(new { schema = 1, exportedAt = DateTime.UtcNow.ToString("o"), factions = rows }, Formatting.Indented);
+                       File.WriteAllText(tmp, json);
+                       File.Move(tmp, file, true);
+                       last = key;
+                   }
+               }
+               catch (Exception e)
+               {
+                   Bot.Log("Reputation export: " + e.Message);
+               }
+               Bot.Sleep(5000);
+           }
+       }
+   }
+   ```
+
+4. In AQW Companion open the **Reputation** tab. It reads the file by itself when the tab opens, and **Refresh** reads it again. Nothing to pick. The older **Import reputation file…** button still works for a file saved somewhere else.
+
+What to check: does the list match the in-game reputation (rank, total rep, rep still missing for the next rank)? Skua only lists factions with at least 1 reputation point, and the tab only shows what the script last wrote, so the script must be running (the tab says when there is no file yet and shows the expected path).
+
+The script was written from reading Skua's source and has not been run: the field names come from `Faction.cs` (`iRep` is the total, `iSpillRep` the progress in the current rank, `iRepToRank` the total needed for the rank), and `Bot.ShouldExit`, `Bot.Sleep` and `Bot.Log` from its script interface. If Skua reports a compile error when loading it, send the message back and the script gets fixed. The file format is `schema: 1`; files over 1 MiB, with more than 500 factions or with an unknown schema are rejected, and signing out removes the imported data and the file, with everything else.
+
 ## Not affiliated
 
 AQW Companion is an unofficial fan project. It is not made by, endorsed by or connected to Artix Entertainment. AdventureQuest Worlds and its content belong to their owners.

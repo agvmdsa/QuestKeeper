@@ -140,6 +140,21 @@ public class CompositionRootTests
     }
 
     [Fact]
+    public void Container_resolves_the_tray_controller_over_the_session_and_the_window_host()
+    {
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
+
+        using var services = CompositionRoot.Build(paths);
+
+        var controller = services.GetRequiredService<TrayController>();
+        Assert.Same(controller, services.GetRequiredService<TrayController>());
+        Assert.IsType<AvaloniaMainWindowHost>(services.GetRequiredService<IMainWindowHost>());
+        Assert.Same(services.GetRequiredService<IMainWindowHost>(), services.GetRequiredService<AvaloniaMainWindowHost>());
+        Assert.Equal("AQW Companion - not capturing", controller.ToolTip);
+        Assert.False(controller.IsExiting);
+    }
+
+    [Fact]
     public async Task The_capture_session_resolved_from_the_container_takes_part_in_forgetting()
     {
         var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));

@@ -2,6 +2,7 @@ using AqwCompanion.App.GameData;
 using AqwCompanion.App.Infrastructure.Elevation;
 using AqwCompanion.App.Shell;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,6 +11,11 @@ namespace AqwCompanion.App;
 
 public partial class CompanionApp : Application
 {
+    private TrayController? _tray;
+
+    /// <summary>Brings the main window to the front; used when a second launch signals this running app. UI thread only.</summary>
+    public void OpenMainWindow() => _tray?.Open();
+
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
     public override void OnFrameworkInitializationCompleted()
@@ -18,14 +24,27 @@ public partial class CompanionApp : Application
         {
             var services = CompositionRoot.Build(AppPaths.ForCurrentUser(AppInfo.ExeName, StartupArguments.TryGetDataRoot(desktop.Args ?? [])));
             var main = services.GetRequiredService<MainViewModel>();
-            desktop.MainWindow = new MainWindow { DataContext = main };
+            var window = new MainWindow { DataContext = main };
+            desktop.MainWindow = window;
+            // Closing the window hides it to the notification area; only Exit (or an OS shutdown) ends the app.
+            desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            services.GetRequiredService<AvaloniaMainWindowHost>().Attach(window);
+            var tray = services.GetRequiredService<TrayController>();
+            window.KeepInTray(tray);
+            _tray = tray;
+            var trayIcon = new TrayIconSetup(tray);
+            TrayIcon.SetIcons(this, [trayIcon.Icon]);
             _ = main.Account.RestoreStoredDataAsync();
             _ = main.HardFarms.RestoreAsync();
             _ = main.Reputation.RestoreAsync();
             var capture = services.GetRequiredService<CaptureSession>();
             _ = capture.RestoreAsync();
             _ = capture.StartAsync();
-            desktop.Exit += (_, _) => services.Dispose();
+            desktop.Exit += (_, _) =>
+            {
+                trayIcon.Dispose();
+                services.Dispose();
+            };
         }
 
         base.OnFrameworkInitializationCompleted();

@@ -106,6 +106,12 @@ public static class CompositionRoot
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<IApplicationExit>(),
             sp.GetRequiredService<AppPaths>()));
+        services.AddSingleton<AvaloniaMainWindowHost>();
+        services.AddSingleton<IMainWindowHost>(sp => sp.GetRequiredService<AvaloniaMainWindowHost>());
+        services.AddSingleton(sp => new TrayController(
+            sp.GetRequiredService<CaptureSession>(),
+            sp.GetRequiredService<IMainWindowHost>(),
+            sp.GetRequiredService<IApplicationExit>()));
         services.AddSingleton<ActiveInventory>();
         services.AddSingleton(sp => new GameDataViewModel(sp.GetRequiredService<CaptureSession>(), OnUiThread));
         services.AddSingleton(sp => new ForgetCoordinator(

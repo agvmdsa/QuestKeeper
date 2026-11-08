@@ -240,6 +240,11 @@ public class SnapshotRedactorTests
     [InlineData("Bearer ", 100_000)]
     [InlineData("\"token\":\"x\",", 60_000)]
     [InlineData("Cookie: a=b\n", 60_000)]
+    [InlineData("1.", 300_000)]
+    [InlineData("a:", 300_000)]
+    [InlineData("1:", 300_000)]
+    [InlineData("a/", 300_000)]
+    [InlineData("1.1.1.", 100_000)]
     public void Runs_in_linear_time_on_large_hostile_inputs(string unit, int repeat)
     {
         var input = string.Concat(Enumerable.Repeat(unit, repeat));
@@ -252,5 +257,33 @@ public class SnapshotRedactorTests
         Assert.NotNull(output);
         // A quadratic redactor would need minutes for these inputs; the generous bound only keeps a busy machine from failing the test.
         Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(30), $"took {stopwatch.Elapsed}");
+    }
+
+    [Theory]
+    [InlineData("from 203.0.113.7 now", "203.0.113.7")]
+    [InlineData("peer=2001:db8::1;", "2001:db8::1")]
+    [InlineData("addr ::1 end", "::1")]
+    [InlineData("addr 2001:0db8:85a3:0000:0000:8a2e:0370:7334 end", "2001:0db8:85a3:0000:0000:8a2e:0370:7334")]
+    [InlineData("token blob QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWTAxMjM0NTY3ODk= end", "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWTAxMjM0NTY3ODk=")]
+    public void Masks_addresses_and_long_base64_runs(string input, string secret)
+    {
+        var output = _redactor.Redact(input);
+
+        Assert.DoesNotContain(secret, output);
+        Assert.Contains(SnapshotRedactor.NetworkMask, output);
+    }
+
+    [Theory]
+    [InlineData("version 1.2.3 released")]
+    [InlineData("2026-11-07 10:00:00.123 +01:00 [INF] done")]
+    [InlineData("id 3f2504e0-4f89-41d3-9a0c-0305e82c3301 ok")]
+    [InlineData("see /Users/someone/Developer/aqw-companion/src/AqwCompanion.App/Infrastructure/LoggingSetup.cs")]
+    [InlineData("path /usr/local/share/aqwcompanion/very/long/folder/names/without/digits/at/all")]
+    [InlineData("C:\\Users\\someone\\AppData\\Local\\AqwCompanion\\logs\\log-20261107.txt")]
+    [InlineData("a short word and aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    [InlineData("mac aa:bb:cc:dd:ee:ff and time 12:30:45")]
+    public void Leaves_ordinary_text_alone(string input)
+    {
+        Assert.Equal(input, _redactor.Redact(input));
     }
 }

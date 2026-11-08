@@ -12,6 +12,9 @@ public sealed partial class SnapshotRedactor
 {
     public const string Mask = "[REDACTED]";
 
+    /// <summary>Mask for the second-line rules (addresses and long encoded runs), the same text the log guard writes.</summary>
+    public const string NetworkMask = "***";
+
     private const string EscapedQuote = "\\\"";
 
     private readonly Regex[] _termPatterns;
@@ -32,6 +35,9 @@ public sealed partial class SnapshotRedactor
         output = HtmlTag().Replace(output, RedactHtmlTag);
         output = RedactKeyedValues(output);
         output = Email().Replace(output, Mask);
+        output = IPv4().Replace(output, NetworkMask);
+        output = IPv6().Replace(output, NetworkMask);
+        output = LongBase64Run().Replace(output, NetworkMask);
 
         foreach (var pattern in _termPatterns)
         {
@@ -313,4 +319,19 @@ public sealed partial class SnapshotRedactor
     // The lookbehind lets a match start only at the beginning of a run of address characters.
     [GeneratedRegex("""(?<![A-Z0-9._%+\-])[A-Z0-9._%+\-]+(?:@|%(?:25)*40)[A-Z0-9.\-]+\.[A-Z]{2,}""", RegexOptions.IgnoreCase)]
     private static partial Regex Email();
+
+    // Four dotted decimal octets that are not part of a longer dotted/digit run (so 1.2.3 and dates stay).
+    [GeneratedRegex("""(?<![0-9.])(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(?![0-9]|\.[0-9])""")]
+    private static partial Regex IPv4();
+
+    // Full, compressed (::) and leading-:: forms. Needing either 8 groups or "::" keeps clock times and MAC addresses.
+    [GeneratedRegex(
+        """(?<![0-9A-Z:])(?:(?:[0-9A-F]{1,4}:){7}[0-9A-F]{1,4}|(?:[0-9A-F]{1,4}:){1,6}:[0-9A-F]{1,4}(?::[0-9A-F]{1,4}){0,5}|(?:[0-9A-F]{1,4}:){1,7}:|::[0-9A-F]{1,4}(?::[0-9A-F]{1,4}){0,6})(?![0-9A-Z:])""",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex IPv6();
+
+    // 40 or more base64 characters starting at the beginning of a run. The digit/+/= requirement spares long
+    // letters-and-slash file paths; random base64 of that length almost surely contains one.
+    [GeneratedRegex("""(?<![A-Za-z0-9+/=])(?=[A-Za-z/]*[0-9+=])[A-Za-z0-9+/=]{40,}""")]
+    private static partial Regex LongBase64Run();
 }

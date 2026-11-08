@@ -151,6 +151,13 @@ If you open the app while you are already logged in to the game: the data saved 
 
 **Sign out** on the Account tab removes the captured data too, together with everything else the app saved.
 
+Tray icon and a single instance:
+
+- Closing the window does not close the app. It hides to the notification area (on Windows, often under the hidden icons arrow), and the capture keeps listening in the background. The icon's tooltip says what the capture is doing (waiting for a login, capturing, or why it cannot).
+- Open the window again by clicking the icon, or from its right-click menu: **Open**, **Start capture** or **Stop capture**, and **Exit**. **Exit** is the only way to really close the app: it stops the capture, waits up to 3 seconds for the capture devices to close and ends the process.
+- Starting the app again while it is already running does not open a second capture: the running window comes to the front and the new process ends. When the app restarts itself as administrator it waits up to 10 seconds for the old process to finish closing.
+- Not verified: the tray icon, its menu and the single instance have not been run on a real Windows machine; they were only tested in this repository without a real tray. The app does not start with Windows (there is no auto-start). Mac and Linux were not checked either; on those systems a second launch may not be able to wake the running window.
+
 Limits and what is not verified:
 
 - At most 16 characters are kept; the oldest is dropped first.

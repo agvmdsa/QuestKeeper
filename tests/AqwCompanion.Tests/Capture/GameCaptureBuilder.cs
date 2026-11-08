@@ -71,4 +71,139 @@ internal static class GameCaptureBuilder
         }
         return output.ToArray();
     }
+
+    public const string SecretEmail = "SECRET-EMAIL@example.com";
+    public const string SecretIp = "203.0.113.77";
+    public const string SecretToken = "SECRET-TOKEN-0123456789";
+    public const string SecretPlayer = "SECRET-PLAYER";
+    public const string SecretPassword = "SECRET-PASSWORD";
+
+    /// <summary>Every marker secret; none of them may ever reach a snapshot.</summary>
+    public static readonly string[] Secrets = [SecretEmail, SecretIp, SecretToken, SecretPlayer, SecretPassword];
+
+    /// <summary>A faction entry as the game sends it: all values are strings.</summary>
+    public static Dictionary<string, object?> Faction(int id, string name, long rep) => new()
+    {
+        ["CharFactionID"] = (900000 + id).ToString(),
+        ["FactionID"] = id.ToString(),
+        ["sName"] = name,
+        ["iRep"] = rep.ToString(),
+    };
+
+    /// <summary>An item entry with the allowed fields and several disallowed ones that carry marker secrets.</summary>
+    public static Dictionary<string, object?> Item(
+        string name,
+        string type = "Item",
+        int itemId = 1,
+        int qty = 1,
+        int stack = 1,
+        int level = 1,
+        bool coins = false,
+        bool upgrade = false,
+        bool equip = false,
+        bool wear = false,
+        bool quest = false,
+        bool bank = false,
+        bool house = false,
+        bool temp = false,
+        int? classId = null)
+    {
+        var item = new Dictionary<string, object?>
+        {
+            ["ItemID"] = itemId.ToString(),
+            ["CharItemID"] = "55" + itemId,
+            ["sName"] = name,
+            ["sType"] = type,
+            ["sDesc"] = "A fictional thing. " + SecretPlayer,
+            ["sFile"] = "items/fictional.swf",
+            ["sMeta"] = SecretToken,
+            ["iQty"] = qty.ToString(),
+            ["iStk"] = stack.ToString(),
+            ["iLvl"] = level,
+            ["iCost"] = 100,
+            ["tPurchase"] = "2020-01-01T00:00:00 " + SecretEmail,
+            ["metaValues"] = new Dictionary<string, object?> { ["ref"] = SecretIp, ["chaos"] = 3 },
+            ["bCoins"] = coins ? 1 : 0,
+            ["bUpg"] = upgrade ? "1" : "0",
+            ["bEquip"] = equip,
+            ["bWear"] = wear ? 1 : 0,
+            ["bQuest"] = quest ? 1 : 0,
+            ["bBank"] = bank ? 1 : 0,
+            ["bHouse"] = house ? 1 : 0,
+            ["bTemp"] = temp ? 1 : 0,
+            ["bStaff"] = 0,
+        };
+        if (classId is { } id)
+        {
+            item["ClassID"] = id.ToString();
+            item["EnhLvl"] = 20;
+        }
+        return item;
+    }
+
+    /// <summary>A loadInventoryBig message with the allowed lists and disallowed siblings that carry marker secrets.</summary>
+    public static Dictionary<string, object?> LoadInventoryBig(
+        IEnumerable<object?>? factions = null,
+        IEnumerable<object?>? items = null,
+        IEnumerable<object?>? houseItems = null) =>
+        Envelope("loadInventoryBig", new Dictionary<string, object?>
+        {
+            ["bankCount"] = 0,
+            ["factions"] = (factions ?? []).ToList(),
+            ["items"] = (items ?? []).ToList(),
+            ["hitems"] = (houseItems ?? []).ToList(),
+            ["procs"] = new Dictionary<string, object?> { ["1"] = new Dictionary<string, object?> { ["nam"] = SecretToken } },
+        });
+
+    /// <summary>
+    /// The data of an own profile with fictional values, plus the sensitive fields (all carrying marker secrets).
+    /// Pass <paramref name="own"/> false to leave out <c>intGold</c>, as the profiles of other players do.
+    /// </summary>
+    public static Dictionary<string, object?> ProfileData(string name = "Fictional Hero", bool own = true)
+    {
+        var data = new Dictionary<string, object?>
+        {
+            ["strUsername"] = name,
+            ["strEmail"] = SecretEmail,
+            ["strIP"] = SecretIp,
+            ["UserID"] = 424242,
+            ["CharID"] = "737373",
+            ["dCreated"] = "2015-05-05T00:00:00",
+            ["sCountry"] = "XX",
+            ["bPermaMute"] = 0,
+            ["strQuests"] = SecretToken,
+            ["guild"] = new Dictionary<string, object?> { ["Name"] = SecretPlayer },
+            ["intLevel"] = 60,
+            ["intExp"] = 123456,
+            ["intExpToLevel"] = "654321",
+            ["intCoins"] = 777,
+            ["iCP"] = 5000,
+            ["intDaysPlayed"] = 300,
+            ["iBagSlots"] = 90,
+            ["iBankSlots"] = 80,
+            ["iHouseSlots"] = 70,
+            ["iLoadoutSlots"] = 5,
+            ["iUpg"] = 1,
+            ["iUpgDays"] = 25,
+            ["iBoostXP"] = 10,
+            ["iBoostG"] = 20,
+            ["iBoostCP"] = 30,
+            ["iBoostRep"] = 40,
+        };
+        if (own)
+        {
+            data["intGold"] = 9876543210L;
+        }
+        return data;
+    }
+
+    /// <summary>An initUserData message around the given profile data.</summary>
+    public static Dictionary<string, object?> InitUserData(Dictionary<string, object?>? data = null) =>
+        Envelope("initUserData", new Dictionary<string, object?>
+        {
+            ["uid"] = 12,
+            ["strFrame"] = "Enter",
+            ["strPad"] = "Spawn",
+            ["data"] = data ?? ProfileData(),
+        });
 }

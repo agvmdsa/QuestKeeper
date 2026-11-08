@@ -206,4 +206,85 @@ internal static class GameCaptureBuilder
             ["strPad"] = "Spawn",
             ["data"] = data ?? ProfileData(),
         });
+
+    /// <summary>The segments of one login: what the server sends, and what the client sends (with a fake password).</summary>
+    internal sealed record LoginTraffic(List<TcpSegment> Server, List<TcpSegment> Client)
+    {
+        /// <summary>Server and client segments, server first.</summary>
+        public List<TcpSegment> All => [.. Server, .. Client];
+
+        /// <summary>The sequence number the next server data byte would have.</summary>
+        public uint NextServerSequence { get; init; }
+    }
+
+    /// <summary>The faction/item content of the standard login.</summary>
+    public static Dictionary<string, object?> StandardInventory() =>
+        LoadInventoryBig(
+            [Faction(5, "Fictional Order", 5000), Faction(6, "Other Order", 302500), Faction(7, "Fresh Order", 0)],
+            [Item("Fictional Blade", "Sword", itemId: 11, equip: true, coins: true), Item("Fictional Class", "Class", itemId: 12, classId: 9)],
+            [Item("Fictional Chair", "House Item", itemId: 13)]);
+
+    /// <summary>
+    /// One login: SYN-ACK, a loginResponse text message with a long marker field, initUserData, loadInventoryBig, other
+    /// players' blobs carrying markers, a trailing monster message, and a client login message with a fake password.
+    /// The server stream is cut into segments of <paramref name="segmentSize"/> bytes.
+    /// </summary>
+    public static LoginTraffic Connection(
+        int clientPort = ClientPort,
+        string name = "Fictional Hero",
+        uint isn = 1000,
+        bool inventoryFirst = false,
+        bool includeInventory = true,
+        bool includeProfile = true,
+        int segmentSize = 1200,
+        IEnumerable<byte[]>? extraServerMessages = null,
+        IEnumerable<byte[]>? leadingServerMessages = null)
+    {
+        var profile = EncodeBlob(InitUserData(ProfileData(name)));
+        var inventory = EncodeBlob(StandardInventory());
+        var messages = new List<byte[]>
+        {
+            Bytes("%xt%loginResponse%-1%true%1234%" + new string('x', 30) + "%" + SecretToken + SecretToken + SecretToken + "%1.5%"),
+            Bytes("<msg t='sys'><body action='joinOK' r='1'><vars/></body></msg>"),
+            EncodeBlob(Envelope("initUserDatas", new Dictionary<string, object?>
+            {
+                ["a"] = new List<object?> { new Dictionary<string, object?> { ["uid"] = 3, ["data"] = ProfileData(SecretPlayer, own: false) } },
+            })),
+            EncodeBlob(InitUserData(ProfileData(SecretPlayer + "-2", own: false))),
+        };
+        var wanted = new List<byte[]>();
+        if (includeProfile)
+        {
+            wanted.Add(profile);
+        }
+        if (includeInventory)
+        {
+            wanted.Add(inventory);
+        }
+        if (inventoryFirst)
+        {
+            wanted.Reverse();
+        }
+        messages.InsertRange(2, wanted);
+        messages.InsertRange(0, leadingServerMessages ?? []);
+        messages.Add(PlainJson(Envelope("mtls", new Dictionary<string, object?> { ["id"] = 1, ["o"] = new Dictionary<string, object?> { ["intHP"] = 5 } })));
+        messages.AddRange(extraServerMessages ?? []);
+
+        var stream = messages.SelectMany(m => m.Append((byte)0)).ToArray();
+        var server = new List<TcpSegment> { SynAck(isn, clientPort) };
+        var sequence = isn + 1;
+        for (var offset = 0; offset < stream.Length; offset += segmentSize)
+        {
+            var chunk = stream[offset..Math.Min(stream.Length, offset + segmentSize)];
+            server.Add(ServerData(sequence, chunk, clientPort));
+            sequence += (uint)chunk.Length;
+        }
+
+        var client = new List<TcpSegment>
+        {
+            ClientData(5000, Terminated($"%xt%zm%login%1%{SecretPassword}%{SecretEmail}%"), clientPort),
+            ClientData(5100, PlainJson(Envelope("login", new Dictionary<string, object?> { ["pass"] = SecretPassword })), clientPort),
+        };
+        return new LoginTraffic(server, client) { NextServerSequence = sequence };
+    }
 }

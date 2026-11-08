@@ -329,7 +329,7 @@ public partial class HardFarmsViewModel : ObservableObject, IForgettable
     }
 
     /// <summary>
-    /// The account's saved data was removed: forgets the list, the types and the filters and returns to the empty state.
+    /// The saved data was removed: forgets the list, the types and the filters and returns to the empty state.
     /// Answers of work that started before this call are ignored.
     /// </summary>
     public void Forget()

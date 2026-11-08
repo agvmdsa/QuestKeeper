@@ -10,7 +10,7 @@ public sealed record StoredTypeTable(WikiTypeTable Table, DateTimeOffset ReadAtU
 /// <summary>One parsed type index with the moment it was successfully read.</summary>
 public sealed record StoredIndex(WikiIndex Index, DateTimeOffset ReadAtUtc);
 
-/// <summary>Keeps the imported wiki data on disk. Never throws. The data lives in the account database, so Sign out and Forget remove it with the rest of the saved data (the Hard Farms tab is reset then).</summary>
+/// <summary>Keeps the imported wiki data on disk. Never throws. The data lives in the stored-data database, so Forget my data removes it with the rest of the saved data (the Hard Farms tab is reset then).</summary>
 public interface IHardFarmStore
 {
     StoredHardFarmList? LoadList();

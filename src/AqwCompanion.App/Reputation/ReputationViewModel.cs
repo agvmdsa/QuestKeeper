@@ -11,7 +11,7 @@ namespace AqwCompanion.App.Reputation;
 /// <summary>
 /// The Reputation tab: the standings imported from a JSON file the user picks, or read from the game client's file when the
 /// user opens the tab or presses Refresh. Nothing is read except those files, nothing is watched, a failed read leaves the
-/// previous data as it was, and the data is kept with the account's saved data.
+/// previous data as it was, and the data is kept with the rest of the app's saved data.
 /// </summary>
 public partial class ReputationViewModel(IReputationStore store, IReputationFilePicker picker, IReputationAutoSource autoSource, TimeProvider clock)
     : ObservableObject, IForgettable
@@ -91,7 +91,7 @@ public partial class ReputationViewModel(IReputationStore store, IReputationFile
     /// <summary>Undoes <see cref="Quiesce"/> when the stored data could not be removed.</summary>
     public void Resume() => _quiesced = false;
 
-    /// <summary>The account's saved data was removed: forgets the standings, deletes the game client's file and returns to the empty state.</summary>
+    /// <summary>The saved data was removed: forgets the standings, deletes the game client's file and returns to the empty state.</summary>
     public void Forget()
     {
         _epoch++;

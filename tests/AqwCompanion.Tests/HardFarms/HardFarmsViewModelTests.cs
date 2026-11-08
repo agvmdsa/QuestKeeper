@@ -410,7 +410,7 @@ public class HardFarmsViewModelTests
         Assert.Equal(["item-299", "item-2990", "item-2991", "item-2992", "item-2993", "item-2994", "item-2995", "item-2996", "item-2997", "item-2998", "item-2999"], vm.Rows.Select(r => r.Slug));
     }
 
-    // --- Forgetting (the account's data was removed) ---------------------------------------------------
+    // --- Forgetting (the saved data was removed) ---------------------------------------------------
 
     private sealed class GatedStore(IHardFarmStore inner) : IHardFarmStore
     {

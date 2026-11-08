@@ -5,9 +5,9 @@
 <h1 align="center">AQW Companion</h1>
 
 <p align="center">
-  A Windows desktop companion for AdventureQuest Worlds. Sign in once on the official site and see your
-  character's account, inventory, equipment and badges in one place — read-only, refreshed only when you
-  ask, nothing sent anywhere.
+  A Windows desktop companion for AdventureQuest Worlds. It reads the game's own network traffic on your
+  machine while you play and shows your character, reputation and inventory in one place — read-only,
+  nothing sent anywhere.
 </p>
 
 <p align="center">
@@ -24,14 +24,15 @@
 
 ## Why
 
-Checking what you own in AQW means clicking through several account pages, one at a time. AQW Companion reads them for you and keeps the latest copy on your machine, so you can look things up without going back to the browser.
+Seeing what you own, your faction ranks and what is missing for the next rank means clicking through the game and the wiki. AQW Companion listens to the data the game already sends to your own computer and keeps the latest copy on your machine, so you can look things up while you play.
 
-- **You sign in, the app only reads** — a sign-in window opens `account.aq.com` and you log in yourself. The app never fills forms, clicks or navigates on its own, and pages outside `account.aq.com` are ignored entirely.
-- **Refresh on demand** — nothing is fetched in the background. Press **Refresh** when you want fresh data; the last sync time is always shown.
-- **Account, inventory, equipment and badges** — summary cards for each, with a details sidebar. Equipment, inventory and badges are read from your public character pages.
-- **Saved locally** — the last good result is kept in a local database, so the app opens with your data even when you are offline. A suspicious read (a layout change on the site, an empty table) never overwrites data that was good.
-- **Honest session state** — the app shows whether your session is still valid. **Sign out** ends it on the site and removes everything the app saved on your computer. The app never reads or stores your password.
-- **No telemetry** — nothing leaves your machine. When something breaks you can export a diagnostics zip yourself, with cookies, tokens, e-mail and account name redacted, and send it only if you choose to.
+> **The app was re-architected.** Earlier versions were a companion where you signed in on `account.aq.com` and the app read the HTML of your account pages. That is gone: there is no sign-in, no embedded browser and no reading of the account website any more. The app now reads the game's network traffic (Windows, see [Game data capture](#game-data-capture-windows)), which is a different risk class: read the warning there before using it.
+
+- **Read-only** — the app never sends anything to the game and never acts for you.
+- **Game data** — profile numbers, faction standings with rank and what is missing for the next one, and your items, updated while you play.
+- **Hard Farms** — a list imported from the Wiki on your click (CC BY-SA, never bundled) that marks what you own from the captured inventory.
+- **Saved locally** — the last data is kept in a local database, so the app opens with it. **Forget my data** (Game data tab, inside **Capture details**) removes everything the app saved.
+- **No telemetry** — nothing leaves your machine. When something breaks you can export a diagnostics zip yourself, with the logs redacted, and send it only if you choose to.
 
 ## Install
 
@@ -44,10 +45,9 @@ AQW Companion needs 64-bit Windows. Your data, logs and crash reports live under
 
 ## Basic usage
 
-- **Connect** — open the **Account** tab, press **Sign in** and log in on the window that appears. It closes by itself once your character name has been read.
-- **Refresh** — read the pages again. When the app is showing saved data, a notice says so, and the last sync time is shown.
-- **Details** — click a card to open its sidebar, with the full list for inventory, equipment or badges.
-- **Sign out** — asks for confirmation, ends the session on the site and removes what the app saved locally.
+- **Game data** — open the app (it asks for administrator rights), then log in to the game. Your character appears in the **Game data** tab. Details are in [Game data capture](#game-data-capture-windows).
+- **Hard Farms** — import the list from the Wiki with the button in the tab; ownership comes from the captured inventory.
+- **Forget my data** — in the **Game data** tab, inside **Capture details**; asks for confirmation, then removes what the app saved locally.
 - **Diagnostics** — the **Diagnostics** tab shows where the logs are and exports the diagnostics zip.
 
 ## Build from source
@@ -62,15 +62,15 @@ dotnet run --project src/AqwCompanion.App   # run the app
 
 Releases are built by `.github/workflows/release.yml` when a `vX.Y.Z` tag is pushed: tests, a self-contained single-file `win-x64` publish, and a zip with its `SHA256SUMS.txt`. The version comes from the tag (MinVer).
 
-## Reputation proof of concept (branch `poc/reputation-discovery`)
+## Reputation from a Skua export
 
-The account website does not show faction reputation, so this branch tries a different source: a JSON file you export yourself from the game. The **Reputation** tab only imports and shows that file. It makes no network calls and never touches the game, a session or credentials. The app builds and runs on macOS and Windows; only collecting the data needs Windows.
+This is an older, separate source for faction reputation: a JSON file you export yourself from the game. The **Reputation** tab only imports and shows that file. It makes no network calls and never touches the game, a session or credentials. The app builds and runs on macOS and Windows; only collecting the data needs Windows.
 
 > Collecting the data means running the game inside a third-party client ([Skua](https://github.com/auqw/Skua)), which is a different risk class from the rest of this app: it is probably not allowed by the game's terms and can get an account banned. Use a throwaway account, and do it knowingly. Skua has no license, so none of its code is in this repository and it is not distributed with the app.
 
 On the Windows machine:
 
-1. Clone and run this branch: `git clone -b poc/reputation-discovery https://github.com/agvmdsa/aqw-companion.git`, then `dotnet run --project src/AqwCompanion.App` (needs the .NET 10 SDK).
+1. Run the app (the release, or `dotnet run --project src/AqwCompanion.App` with the .NET 10 SDK).
 2. Install Skua yourself from its official releases and log in with the throwaway account. Skua needs a Flash runtime (its readme explains CleanFlash).
 3. Save this as `ReputationExport.cs` in Skua's scripts folder (`%APPDATA%\Skua\Scripts`), then in Skua press **Load script** and **Start**, and leave it running while you play. Every 5 seconds it checks your factions and rewrites `%LOCALAPPDATA%\AqwCompanion\reputation\reputation.json` only when something changed (never with an empty list, and never half-written):
 
@@ -121,13 +121,13 @@ On the Windows machine:
 
 What to check: does the list match the in-game reputation (rank, total rep, rep still missing for the next rank)? Skua only lists factions with at least 1 reputation point, and the tab only shows what the script last wrote, so the script must be running (the tab says when there is no file yet and shows the expected path).
 
-The script was written from reading Skua's source and has not been run: the field names come from `Faction.cs` (`iRep` is the total, `iSpillRep` the progress in the current rank, `iRepToRank` the total needed for the rank), and `Bot.ShouldExit`, `Bot.Sleep` and `Bot.Log` from its script interface. If Skua reports a compile error when loading it, send the message back and the script gets fixed. The file format is `schema: 1`; files over 1 MiB, with more than 500 factions or with an unknown schema are rejected, and signing out removes the imported data and the file, with everything else.
+The script was written from reading Skua's source and has not been run: the field names come from `Faction.cs` (`iRep` is the total, `iSpillRep` the progress in the current rank, `iRepToRank` the total needed for the rank), and `Bot.ShouldExit`, `Bot.Sleep` and `Bot.Log` from its script interface. If Skua reports a compile error when loading it, send the message back and the script gets fixed. The file format is `schema: 1`; files over 1 MiB, with more than 500 factions or with an unknown schema are rejected, and **Forget my data** removes the imported data and the file, with everything else.
 
-## Game data capture (Windows, branch `poc/reputation-discovery`)
+## Game data capture (Windows)
 
-The **Game data** tab reads the login data of your own characters from the game's network traffic, on your own machine, while the game logs in. It shows the profile numbers, the faction standings (with rank and what is still missing for the next one) and the owned items, and **Hard Farms** uses the captured inventory first to mark what you own. It is read-only: the app never sends anything to the game and never acts for you. After the login it also follows your own gold, experience, items and class points while you play (see below), with no refresh button.
+The **Game data** tab reads the login data of your own characters from the game's network traffic, on your own machine, while the game logs in. It shows the profile numbers, the faction standings (with rank and what is still missing for the next one) and the owned items, and **Hard Farms** uses the captured inventory to mark what you own. It is read-only: the app never sends anything to the game and never acts for you. After the login it also follows your own gold, experience, items and class points while you play (see below), with no refresh button.
 
-> Reading the game's traffic is a different risk class from reading the website, which is what the rest of this app does. It is probably not allowed by the game's terms and can get an account banned. Use a throwaway account, and do it knowingly.
+> Reading the game's traffic is a different risk class from reading a website. It is probably not allowed by the game's terms and can get an account banned. Use a throwaway account, and do it knowingly.
 
 What you need:
 
@@ -157,7 +157,7 @@ What is never kept: your e-mail address, IP address, user and character ids, pas
 
 If you open the app while you are already logged in to the game: the data saved from your last session is shown, labelled as saved from an earlier session. The app cannot read a login that was sent before it started listening, and it says so when it sees a game connection whose start it missed. Switching server or logging in again sends the login again and fixes it. Live updates (below) only start after a login the app saw.
 
-**Sign out** on the Account tab removes the captured data too, together with everything else the app saved.
+**Forget my data** (inside **Capture details**) removes the captured data too, together with everything else the app saved. Data that older versions saved from the account website is removed by the app by itself.
 
 Tray icon and a single instance:
 

@@ -148,7 +148,7 @@ public sealed class HardFarmStore(IStoredDataStore store) : IHardFarmStore
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            Log.Error("Hard farm data operation {Operation} failed: {ExceptionType}", operation, ex.GetType().Name);
+            Log.Error("Hard farm data operation {SafeOperation} failed: {ExceptionType}", operation, ex.GetType().Name);
             return default;
         }
     }

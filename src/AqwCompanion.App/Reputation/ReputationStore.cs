@@ -63,7 +63,7 @@ public sealed class ReputationStore(IStoredDataStore store) : IReputationStore
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            Log.Error("Reputation data operation {Operation} failed: {ExceptionType}", operation, ex.GetType().Name);
+            Log.Error("Reputation data operation {SafeOperation} failed: {ExceptionType}", operation, ex.GetType().Name);
             return default;
         }
     }

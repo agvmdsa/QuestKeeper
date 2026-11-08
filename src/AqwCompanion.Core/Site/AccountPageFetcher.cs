@@ -114,7 +114,7 @@ public sealed class AccountPageFetcher(HttpClient http, string appVersion, ILogg
 
     private PageFetchResult Fail(string message)
     {
-        logger.LogWarning("Page fetch failed: {Reason}", message);
+        logger.LogWarning("Page fetch failed: {SafeReason}", message);
         return PageFetchResult.Failure(message);
     }
 

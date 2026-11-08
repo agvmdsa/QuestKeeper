@@ -21,11 +21,27 @@ public sealed class LoggingSetupTests : IDisposable
     {
         using (var logger = LoggingSetup.CreateLogger(_paths, "9.8.7-test"))
         {
-            logger.Information("Starting {Product} {Version}", "AQW Companion", "1.2.3");
+            logger.Information("Starting {SafeProduct} {SafeVersion}", "AQW Companion", "1.2.3");
         }
 
         var file = Assert.Single(Directory.GetFiles(_paths.LogDirectory, "log-*.txt"));
         var text = File.ReadAllText(file);
         Assert.Contains("[INF] 9.8.7-test Starting AQW Companion 1.2.3", text);
+    }
+
+    [Fact]
+    public void Logger_writes_no_secret_text_from_properties_or_exceptions()
+    {
+        using (var logger = LoggingSetup.CreateLogger(_paths, "9.8.7-test"))
+        {
+            var ex = new InvalidOperationException("SECRET-MESSAGE", new ArgumentException("SECRET-INNER"));
+            logger.Error(ex, "x {Value}", "SECRET");
+        }
+
+        var file = Assert.Single(Directory.GetFiles(_paths.LogDirectory, "log-*.txt"));
+        var text = File.ReadAllText(file);
+        Assert.DoesNotContain("SECRET", text);
+        Assert.Contains("System.InvalidOperationException", text);
+        Assert.Contains("--- inner: System.ArgumentException", text);
     }
 }

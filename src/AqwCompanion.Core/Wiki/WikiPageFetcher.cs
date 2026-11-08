@@ -39,7 +39,7 @@ public sealed class WikiPageFetcher(HttpClient http, string appVersion, ILogger<
         if (!TryAllow(url, null, out var uri))
         {
             // The address is not trusted, so it is not logged at all.
-            logger.LogWarning("Wiki fetch failed: {Kind} {Page}", PageFailureKind.Blocked, "(not a wiki page)");
+            logger.LogWarning("Wiki fetch failed: {Kind} {SafePage}", PageFailureKind.Blocked, "(not a wiki page)");
             return PageFetchResult.Failure("Only https pages on aqwwiki.wikidot.com can be read.", PageFailureKind.Blocked);
         }
 
@@ -85,7 +85,7 @@ public sealed class WikiPageFetcher(HttpClient http, string appVersion, ILogger<
         catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException)
         {
             // Type only: exception messages can contain the request URL.
-            logger.LogWarning("Wiki fetch failed: {Kind} {Page} {ExceptionType}", PageFailureKind.Network, PageLabel(uri), ex.GetType().Name);
+            logger.LogWarning("Wiki fetch failed: {Kind} {SafePage} {ExceptionType}", PageFailureKind.Network, PageLabel(uri), ex.GetType().Name);
             return PageFetchResult.Failure("The request failed.", PageFailureKind.Network);
         }
     }
@@ -133,7 +133,7 @@ public sealed class WikiPageFetcher(HttpClient http, string appVersion, ILogger<
     // Logs the kind and the page (path only: no query, no content); the wiki's page names are public and validated.
     private PageFetchResult Fail(Uri uri, PageFailureKind kind, string message, int? status = null)
     {
-        logger.LogWarning("Wiki fetch failed: {Kind} {Page}", kind, PageLabel(uri));
+        logger.LogWarning("Wiki fetch failed: {Kind} {SafePage}", kind, PageLabel(uri));
         return PageFetchResult.Failure(message, kind, status);
     }
 

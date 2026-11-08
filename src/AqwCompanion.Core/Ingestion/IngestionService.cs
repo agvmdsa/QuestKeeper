@@ -88,7 +88,7 @@ public sealed class IngestionService<T>(
         logger.Log(
             level,
             error,
-            "Ingestion {Outcome} page={PageUrl} parser={Parser} parserVersion={ParserVersion} strategy={Strategy} items={ItemCount} persisted={Persisted} durationMs={DurationMs} reason={Reason}",
+            "Ingestion {Outcome} page={PageUrl} parser={SafeParser} parserVersion={SafeParserVersion} strategy={SafeStrategy} items={ItemCount} persisted={Persisted} durationMs={DurationMs} reason={Reason}",
             result.Outcome,
             snapshot.Url,
             result.Diagnostics.ParserName,

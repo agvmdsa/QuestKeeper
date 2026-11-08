@@ -12,7 +12,7 @@ internal static class Program
         var paths = AppPaths.ForCurrentUser(AppInfo.ExeName);
 
         Log.Logger = LoggingSetup.CreateLogger(paths, AppInfo.Version);
-        Log.Information("Starting {Product} {Version}", AppInfo.ProductName, AppInfo.Version);
+        Log.Information("Starting {SafeProduct} {SafeVersion}", AppInfo.ProductName, AppInfo.Version);
 
         CrashHandler.Install(paths.CrashDirectory, AppInfo.Version);
 

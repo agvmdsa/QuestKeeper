@@ -125,5 +125,5 @@ public sealed class AccountDataPersistence(IStoredDataStore store) : IAccountDat
     }
 
     private static void LogFailure(string operation, Exception ex) =>
-        Log.Error("Stored data operation {Operation} failed: {ExceptionType}", operation, ex.GetType().Name);
+        Log.Error("Stored data operation {SafeOperation} failed: {ExceptionType}", operation, ex.GetType().Name);
 }

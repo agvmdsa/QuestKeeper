@@ -37,7 +37,7 @@ public class IngestionServiceTests
         Assert.Equal(LogLevel.Information, entry.Level);
         Assert.Equal(ParseOutcome.Ok, entry.Properties["Outcome"]);
         Assert.Equal("https://account.aq.com/AQW/Inventory", entry.Properties["PageUrl"]);
-        Assert.Equal("fake", entry.Properties["Parser"]);
+        Assert.Equal("fake", entry.Properties["SafeParser"]);
         Assert.Equal(3, entry.Properties["ItemCount"]);
         Assert.Equal(true, entry.Properties["Persisted"]);
         Assert.True(entry.Properties.ContainsKey("DurationMs"));

@@ -32,6 +32,7 @@ public sealed class CaptureSession(
     private CaptureEngine? _engine;
     private IPacketSource? _source;
     private Run? _current;
+    private Run? _lastRun;
     private bool _quiesced;
     private bool _forgotten;
     private bool _restoreStarted;
@@ -212,6 +213,18 @@ public sealed class CaptureSession(
             return;
         }
 
+        try
+        {
+            await RunAsync(run).ConfigureAwait(false);
+        }
+        finally
+        {
+            run.Finished.TrySetResult();
+        }
+    }
+
+    private async Task RunAsync(Run run)
+    {
         var token = run.Cts.Token;
         var source = Task.Run(() =>
         {
@@ -268,6 +281,35 @@ public sealed class CaptureSession(
         if (EndRun(CaptureState.Done))
         {
             OnChanged();
+        }
+    }
+
+    /// <summary>
+    /// Stops the session and waits until the running <see cref="StartAsync"/> has finished (the devices are closed) or the
+    /// timeout passes, whichever comes first. Never throws and never waits longer than the timeout, even when the source
+    /// ignores the cancellation. Does nothing when no session runs.
+    /// </summary>
+    public async Task StopAndWaitAsync(TimeSpan timeout)
+    {
+        try
+        {
+            Stop();
+            Task? finished;
+            lock (_gate)
+            {
+                finished = _lastRun?.Finished.Task;
+            }
+
+            if (finished is null || finished.IsCompleted)
+            {
+                return;
+            }
+
+            await Task.WhenAny(finished, Task.Delay(timeout)).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Closing must never fail because of the wait.
         }
     }
 
@@ -355,6 +397,7 @@ public sealed class CaptureSession(
                 _engine = engine;
                 _source = null;
                 _current = run;
+                _lastRun = run;
                 _state = CaptureState.Listening;
             }
         }
@@ -465,5 +508,7 @@ public sealed class CaptureSession(
         public CaptureEngine Engine { get; } = engine;
 
         public CancellationTokenSource Cts { get; } = new();
+
+        public TaskCompletionSource Finished { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 }

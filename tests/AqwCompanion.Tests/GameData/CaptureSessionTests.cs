@@ -552,4 +552,84 @@ public class CaptureSessionTests
         ((IForgettable)session).Forget();
         Assert.Equal(CaptureConnectionDiagnostics.Empty, session.Connections);
     }
+
+    [Fact]
+    public async Task Stop_and_wait_returns_after_the_source_observed_the_cancellation_and_closed()
+    {
+        var rig = new Rig();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var closed = false;
+        rig.Source = new FakePacketSource(async (_, token) =>
+        {
+            started.SetResult();
+            try
+            {
+                await new TaskCompletionSource().Task.WaitAsync(token);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
+            await Task.Delay(50);
+            closed = true;
+        });
+        var session = rig.Create();
+        var run = session.StartAsync();
+        await started.Task.WaitAsync(Wait);
+
+        await session.StopAndWaitAsync(Wait);
+
+        Assert.True(closed);
+        Assert.Equal(CaptureState.Done, session.State);
+        await run.WaitAsync(Wait);
+    }
+
+    [Fact]
+    public async Task Stop_and_wait_returns_at_the_timeout_when_the_source_ignores_the_cancellation()
+    {
+        var rig = new Rig();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        rig.Source = new FakePacketSource(async (_, _) =>
+        {
+            started.SetResult();
+            await release.Task;
+        });
+        var session = rig.Create();
+        try
+        {
+            var run = session.StartAsync();
+            await started.Task.WaitAsync(Wait);
+
+            await session.StopAndWaitAsync(TimeSpan.FromMilliseconds(100)).WaitAsync(Wait);
+
+            Assert.False(run.IsCompleted);
+            Assert.Equal(CaptureState.Done, session.State);
+            release.SetResult();
+            await run.WaitAsync(Wait);
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+    }
+
+    [Fact]
+    public async Task Stop_and_wait_does_nothing_when_nothing_runs()
+    {
+        var session = new Rig().Create();
+
+        await session.StopAndWaitAsync(Wait);
+
+        Assert.Equal(CaptureState.Idle, session.State);
+    }
+
+    [Fact]
+    public async Task Stop_and_wait_after_a_finished_run_returns_at_once()
+    {
+        var session = new Rig().Create();
+        await session.StartAsync();
+
+        await session.StopAndWaitAsync(Wait).WaitAsync(TimeSpan.FromSeconds(5));
+    }
 }

@@ -58,4 +58,13 @@ public class StartupArgumentsTests
     {
         Assert.Equal("--data-root=\"" + Root + "\"", StartupArguments.ForRelaunch(Root));
     }
+
+    [Fact]
+    public void The_background_option_is_recognised_only_when_present()
+    {
+        Assert.True(StartupArguments.IsBackground(["--background"]));
+        Assert.True(StartupArguments.IsBackground(["--data-root=" + Root, "--background"]));
+        Assert.False(StartupArguments.IsBackground([]));
+        Assert.False(StartupArguments.IsBackground(["--background=1"]));
+    }
 }

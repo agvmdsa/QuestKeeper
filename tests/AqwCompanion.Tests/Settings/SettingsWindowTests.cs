@@ -1,3 +1,4 @@
+using AqwCompanion.App.Infrastructure.AutoStart;
 using AqwCompanion.App.Settings;
 using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Tests.TestDoubles;
@@ -8,11 +9,11 @@ namespace AqwCompanion.Tests.Settings;
 
 public class SettingsWindowTests
 {
-    private static (SettingsWindow Window, SettingsViewModel Vm, FakeAppSettingsStore Store, bool[] Removed) Open()
+    private static (SettingsWindow Window, SettingsViewModel Vm, FakeAppSettingsStore Store, bool[] Removed) Open(IAutoStart? autoStart = null)
     {
         var removed = new bool[1];
         var store = new FakeAppSettingsStore();
-        var vm = new SettingsViewModel(store, new ForgetCoordinator(() => removed[0] = true, () => []));
+        var vm = new SettingsViewModel(store, new ForgetCoordinator(() => removed[0] = true, () => []), autoStart);
         var window = new SettingsWindow { DataContext = vm };
         window.Show();
         return (window, vm, store, removed);
@@ -39,6 +40,38 @@ public class SettingsWindowTests
 
         Assert.True(vm.DebugMode);
         Assert.True(store.Current.DebugMode);
+    }
+
+    [AvaloniaFact]
+    public void The_start_with_windows_section_is_hidden_where_it_is_not_supported()
+    {
+        var (window, _, _, _) = Open();
+
+        Assert.False(window.FindControl<Border>("SettingsAutoStartSection")!.IsEffectivelyVisible);
+    }
+
+    [AvaloniaFact]
+    public void The_start_with_windows_switch_sets_the_task_and_shows_a_failure()
+    {
+        var auto = new FakeAutoStart();
+        var (window, vm, _, _) = Open(auto);
+        vm.Refresh();
+        var section = window.FindControl<Border>("SettingsAutoStartSection")!;
+        var toggle = window.FindControl<ToggleSwitch>("SettingsAutoStartSwitch")!;
+        Assert.True(section.IsEffectivelyVisible);
+        Assert.False(toggle.IsChecked);
+
+        toggle.IsChecked = true;
+        Assert.True(auto.Enabled);
+        Assert.False(window.FindControl<TextBlock>("SettingsAutoStartError")!.IsEffectivelyVisible);
+
+        auto.Fails = true;
+        toggle.IsChecked = false;
+
+        Assert.True(auto.Enabled);
+        var error = window.FindControl<TextBlock>("SettingsAutoStartError")!;
+        Assert.True(error.IsEffectivelyVisible);
+        Assert.Equal(SettingsViewModel.AutoStartFailedText, error.Text);
     }
 
     [AvaloniaFact]

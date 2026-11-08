@@ -25,7 +25,12 @@ public partial class CompanionApp : Application
             var services = CompositionRoot.Build(AppPaths.ForCurrentUser(AppInfo.ExeName, StartupArguments.TryGetDataRoot(desktop.Args ?? [])));
             var main = services.GetRequiredService<MainViewModel>();
             var window = new MainWindow { DataContext = main };
-            desktop.MainWindow = window;
+            // Started by the sign-in task, the app waits in the notification area; its window opens from the tray icon.
+            if (!StartupArguments.IsBackground(desktop.Args ?? []))
+            {
+                desktop.MainWindow = window;
+            }
+
             // Closing the window hides it to the notification area; only Exit (or an OS shutdown) ends the app.
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
             services.GetRequiredService<AvaloniaMainWindowHost>().Attach(window);

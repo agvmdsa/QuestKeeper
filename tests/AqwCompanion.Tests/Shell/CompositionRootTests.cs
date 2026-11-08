@@ -2,6 +2,7 @@ using AqwCompanion.App;
 using AqwCompanion.App.GameData;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure;
+using AqwCompanion.App.Infrastructure.AutoStart;
 using AqwCompanion.App.Infrastructure.Elevation;
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Inventory;
@@ -65,6 +66,7 @@ public class CompositionRootTests
 
         Assert.IsType<JsonAppSettingsStore>(services.GetRequiredService<IAppSettingsStore>());
         Assert.IsType<AvaloniaSettingsDialog>(services.GetRequiredService<ISettingsDialog>());
+        Assert.IsType<ScheduledTaskAutoStart>(services.GetRequiredService<IAutoStart>());
         Assert.Same(services.GetRequiredService<SettingsViewModel>(), services.GetRequiredService<MainViewModel>().Settings);
         Assert.False(Directory.Exists(paths.Root));
     }

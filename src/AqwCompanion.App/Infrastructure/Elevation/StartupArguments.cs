@@ -1,9 +1,14 @@
 namespace AqwCompanion.App.Infrastructure.Elevation;
 
-/// <summary>The command line the app understands: the data root an elevated relaunch must keep using.</summary>
+/// <summary>The command line the app understands: the data root an elevated relaunch must keep using, and the background start.</summary>
 public static class StartupArguments
 {
     public const string DataRootOption = "--data-root=";
+
+    /// <summary>Starts the app in the notification area without opening its window, as the sign-in task does.</summary>
+    public const string BackgroundOption = "--background";
+
+    public static bool IsBackground(string[] args) => args.Contains(BackgroundOption, StringComparer.Ordinal);
 
     /// <summary>The value after the option, without surrounding quotes; null when absent or empty.</summary>
     public static string? TryGetDataRoot(string[] args)

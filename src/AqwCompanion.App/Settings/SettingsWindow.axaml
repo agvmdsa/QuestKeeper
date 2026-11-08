@@ -34,6 +34,22 @@
       </Grid>
     </Border>
 
+    <Border x:Name="SettingsAutoStartSection" Classes="divider" IsVisible="{Binding CanAutoStart}">
+      <StackPanel Spacing="4">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="2" Margin="0,0,16,0">
+            <TextBlock Classes="sectionTitle" Text="{x:Static st:SettingsViewModel.AutoStartTitleText}" />
+            <TextBlock Classes="muted" TextWrapping="Wrap" Text="{x:Static st:SettingsViewModel.AutoStartDescriptionText}" />
+          </StackPanel>
+          <ToggleSwitch x:Name="SettingsAutoStartSwitch" Grid.Column="1" IsChecked="{Binding StartWithWindows, Mode=TwoWay}"
+                        OnContent="" OffContent="" VerticalAlignment="Center" AutomationProperties.Name="Start with Windows" />
+        </Grid>
+        <TextBlock x:Name="SettingsAutoStartError" Foreground="{DynamicResource AqwDangerText}" TextWrapping="Wrap"
+                   Text="{Binding AutoStartError}" IsVisible="{Binding HasAutoStartError}"
+                   AutomationProperties.Name="{Binding AutoStartError}" />
+      </StackPanel>
+    </Border>
+
     <Border Classes="divider">
       <Grid ColumnDefinitions="*,Auto">
         <StackPanel Spacing="2" Margin="0,0,16,0">

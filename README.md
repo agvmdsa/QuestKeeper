@@ -49,7 +49,7 @@ The app is one screen, with no tabs: a strip with your character across the top 
 
 - **Game data** — open the app (it asks for administrator rights), then log in to the game. Your character appears by itself. Details are in [Game data capture](#game-data-capture-windows).
 - **Hard Farms** — press **Update from the Wiki** in its card; ownership comes from the captured inventory.
-- **Settings** — the button in the top bar opens a dialog with the debug mode switch, the privacy text, **Forget my data** (asks for confirmation, then removes what the app saved locally), the credits and the version.
+- **Settings** — the button in the top bar opens a dialog with **Start with Windows** (Windows only: it creates a scheduled task that opens the app in the notification area when you sign in to the PC, with administrator rights, because the app needs them), the debug mode switch, the privacy text, **Forget my data** (asks for confirmation, then removes what the app saved locally), the credits and the version.
 - **Debug mode** — turn it on in Settings, press Ctrl+Shift+D, or use the tray icon menu. It opens a second window with the capture controls and numbers (segments, decoding, commands seen, other commands) and the diagnostics export.
 
 ## Build from source
@@ -105,7 +105,7 @@ Tray icon and a single instance:
 - Closing the window does not close the app. It hides to the notification area (on Windows, often under the hidden icons arrow), and the capture keeps listening in the background. The icon's tooltip says what the capture is doing (waiting for a login, capturing, or why it cannot).
 - Open the window again by clicking the icon, or from its right-click menu: **Open**, **Start capture** or **Stop capture**, **Debug mode**, and **Exit**. **Exit** is the only way to really close the app: it stops the capture, waits up to 3 seconds for the capture devices to close and ends the process.
 - Starting the app again while it is already running does not open a second capture: the running window comes to the front and the new process ends. When the app restarts itself as administrator it waits up to 10 seconds for the old process to finish closing.
-- Not verified: the tray icon, its menu and the single instance have not been run on a real Windows machine; they were only tested in this repository without a real tray. The app does not start with Windows (there is no auto-start). Mac and Linux were not checked either; on those systems a second launch may not be able to wake the running window.
+- Not verified: the tray icon, its menu and the single instance have not been run on a real Windows machine; they were only tested in this repository without a real tray. The app starts with Windows only if you turn **Start with Windows** on in Settings. Mac and Linux were not checked either; on those systems a second launch may not be able to wake the running window.
 
 Limits and what is not verified:
 

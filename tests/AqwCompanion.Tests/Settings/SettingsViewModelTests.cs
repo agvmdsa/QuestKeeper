@@ -1,4 +1,5 @@
 using AqwCompanion.App;
+using AqwCompanion.App.Infrastructure.AutoStart;
 using AqwCompanion.App.Settings;
 using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Tests.TestDoubles;
@@ -11,8 +12,8 @@ public class SettingsViewModelTests
         new(removeStoredData, () => participants);
 
     private static SettingsViewModel Build(
-        ForgetCoordinator? forgetting = null, FakeAppSettingsStore? store = null) =>
-        new(store ?? new FakeAppSettingsStore(), forgetting ?? Coordinator(() => true));
+        ForgetCoordinator? forgetting = null, FakeAppSettingsStore? store = null, IAutoStart? autoStart = null) =>
+        new(store ?? new FakeAppSettingsStore(), forgetting ?? Coordinator(() => true), autoStart);
 
     [Fact]
     public void Debug_mode_starts_from_the_saved_setting()
@@ -131,6 +132,55 @@ public class SettingsViewModelTests
 
         Assert.Contains("Reputation file", vm.ForgetStatusText);
         Assert.StartsWith(SettingsViewModel.ForgetCompleteText, vm.ForgetStatusText);
+    }
+
+    [Fact]
+    public void Without_a_supported_auto_start_the_switch_is_not_offered()
+    {
+        var vm = Build();
+
+        Assert.False(vm.CanAutoStart);
+        Assert.False(vm.StartWithWindows);
+    }
+
+    [Fact]
+    public void Refreshing_reads_whether_the_task_exists()
+    {
+        var auto = new FakeAutoStart { Enabled = true };
+        var vm = Build(autoStart: auto);
+        Assert.False(vm.StartWithWindows);
+
+        vm.Refresh();
+
+        Assert.True(vm.CanAutoStart);
+        Assert.True(vm.StartWithWindows);
+    }
+
+    [Fact]
+    public void Turning_start_with_windows_on_and_off_sets_the_task()
+    {
+        var auto = new FakeAutoStart();
+        var vm = Build(autoStart: auto);
+
+        vm.StartWithWindows = true;
+        Assert.True(auto.Enabled);
+        Assert.Equal(string.Empty, vm.AutoStartError);
+
+        vm.StartWithWindows = false;
+        Assert.False(auto.Enabled);
+    }
+
+    [Fact]
+    public void A_failed_change_goes_back_and_says_so()
+    {
+        var auto = new FakeAutoStart { Fails = true };
+        var vm = Build(autoStart: auto);
+
+        vm.StartWithWindows = true;
+
+        Assert.False(vm.StartWithWindows);
+        Assert.Equal(SettingsViewModel.AutoStartFailedText, vm.AutoStartError);
+        Assert.True(vm.HasAutoStartError);
     }
 
     [Fact]

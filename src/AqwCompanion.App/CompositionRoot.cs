@@ -4,6 +4,7 @@ using AqwCompanion.App.Diagnostics;
 using AqwCompanion.App.GameData;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure;
+using AqwCompanion.App.Infrastructure.AutoStart;
 using AqwCompanion.App.Infrastructure.Elevation;
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Inventory;
@@ -77,7 +78,11 @@ public static class CompositionRoot
         services.AddSingleton<IActiveInventory, ActiveInventory>();
         services.AddSingleton(sp => new GameDataViewModel(sp.GetRequiredService<CaptureSession>(), OnUiThread));
         services.AddSingleton<IAppSettingsStore>(sp => new JsonAppSettingsStore(sp.GetRequiredService<AppPaths>().SettingsPath));
-        services.AddSingleton(sp => new SettingsViewModel(sp.GetRequiredService<IAppSettingsStore>(), sp.GetRequiredService<ForgetCoordinator>()));
+        services.AddSingleton<IProcessRunner, ProcessRunner>();
+        services.AddSingleton<IAutoStart>(sp => new ScheduledTaskAutoStart(
+            sp.GetRequiredService<IProcessRunner>(), Environment.ProcessPath, Environment.UserDomainName + "\\" + Environment.UserName, OperatingSystem.IsWindows));
+        services.AddSingleton(sp => new SettingsViewModel(
+            sp.GetRequiredService<IAppSettingsStore>(), sp.GetRequiredService<ForgetCoordinator>(), sp.GetRequiredService<IAutoStart>()));
         services.AddSingleton<ISettingsDialog, AvaloniaSettingsDialog>();
         services.AddSingleton<IDebugWindowHost, AvaloniaDebugWindowHost>();
         services.AddSingleton<DebugModeController>();

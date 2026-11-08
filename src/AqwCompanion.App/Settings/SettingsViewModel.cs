@@ -1,3 +1,4 @@
+using AqwCompanion.App.Infrastructure.AutoStart;
 using AqwCompanion.Core.Forgetting;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -8,6 +9,9 @@ namespace AqwCompanion.App.Settings;
 public partial class SettingsViewModel : ObservableObject
 {
     public const string TitleText = "Settings";
+    public const string AutoStartTitleText = "Start with Windows";
+    public const string AutoStartDescriptionText = "Opens the app in the notification area when you sign in to the PC, so the capture is already listening when you start the game.";
+    public const string AutoStartFailedText = "Windows did not accept the change. Run the app as administrator and try again.";
     public const string DebugTitleText = "Debug mode";
     public const string DebugDescriptionText = "Shows the capture and packet details in their own window. It also opens with Ctrl+Shift+D and from the tray icon menu.";
     public const string PrivacyTitleText = "Privacy";
@@ -31,13 +35,69 @@ public partial class SettingsViewModel : ObservableObject
 
     private readonly IAppSettingsStore _store;
     private readonly ForgetCoordinator _forgetting;
+    private readonly IAutoStart _autoStart;
     private bool _debugMode;
+    private bool _startWithWindows;
 
-    public SettingsViewModel(IAppSettingsStore store, ForgetCoordinator forgetting)
+    public SettingsViewModel(IAppSettingsStore store, ForgetCoordinator forgetting, IAutoStart? autoStart = null)
     {
         _store = store;
         _forgetting = forgetting;
+        _autoStart = autoStart ?? new NoAutoStart();
         _debugMode = store.Load().DebugMode;
+    }
+
+    /// <summary>Whether the switch for starting with Windows is offered at all.</summary>
+    public bool CanAutoStart => _autoStart.IsSupported;
+
+    /// <summary>Whether the app starts at sign-in. Setting it registers or removes the Windows task; a failure puts the switch back.</summary>
+    public bool StartWithWindows
+    {
+        get => _startWithWindows;
+        set
+        {
+            if (_startWithWindows == value)
+            {
+                return;
+            }
+
+            if (_autoStart.TrySet(value))
+            {
+                _startWithWindows = value;
+                AutoStartError = string.Empty;
+            }
+            else
+            {
+                AutoStartError = AutoStartFailedText;
+            }
+
+            // Also tells a switch that already moved to the new value to go back after a failure.
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Reads the state the system holds (the task can be deleted in Windows); call when the dialog opens.</summary>
+    public void Refresh()
+    {
+        _startWithWindows = _autoStart.IsEnabled();
+        AutoStartError = string.Empty;
+        OnPropertyChanged(nameof(StartWithWindows));
+        OnPropertyChanged(nameof(CanAutoStart));
+    }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAutoStartError))]
+    private string _autoStartError = string.Empty;
+
+    public bool HasAutoStartError => AutoStartError.Length > 0;
+
+    private sealed class NoAutoStart : IAutoStart
+    {
+        public bool IsSupported => false;
+
+        public bool IsEnabled() => false;
+
+        public bool TrySet(bool enabled) => false;
     }
 
     /// <summary>Raised after <see cref="DebugMode"/> changed and was saved.</summary>

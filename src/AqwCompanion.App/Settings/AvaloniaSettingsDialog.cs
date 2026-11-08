@@ -16,6 +16,7 @@ public sealed class AvaloniaSettingsDialog : ISettingsDialog
             return;
         }
 
+        settings.Refresh();
         var window = new SettingsWindow { DataContext = settings };
         void Close(object? sender, EventArgs e) => window.Close();
         settings.CloseRequested += Close;

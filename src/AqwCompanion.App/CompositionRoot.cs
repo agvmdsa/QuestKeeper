@@ -6,9 +6,7 @@ using AqwCompanion.App.Infrastructure;
 using AqwCompanion.App.Infrastructure.Elevation;
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Inventory;
-using AqwCompanion.App.Reputation;
 using AqwCompanion.App.Shell;
-using AqwCompanion.App.Wiki;
 using AqwCompanion.Capture;
 using AqwCompanion.Core.Diagnostics;
 using AqwCompanion.Core.Forgetting;
@@ -54,10 +52,6 @@ public static class CompositionRoot
             sp.GetRequiredService<IActiveInventory>(),
             sp.GetRequiredService<IUrlLauncher>(),
             OnUiThread));
-        services.AddSingleton<IReputationStore, ReputationStore>();
-        services.AddSingleton<IReputationFilePicker, ReputationFilePicker>();
-        services.AddSingleton<IReputationAutoSource>(sp => new ReputationFileSource(sp.GetRequiredService<AppPaths>()));
-        services.AddSingleton<ReputationViewModel>();
         services.AddSingleton<IGameDataStore, GameDataStore>();
         services.AddSingleton<IProcessElevation, WindowsProcessElevation>();
         services.AddSingleton<IApplicationExit, AvaloniaApplicationExit>();
@@ -85,10 +79,9 @@ public static class CompositionRoot
             () =>
             [
                 sp.GetRequiredService<HardFarmsViewModel>(),
-                sp.GetRequiredService<ReputationViewModel>(),
+                new LegacyReputationFolder(sp.GetRequiredService<AppPaths>()),
                 sp.GetRequiredService<CaptureSession>(),
             ]));
-        services.AddSingleton<WikiViewModel>();
         services.AddSingleton<DiagnosticsViewModel>();
         services.AddSingleton<MainViewModel>();
 

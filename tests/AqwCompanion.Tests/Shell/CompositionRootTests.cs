@@ -6,7 +6,6 @@ using AqwCompanion.App.Infrastructure.Elevation;
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Inventory;
 using AqwCompanion.App.Shell;
-using AqwCompanion.App.Wiki;
 using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Inventory;
 using AqwCompanion.Core.Persistence;
@@ -27,21 +26,8 @@ public class CompositionRootTests
 
         var main = services.GetRequiredService<MainViewModel>();
         Assert.Equal(AppInfo.ProductName, main.Title);
-        Assert.NotNull(main.Wiki);
         Assert.NotNull(main.Diagnostics);
         Assert.NotNull(main.GameData);
-    }
-
-    [Fact]
-    public void Container_resolves_the_reputation_file_source_at_the_fixed_path()
-    {
-        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
-
-        using var services = CompositionRoot.Build(paths);
-
-        var source = services.GetRequiredService<AqwCompanion.App.Reputation.IReputationAutoSource>();
-        Assert.Equal(Path.Combine(paths.Root, "reputation", "reputation.json"), source.Path);
-        Assert.Same(services.GetRequiredService<MainViewModel>().Reputation, services.GetRequiredService<AqwCompanion.App.Reputation.ReputationViewModel>());
     }
 
     [Fact]
@@ -70,13 +56,12 @@ public class CompositionRootTests
     }
 
     [Fact]
-    public void Container_resolves_the_wiki_view_model_and_the_delay_seam()
+    public void Container_resolves_the_delay_seam()
     {
         var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
 
         using var services = CompositionRoot.Build(paths);
 
-        Assert.NotNull(services.GetRequiredService<WikiViewModel>());
         Assert.IsType<TaskDelay>(services.GetRequiredService<IDelay>());
     }
 

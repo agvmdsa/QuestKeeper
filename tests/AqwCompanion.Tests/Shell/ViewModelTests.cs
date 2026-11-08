@@ -3,10 +3,8 @@ using AqwCompanion.App;
 using AqwCompanion.App.Diagnostics;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Inventory;
-using AqwCompanion.App.Reputation;
 using AqwCompanion.App.Shell;
 using AqwCompanion.Core.Wiki;
-using AqwCompanion.App.Wiki;
 using AqwCompanion.Core.Diagnostics;
 using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Ingestion;
@@ -26,12 +24,6 @@ public sealed class ViewModelTests : IDisposable
         {
             Directory.Delete(_paths.Root, recursive: true);
         }
-    }
-
-    [Fact]
-    public void Wiki_view_model_builds_without_a_browser_host()
-    {
-        Assert.NotNull(new WikiViewModel());
     }
 
     [Fact]
@@ -94,59 +86,25 @@ public sealed class ViewModelTests : IDisposable
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task Forgetting_empties_the_Hard_Farms_and_Reputation_tabs_but_a_cancelled_request_does_not(bool confirms)
+    public async Task Forgetting_empties_the_Hard_Farms_but_a_cancelled_request_does_not(bool confirms)
     {
         HardFarmsViewModel? hardFarmsRef = null;
-        ReputationViewModel? reputationRef = null;
-        var coordinator = new ForgetCoordinator(() => true, () => [hardFarmsRef!, reputationRef!]);
+        var coordinator = new ForgetCoordinator(() => true, () => [hardFarmsRef!]);
         var store = new HardFarmStore(new InMemoryStoredDataStore().Module());
         store.SaveList(new HardFarmList([new HardFarmGroup("Nation", ["blade-one"])], null), DateTimeOffset.UnixEpoch);
         var hardFarms = new HardFarmsViewModel(
             store, new FakeHardFarmSync(), ActiveInventoryBuilder.Empty(), new FakeUrlLauncher());
         hardFarmsRef = hardFarms;
         await hardFarms.RestoreAsync();
-        var reputationStore = new ReputationStore(new InMemoryStoredDataStore().Module());
-        reputationStore.Save(new StoredReputation(
-            new ReputationSnapshot([new FactionStanding(1, "Good", 5, 10, 20, 0)], null), "rep.json", DateTimeOffset.UnixEpoch));
-        var reputation = new ReputationViewModel(reputationStore, new FakeReputationFilePicker(), new FakeReputationAutoSource(), TimeProvider.System);
-        reputationRef = reputation;
-        await reputation.RestoreAsync();
         var main = new MainViewModel(
-            new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor())), hardFarms,
-            reputation, new CaptureRig().CreateViewModel(forgetting: coordinator));
+            new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor())), hardFarms,
+            new CaptureRig().CreateViewModel(forgetting: coordinator));
         Assert.Single(main.HardFarms.Rows);
-        Assert.Single(main.Reputation.Items);
 
         main.GameData.RequestForgetCommand.Execute(null);
         (confirms ? main.GameData.ConfirmForgetCommand : main.GameData.CancelForgetCommand).Execute(null);
 
         Assert.Equal(confirms, main.HardFarms.Rows.Count == 0);
         Assert.Equal(confirms, main.HardFarms.ShowEmptyState);
-        Assert.Equal(confirms, main.Reputation.Items.Count == 0);
-        Assert.Equal(confirms, main.Reputation.IsEmpty);
-    }
-
-    [Fact]
-    public void Forgetting_deletes_the_reputation_file_the_game_client_wrote()
-    {
-        ReputationViewModel? reputationRef = null;
-        var coordinator = new ForgetCoordinator(() => true, () => [reputationRef!]);
-        var source = new ReputationFileSource(_paths);
-        Directory.CreateDirectory(_paths.ReputationDirectory);
-        File.WriteAllText(source.Path, "{}");
-        var reputation = new ReputationViewModel(
-            new ReputationStore(new InMemoryStoredDataStore().Module()), new FakeReputationFilePicker(), source, TimeProvider.System);
-        reputationRef = reputation;
-        var main = new MainViewModel(
-            new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor())),
-            new HardFarmsViewModel(
-                new HardFarmStore(new InMemoryStoredDataStore().Module()), new FakeHardFarmSync(), ActiveInventoryBuilder.Empty(), new FakeUrlLauncher()),
-            reputation, new CaptureRig().CreateViewModel(forgetting: coordinator));
-        Assert.True(File.Exists(source.Path));
-
-        main.GameData.RequestForgetCommand.Execute(null);
-        main.GameData.ConfirmForgetCommand.Execute(null);
-
-        Assert.False(File.Exists(source.Path));
     }
 }

@@ -3,7 +3,6 @@ using AqwCompanion.App.GameData;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Inventory;
-using AqwCompanion.App.Reputation;
 using AqwCompanion.Capture;
 using AqwCompanion.Core.Capture;
 using AqwCompanion.Core.Forgetting;
@@ -43,8 +42,6 @@ public sealed class ForgettingEffectTests : IDisposable
         Assert.Equal(["exports/y.zip", "logs/x.txt"], FilesUnderRoot());
         Assert.Empty(world.HardFarms.Rows);
         Assert.True(world.HardFarms.ShowEmptyState);
-        Assert.Empty(world.Reputation.Items);
-        Assert.True(world.Reputation.IsEmpty);
         Assert.Empty(world.Session.Characters);
         Assert.Equal(CaptureState.Idle, world.Session.State);
         Assert.Equal(default, world.Session.Counters);
@@ -69,8 +66,6 @@ public sealed class ForgettingEffectTests : IDisposable
 
         Assert.Single(world.HardFarms.Rows);
         Assert.False(world.HardFarms.ShowEmptyState);
-        Assert.Single(world.Reputation.Items);
-        Assert.False(world.Reputation.IsEmpty);
         Assert.Equal("Fictional Hero", Assert.Single(world.Session.Characters).Profile.Name);
     }
 
@@ -82,13 +77,9 @@ public sealed class ForgettingEffectTests : IDisposable
         hardFarmStore.SaveList(new HardFarmList([new HardFarmGroup("Nation", ["blade-one"])], null), ReadAt);
         hardFarmStore.SaveIndex(new WikiIndex(WikiUrls.ClassesSlug, WikiType.Class, [new WikiIndexEntry("blade-one", "Blade One")]), ReadAt);
 
-        var reputationStore = new ReputationStore(new StoredData(store, StoredKeys.Obsolete));
-        reputationStore.Save(new StoredReputation(
-            new ReputationSnapshot([new FactionStanding(1, "Good", 5, 10, 20, 0)], null), "rep.json", ReadAt));
-
-        var source = new ReputationFileSource(_paths);
+        // The folder an older version read the exported reputation file from.
         Directory.CreateDirectory(_paths.ReputationDirectory);
-        await File.WriteAllTextAsync(source.Path, "{}");
+        await File.WriteAllTextAsync(Path.Combine(_paths.ReputationDirectory, "reputation.json"), "{}");
         Directory.CreateDirectory(_paths.LogDirectory);
         await File.WriteAllBytesAsync(Path.Combine(_paths.LogDirectory, "x.txt"), [1, 2, 3]);
         Directory.CreateDirectory(_paths.ExportDirectory);
@@ -96,7 +87,6 @@ public sealed class ForgettingEffectTests : IDisposable
 
         var hardFarms = new HardFarmsViewModel(
             hardFarmStore, new FakeHardFarmSync(), ActiveInventoryBuilder.Empty(), new FakeUrlLauncher());
-        var reputation = new ReputationViewModel(reputationStore, new FakeReputationFilePicker(), source, TimeProvider.System);
 
         var gameDataStore = new GameDataStore(new StoredData(store, StoredKeys.Obsolete));
         var profile = new CharacterProfile("Fictional Hero", 60, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, true, 11, 12, 13, 14, 15);
@@ -130,13 +120,11 @@ public sealed class ForgettingEffectTests : IDisposable
                 stateWhenRemoved = session.State;
                 return !gateFails && storedData.Clear();
             },
-            () => [hardFarms, reputation, session]);
+            () => [hardFarms, new LegacyReputationFolder(_paths), session]);
 
         await hardFarms.RestoreAsync();
-        await reputation.RestoreAsync();
         Assert.Single(hardFarms.Rows);
-        Assert.Single(reputation.Items);
-        return new World(hardFarms, reputation, coordinator, session, () => stateWhenRemoved, () => sourceToken);
+        return new World(hardFarms, coordinator, session, () => stateWhenRemoved, () => sourceToken);
     }
 
     private List<string> FilesUnderRoot() =>
@@ -150,7 +138,6 @@ public sealed class ForgettingEffectTests : IDisposable
 
     private sealed record World(
         HardFarmsViewModel HardFarms,
-        ReputationViewModel Reputation,
         ForgetCoordinator Coordinator,
         CaptureSession Session,
         Func<CaptureState> StateAtRemoval,

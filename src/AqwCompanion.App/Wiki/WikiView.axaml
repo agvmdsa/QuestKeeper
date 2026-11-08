@@ -1,9 +1,0 @@
-<UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:AqwCompanion.App.Wiki"
-             x:Class="AqwCompanion.App.Wiki.WikiView"
-             x:DataType="vm:WikiViewModel">
-  <StackPanel Margin="16" Spacing="12">
-    <TextBlock Foreground="{DynamicResource AqwTextMuted}" Text="The integrated browser is not available yet." />
-  </StackPanel>
-</UserControl>

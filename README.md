@@ -62,67 +62,6 @@ dotnet run --project src/AqwCompanion.App   # run the app
 
 Releases are built by `.github/workflows/release.yml` when a `vX.Y.Z` tag is pushed: tests, a self-contained single-file `win-x64` publish, and a zip with its `SHA256SUMS.txt`. The version comes from the tag (MinVer).
 
-## Reputation from a Skua export
-
-This is an older, separate source for faction reputation: a JSON file you export yourself from the game. The **Reputation** tab only imports and shows that file. It makes no network calls and never touches the game, a session or credentials. The app builds and runs on macOS and Windows; only collecting the data needs Windows.
-
-> Collecting the data means running the game inside a third-party client ([Skua](https://github.com/auqw/Skua)), which is a different risk class from the rest of this app: it is probably not allowed by the game's terms and can get an account banned. Use a throwaway account, and do it knowingly. Skua has no license, so none of its code is in this repository and it is not distributed with the app.
-
-On the Windows machine:
-
-1. Run the app (the release, or `dotnet run --project src/AqwCompanion.App` with the .NET 10 SDK).
-2. Install Skua yourself from its official releases and log in with the throwaway account. Skua needs a Flash runtime (its readme explains CleanFlash).
-3. Save this as `ReputationExport.cs` in Skua's scripts folder (`%APPDATA%\Skua\Scripts`), then in Skua press **Load script** and **Start**, and leave it running while you play. Every 5 seconds it checks your factions and rewrites `%LOCALAPPDATA%\AqwCompanion\reputation\reputation.json` only when something changed (never with an empty list, and never half-written):
-
-   ```csharp
-   using System;
-   using System.Collections.Generic;
-   using System.IO;
-   using Newtonsoft.Json;
-   using Skua.Core.Interfaces;
-
-   public class Script
-   {
-       public void ScriptMain(IScriptInterface Bot)
-       {
-           var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AqwCompanion", "reputation");
-           Directory.CreateDirectory(dir);
-           var file = Path.Combine(dir, "reputation.json");
-           var tmp = file + ".tmp";
-           var last = "";
-           Bot.Log("Reputation export running, writing " + file);
-           while (!Bot.ShouldExit)
-           {
-               try
-               {
-                   var rows = new List<object>();
-                   foreach (var f in Bot.Reputation.FactionList)
-                       rows.Add(new { factionId = f.ID, name = f.Name, rank = f.Rank, rep = f.TotalRep, repToRank = f.RequiredRep, spillRep = f.Rep });
-                   var key = JsonConvert.SerializeObject(rows);
-                   if (rows.Count > 0 && key != last)
-                   {
-                       var json = JsonConvert.SerializeObject(new { schema = 1, exportedAt = DateTime.UtcNow.ToString("o"), factions = rows }, Formatting.Indented);
-                       File.WriteAllText(tmp, json);
-                       File.Move(tmp, file, true);
-                       last = key;
-                   }
-               }
-               catch (Exception e)
-               {
-                   Bot.Log("Reputation export: " + e.Message);
-               }
-               Bot.Sleep(5000);
-           }
-       }
-   }
-   ```
-
-4. In AQW Companion open the **Reputation** tab. It reads the file by itself when the tab opens, and **Refresh** reads it again. Nothing to pick. The older **Import reputation file…** button still works for a file saved somewhere else.
-
-What to check: does the list match the in-game reputation (rank, total rep, rep still missing for the next rank)? Skua only lists factions with at least 1 reputation point, and the tab only shows what the script last wrote, so the script must be running (the tab says when there is no file yet and shows the expected path).
-
-The script was written from reading Skua's source and has not been run: the field names come from `Faction.cs` (`iRep` is the total, `iSpillRep` the progress in the current rank, `iRepToRank` the total needed for the rank), and `Bot.ShouldExit`, `Bot.Sleep` and `Bot.Log` from its script interface. If Skua reports a compile error when loading it, send the message back and the script gets fixed. The file format is `schema: 1`; files over 1 MiB, with more than 500 factions or with an unknown schema are rejected, and **Forget my data** removes the imported data and the file, with everything else.
-
 ## Game data capture (Windows)
 
 The **Game data** tab reads the login data of your own characters from the game's network traffic, on your own machine, while the game logs in. It shows the profile numbers, the faction standings (with rank and what is still missing for the next one) and the owned items, and **Hard Farms** uses the captured inventory to mark what you own. It is read-only: the app never sends anything to the game and never acts for you. After the login it also follows your own gold, experience, items and class points while you play (see below), with no refresh button.
@@ -157,7 +96,7 @@ What is never kept: your e-mail address, IP address, user and character ids, pas
 
 If you open the app while you are already logged in to the game: the data saved from your last session is shown, labelled as saved from an earlier session. The app cannot read a login that was sent before it started listening, and it says so when it sees a game connection whose start it missed. Switching server or logging in again sends the login again and fixes it. Live updates (below) only start after a login the app saw.
 
-**Forget my data** (inside **Capture details**) removes the captured data too, together with everything else the app saved. Data that older versions saved from the account website is removed by the app by itself.
+**Forget my data** (inside **Capture details**) removes the captured data too, together with everything else the app saved. Data that older versions saved from the account website is removed by the app by itself; the folder an older version used for an exported Skua reputation file is removed by **Forget my data**.
 
 Tray icon and a single instance:
 
@@ -171,7 +110,6 @@ Limits and what is not verified:
 - At most 16 characters are kept; the oldest is dropped first. At most 16 connections are followed live; when more start, the longest idle live one is dropped.
 - Live updates were only tested with generated traffic: the real event names and fields come from reading another tool's source and from structure-only measurements, not from a real session.
 - The bank, quests and achievements are not read as data of their own. Whether the game sends your bank items in the login data is not verified, so do not rely on them. Class points of owned classes are not captured, so Hard Farms matches classes by name only.
-- The Reputation tab and its Skua flow above are unchanged and separate from this.
 - **The capture adapter (the part that talks to Npcap) has not been run on a real Windows machine yet.** It is tested here only with generated traffic on fake network sources. Expect that the first real run can fail, for example with "No network device could be opened." Nothing in this section is a promise that it works on your machine.
 
 ## Not affiliated

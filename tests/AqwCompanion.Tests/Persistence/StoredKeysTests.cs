@@ -44,6 +44,12 @@ public sealed class StoredKeysTests
     }
 
     [Fact]
+    public void The_old_reputation_file_record_is_obsolete()
+    {
+        Assert.Contains("reputation.data", StoredKeys.Obsolete);
+    }
+
+    [Fact]
     public void All_contains_every_public_stored_key_field()
     {
         var declared = typeof(StoredKeys)
@@ -61,7 +67,7 @@ public sealed class StoredKeysTests
     public void The_key_names_are_the_ones_older_databases_already_hold()
     {
         Assert.Equal(
-            ["reputation.data", "hardfarms.list", "hardfarms.indexes", "gamedata.characters"],
+            ["hardfarms.list", "hardfarms.indexes", "gamedata.characters"],
             StoredKeys.All.Select(k => k.Name));
     }
 }

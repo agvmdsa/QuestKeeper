@@ -106,7 +106,7 @@ public class GameDataViewTests
     }
 
     [AvaloniaFact]
-    public void The_tab_is_called_Game_data_sits_after_Reputation_and_shows_the_view_model_of_the_container()
+    public void The_tab_is_called_Game_data_and_shows_the_view_model_of_the_container()
     {
         var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
         using var services = CompositionRoot.Build(paths);
@@ -116,8 +116,8 @@ public class GameDataViewTests
 
         var tabs = window.FindControl<TabControl>("Tabs")!;
         var headers = tabs.Items.OfType<TabItem>().Select(t => t.Header).ToList();
-        Assert.Equal(5, headers.Count);
-        Assert.Equal(headers.IndexOf("Reputation") + 1, headers.IndexOf("Game data"));
+        Assert.Equal(3, headers.Count);
+        Assert.Contains("Game data", headers);
         tabs.SelectedItem = tabs.Items.OfType<TabItem>().Single(t => Equals(t.Header, "Game data"));
         SettleUntil(window, () => window.GetVisualDescendants().OfType<GameDataView>().Any(), "the Game data tab to be created");
         Assert.Same(services.GetRequiredService<MainViewModel>().GameData, window.GetVisualDescendants().OfType<GameDataView>().Single().DataContext);

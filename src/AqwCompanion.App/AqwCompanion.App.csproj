@@ -10,6 +10,7 @@
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
     <ProjectReference Include="..\AqwCompanion.Core\AqwCompanion.Core.csproj" />
+    <ProjectReference Include="..\AqwCompanion.Capture\AqwCompanion.Capture.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="AqwCompanion.Tests" />

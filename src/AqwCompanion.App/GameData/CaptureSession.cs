@@ -1,0 +1,386 @@
+using AqwCompanion.App.Infrastructure.Elevation;
+using AqwCompanion.App.SignIn;
+using AqwCompanion.Capture;
+using AqwCompanion.Core.Capture;
+using AqwCompanion.Core.Forgetting;
+
+namespace AqwCompanion.App.GameData;
+
+/// <summary>
+/// One Capture session at a time: checks the system, Npcap and administrator rights, listens through a packet source for at
+/// most <see cref="TimeLimit"/>, keeps one snapshot per Character (newest wins) and stores them. It logs nothing that comes
+/// from the traffic. State is guarded by a lock; <see cref="Changed"/> is raised outside of it and may come from capture threads.
+/// </summary>
+public sealed class CaptureSession(
+    Func<IPacketSource> sourceFactory,
+    IProcessElevation elevation,
+    Func<NpcapStatus> npcap,
+    Func<bool> isWindows,
+    IGameDataStore store,
+    IDelay delay,
+    TimeProvider clock,
+    IApplicationExit exit,
+    AppPaths paths) : IForgettable
+{
+    /// <summary>How long a session listens before it ends by itself.</summary>
+    public static readonly TimeSpan TimeLimit = TimeSpan.FromMinutes(10);
+
+    /// <summary>The most Characters kept; the oldest is dropped first.</summary>
+    public const int MaxCharacters = GameDataStore.MaxCharacters;
+
+    private readonly object _gate = new();
+    private CaptureState _state;
+    private CaptureFailure _failure;
+    private CharacterSnapshot[] _characters = [];
+    private CaptureEngine? _engine;
+    private Run? _current;
+    private bool _quiesced;
+    private bool _forgotten;
+    private bool _restoreStarted;
+    private int _epoch;
+
+    /// <summary>Raised on every state change and every captured Character, never periodically. May come from any thread.</summary>
+    public event EventHandler? Changed;
+
+    public CaptureState State
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _state;
+            }
+        }
+    }
+
+    public CaptureFailure Failure
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _failure;
+            }
+        }
+    }
+
+    /// <summary>What the engine has counted so far; zero before the first start.</summary>
+    public CaptureCounters Counters
+    {
+        get
+        {
+            CaptureEngine? engine;
+            lock (_gate)
+            {
+                engine = _engine;
+            }
+
+            return engine?.Counters ?? default;
+        }
+    }
+
+    /// <summary>One snapshot per Character name (ignoring case); a newer capture replaces the older one.</summary>
+    public IReadOnlyList<CharacterSnapshot> Characters
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _characters;
+            }
+        }
+    }
+
+    string IForgettable.Name => "Game data";
+
+    /// <summary>Loads the stored Characters once. Ignored after Forgetting or Quiescing started and when Characters already has data.</summary>
+    public async Task RestoreAsync()
+    {
+        int epoch;
+        lock (_gate)
+        {
+            if (_restoreStarted || _quiesced || _forgotten)
+            {
+                return;
+            }
+
+            _restoreStarted = true;
+            epoch = _epoch;
+        }
+
+        var loaded = await Task.Run(store.Load).ConfigureAwait(false);
+
+        var changed = false;
+        lock (_gate)
+        {
+            if (epoch == _epoch && !_quiesced && !_forgotten && _characters.Length == 0 && loaded.Count > 0)
+            {
+                _characters = [.. loaded.Take(MaxCharacters)];
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            OnChanged();
+        }
+    }
+
+    /// <summary>Runs one session and returns when it ends (stop, time limit, end of the source or failure). No-op when already listening or quiesced.</summary>
+    public async Task StartAsync()
+    {
+        var run = Begin();
+        if (run is null)
+        {
+            return;
+        }
+
+        var token = run.Cts.Token;
+        var source = Task.Run(() => sourceFactory().RunAsync(run.Engine.Accept, token));
+        var limit = delay.DelayAsync(TimeLimit, token);
+        var finished = await Task.WhenAny(source, limit).ConfigureAwait(false);
+
+        var state = CaptureState.Done;
+        var failure = CaptureFailure.None;
+        if (finished == source)
+        {
+            if (source.IsFaulted)
+            {
+                state = CaptureState.Failed;
+                failure = CaptureFailure.DriverError;
+            }
+            else if (!token.IsCancellationRequested
+                && run.Engine.Counters is { SegmentsSeen: 0, CharactersCaptured: 0 })
+            {
+                state = CaptureState.Failed;
+                failure = CaptureFailure.NoDevice;
+            }
+        }
+        else
+        {
+            // The limit passed (or the delay ended some other way): ask the source to end and wait for it.
+            Cancel(run.Cts);
+            await Settle(source).ConfigureAwait(false);
+        }
+
+        var raise = false;
+        lock (_gate)
+        {
+            if (_current == run)
+            {
+                _current = null;
+                _state = state;
+                _failure = failure;
+                raise = true;
+            }
+        }
+
+        Cancel(run.Cts);
+        run.Cts.Dispose();
+        if (raise)
+        {
+            OnChanged();
+        }
+    }
+
+    /// <summary>Ends a listening session; the state becomes Done.</summary>
+    public void Stop()
+    {
+        if (EndRun(CaptureState.Done))
+        {
+            OnChanged();
+        }
+    }
+
+    /// <summary>Starts this program again as administrator and closes it when that worked.</summary>
+    public bool RelaunchAsAdministrator()
+    {
+        var started = elevation.TryRelaunchElevated(paths.Root);
+        if (started)
+        {
+            exit.Exit();
+        }
+
+        return started;
+    }
+
+    void IForgettable.Quiesce()
+    {
+        bool changed;
+        CancellationTokenSource? cts;
+        lock (_gate)
+        {
+            _quiesced = true;
+            _epoch++;
+            changed = EndRunLocked(CaptureState.Done, out cts);
+        }
+
+        Cancel(cts);
+        if (changed)
+        {
+            OnChanged();
+        }
+    }
+
+    void IForgettable.Resume()
+    {
+        lock (_gate)
+        {
+            _quiesced = false;
+        }
+    }
+
+    void IForgettable.Forget()
+    {
+        CancellationTokenSource? cts;
+        lock (_gate)
+        {
+            _epoch++;
+            cts = _current?.Cts;
+            _current = null;
+            _characters = [];
+            _engine = null;
+            _state = CaptureState.Idle;
+            _failure = CaptureFailure.None;
+            _quiesced = false;
+            _forgotten = true;
+        }
+
+        Cancel(cts);
+        OnChanged();
+    }
+
+    // Decides under the lock whether a session starts: an early state ends it at once, otherwise a run is created.
+    private Run? Begin()
+    {
+        Run? run = null;
+        lock (_gate)
+        {
+            if (_quiesced || _state == CaptureState.Listening)
+            {
+                return null;
+            }
+
+            _failure = CaptureFailure.None;
+            if (Preflight() is { } early)
+            {
+                _state = early;
+            }
+            else
+            {
+                var engine = new CaptureEngine(clock);
+                run = new Run(engine);
+                engine.CharacterCaptured += snapshot => OnCaptured(run, snapshot);
+                _engine = engine;
+                _current = run;
+                _state = CaptureState.Listening;
+            }
+        }
+
+        OnChanged();
+        return run;
+    }
+
+    private CaptureState? Preflight()
+    {
+        if (!isWindows())
+        {
+            return CaptureState.NotSupported;
+        }
+
+        switch (npcap())
+        {
+            case NpcapStatus.Missing:
+                return CaptureState.NpcapMissing;
+            case NpcapStatus.NotSupported:
+                return CaptureState.NotSupported;
+        }
+
+        return elevation.IsElevated ? null : CaptureState.NeedsAdministrator;
+    }
+
+    private void OnCaptured(Run run, CharacterSnapshot snapshot)
+    {
+        lock (_gate)
+        {
+            if (_current != run)
+            {
+                return;
+            }
+
+            var list = _characters
+                .Where(c => !string.Equals(c.Profile.Name, snapshot.Profile.Name, StringComparison.OrdinalIgnoreCase))
+                .Append(snapshot)
+                .ToList();
+            if (list.Count > MaxCharacters)
+            {
+                list.RemoveRange(0, list.Count - MaxCharacters);
+            }
+
+            _characters = [.. list];
+            store.Save(_characters);
+        }
+
+        OnChanged();
+    }
+
+    private bool EndRun(CaptureState state)
+    {
+        bool changed;
+        CancellationTokenSource? cts;
+        lock (_gate)
+        {
+            changed = EndRunLocked(state, out cts);
+        }
+
+        Cancel(cts);
+        return changed;
+    }
+
+    // Detaches the current run (its late captures are ignored) and sets the state. The caller cancels the token outside the lock.
+    private bool EndRunLocked(CaptureState state, out CancellationTokenSource? cts)
+    {
+        cts = null;
+        if (_state != CaptureState.Listening)
+        {
+            return false;
+        }
+
+        cts = _current?.Cts;
+        _current = null;
+        _state = state;
+        return true;
+    }
+
+    private static void Cancel(CancellationTokenSource? cts)
+    {
+        try
+        {
+            cts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private static async Task Settle(Task task)
+    {
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // How the source ended after the cancel does not change the outcome.
+        }
+    }
+
+    private void OnChanged() => Changed?.Invoke(this, EventArgs.Empty);
+
+    private sealed class Run(CaptureEngine engine)
+    {
+        public CaptureEngine Engine { get; } = engine;
+
+        public CancellationTokenSource Cts { get; } = new();
+    }
+}

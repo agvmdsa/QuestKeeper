@@ -134,7 +134,8 @@ public class CaptureSessionLiveTests
         await Eventually(() => rig.Session.LiveUpdateCount("Fictional Hero") == 20, "the burst to be applied");
 
         Assert.Single(rig.Store.Saved);
-        Assert.Contains(CaptureSession.SaveDelay, rig.Delay.Delays);
+        // The wait is started on another task, so it may not have asked for its delay yet.
+        await Eventually(() => rig.Delay.Delays.Contains(CaptureSession.SaveDelay), "the save delay to start");
         Assert.Equal(TimeSpan.FromSeconds(5), CaptureSession.SaveDelay);
 
         rig.Delay.Gate!.SetResult();

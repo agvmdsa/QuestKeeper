@@ -111,7 +111,8 @@ public class IngestionServiceTests
         var result = await service.IngestAsync(Snapshot());
 
         Assert.Equal(ParseOutcome.Failed, result.Parse.Outcome);
-        Assert.Contains("boom", result.Parse.Reason);
+        Assert.Contains("parser threw InvalidOperationException", result.Parse.Reason);
+        Assert.DoesNotContain("boom", result.Parse.Reason);
         Assert.Empty(store.Saved);
         Assert.NotNull(failures.Latest);
         var entry = Assert.Single(log.Entries);
@@ -185,7 +186,7 @@ public class IngestionServiceTests
         Assert.Equal(ParseOutcome.Failed, result.Parse.Outcome);
         Assert.False(result.Persisted);
         Assert.Contains("persistence failed", result.Parse.Reason);
-        Assert.Contains(message, result.Parse.Reason);
+        Assert.DoesNotContain(message, result.Parse.Reason);
         Assert.Empty(store.Saved);
         Assert.NotNull(failures.Latest);
         var entry = Assert.Single(log.Entries);

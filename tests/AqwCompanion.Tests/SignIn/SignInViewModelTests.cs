@@ -327,7 +327,8 @@ public class SignInViewModelTests
         Assert.Equal(SignInState.Error, vm.State);
         Assert.Null(vm.CharacterName);
         Assert.StartsWith("Could not capture the page", vm.Message, StringComparison.Ordinal);
-        Assert.Contains("script failed", vm.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("script failed", vm.Message, StringComparison.Ordinal);
+        Assert.Contains("InvalidOperationException", vm.Message, StringComparison.Ordinal);
     }
 
     [Fact]

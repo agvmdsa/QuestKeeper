@@ -100,7 +100,7 @@ public class AccountHomeReaderTests
     }
 
     [Fact]
-    public async Task A_capture_that_throws_reports_its_message()
+    public async Task A_capture_that_throws_reports_only_its_type()
     {
         var reader = Build();
         _host.OnCaptureAsync = _ => throw new InvalidOperationException("boom");
@@ -108,7 +108,7 @@ public class AccountHomeReaderTests
         var read = await reader.ReadAsync(CancellationToken.None, () => false);
 
         Assert.Equal(AccountHomeReadFailure.CaptureFailed, read.Failure);
-        Assert.Equal("boom", read.CaptureError);
+        Assert.Equal("InvalidOperationException", read.CaptureError);
         Assert.Null(read.Name);
     }
 

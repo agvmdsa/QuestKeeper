@@ -86,7 +86,7 @@ internal sealed class AccountHomeReader
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             _log.Error(ex, "Capturing the account home page failed");
-            return new AccountHomeRead(null, null, AccountHomeReadFailure.CaptureFailed, ex.Message);
+            return new AccountHomeRead(null, null, AccountHomeReadFailure.CaptureFailed, ex.GetType().Name);
         }
     }
 

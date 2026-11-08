@@ -75,7 +75,8 @@ public sealed class ViewModelTests : IDisposable
         var ex = Record.Exception(() => vm.ExportCommand.Execute(null));
 
         Assert.Null(ex);
-        Assert.StartsWith("Export failed:", vm.Status);
+        Assert.StartsWith("Export failed (", vm.Status);
+        Assert.DoesNotContain("Null character", vm.Status);
     }
 
     [Fact]
@@ -88,7 +89,8 @@ public sealed class ViewModelTests : IDisposable
         var ex = Record.Exception(() => vm.ExportCommand.Execute(null));
 
         Assert.Null(ex);
-        Assert.StartsWith("Export failed:", vm.Status);
+        Assert.StartsWith("Export failed (", vm.Status);
+        Assert.DoesNotContain("not a directory", vm.Status);
     }
 
     [Fact]

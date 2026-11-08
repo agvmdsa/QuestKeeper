@@ -41,7 +41,7 @@ public sealed class IngestionService<T>(
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 result = ParseResult<T>.Failed(
-                    $"persistence failed: {ex.GetType().Name}: {ex.Message}",
+                    $"persistence failed: {ex.GetType().Name}",
                     result.Diagnostics);
                 error = ex;
             }
@@ -65,7 +65,7 @@ public sealed class IngestionService<T>(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             var failed = ParseResult<T>.Failed(
-                $"parser threw {ex.GetType().Name}: {ex.Message}",
+                $"parser threw {ex.GetType().Name}",
                 ParseDiagnostics.Empty(parser.Name, parser.Version));
             return (failed, ex);
         }

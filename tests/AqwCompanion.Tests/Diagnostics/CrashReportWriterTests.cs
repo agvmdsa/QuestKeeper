@@ -18,8 +18,22 @@ public sealed class CrashReportWriterTests : IDisposable
         Assert.Equal("crash-20261104-131415123.txt", Path.GetFileName(path));
         var text = File.ReadAllText(path);
         Assert.Contains("AppVersion: 2.0.0", text);
-        Assert.Contains("kaboom", text);
-        Assert.Contains("InvalidOperationException", text);
+        Assert.DoesNotContain("kaboom", text);
+        Assert.Contains("System.InvalidOperationException", text);
+    }
+
+    [Fact]
+    public void Write_never_writes_the_message_or_inner_message_even_when_the_redactor_would_miss_it()
+    {
+        var now = new DateTimeOffset(2026, 11, 4, 13, 14, 15, 123, TimeSpan.Zero);
+        var exception = new InvalidOperationException("PLAIN-SECRET-TEXT", new ArgumentException("INNER-SECRET-TEXT"));
+        exception.Data["k"] = "DATA-SECRET-TEXT";
+
+        var path = CrashReportWriter.Write(exception, _dir, "2.0.0", now);
+
+        var text = File.ReadAllText(path);
+        Assert.DoesNotContain("SECRET", text);
+        Assert.Contains("--- inner: System.ArgumentException", text);
     }
 
     [Fact]
@@ -34,7 +48,6 @@ public sealed class CrashReportWriterTests : IDisposable
         Assert.DoesNotContain("owner@example.com", text);
         Assert.DoesNotContain("abc123", text);
         Assert.Contains("InvalidOperationException", text);
-        Assert.Contains(SnapshotRedactor.Mask, text);
     }
 
     [Fact]

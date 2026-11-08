@@ -52,7 +52,7 @@ public sealed class SignInDialog(
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             Log.Error(ex, "The sign-in window failed");
-            return SignInResult.Failed($"Could not open the sign-in window: {ex.Message}");
+            return SignInResult.Failed($"Could not open the sign-in window ({ex.GetType().Name}).");
         }
     }
 
@@ -70,7 +70,7 @@ public sealed class SignInDialog(
         {
             Log.Error(ex, "The browser control could not be created");
             browser.Detach();
-            viewModel.ReportStartFailure(ex.Message);
+            viewModel.ReportStartFailure(ex.GetType().Name);
         }
     }
 }

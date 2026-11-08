@@ -32,7 +32,7 @@ public partial class DiagnosticsViewModel(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Log.Error(ex, "Diagnostics export failed");
-            Status = $"Export failed: {ex.Message}";
+            Status = $"Export failed ({ex.GetType().Name}).";
         }
     }
 }

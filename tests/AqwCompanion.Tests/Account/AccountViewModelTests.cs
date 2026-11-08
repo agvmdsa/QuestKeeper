@@ -127,7 +127,8 @@ public class AccountViewModelTests
         var error = await Record.ExceptionAsync(() => vm.SignInCommand.ExecuteAsync(null));
 
         Assert.Null(error);
-        Assert.Contains("no window", vm.Status, StringComparison.Ordinal);
+        Assert.DoesNotContain("no window", vm.Status, StringComparison.Ordinal);
+        Assert.Contains("InvalidOperationException", vm.Status, StringComparison.Ordinal);
         Assert.Null(vm.CharacterName);
     }
 

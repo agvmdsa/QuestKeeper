@@ -326,7 +326,7 @@ public partial class AccountViewModel : ObservableObject, IForgettable
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             Log.Error(ex, "The sign-in window failed");
-            return SignInResult.Failed($"Could not open the sign-in window: {ex.Message}");
+            return SignInResult.Failed($"Could not open the sign-in window ({ex.GetType().Name}).");
         }
         finally
         {

@@ -10,6 +10,16 @@
     </application>
   </compatibility>
 
+  <!-- The Game data capture opens network devices, which needs administrator rights, and it starts by itself when the app
+       opens. Windows therefore asks for the administrator prompt at every launch of the exe. -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
   <application xmlns="urn:schemas-microsoft-com:asm.v3">
     <windowsSettings>
       <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>

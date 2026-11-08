@@ -136,8 +136,8 @@ What you need:
 
 Steps:
 
-1. Open the app already as administrator (right-click, **Run as administrator**). The capture starts by itself when the app opens, so there is no need to press **Start capture**, and it keeps listening until you press **Stop capture**. It still reads only the login data; live game events are a later step.
-2. Open the **Game data** tab. If it says it needs administrator rights, press **Restart as administrator** and accept the Windows prompt; the app restarts with the same data folder and starts listening again. If it says Npcap is missing, install it and press **Start capture**. No administrator prompt appears by itself.
+1. Open the app. Windows asks for administrator rights every time it starts (the app asks for them in its manifest, because the capture driver needs them), and you accept. The capture starts by itself when the app opens, so there is no need to press **Start capture**, and it keeps listening until you press **Stop capture**. It still reads only the login data; live game events are a later step. Starting it with `dotnet run` from a normal terminal does not work for that reason: open the built `AqwCompanion.exe`, or run `dotnet run` from an elevated terminal.
+2. Open the **Game data** tab. If it says Npcap is missing, install it and press **Start capture**. If it still says it needs administrator rights (for example when the app was started in a way that skipped the manifest), press **Restart as administrator** and accept the Windows prompt; the app restarts with the same data folder.
 3. Open the game launcher and log in. The capture has to be listening before the login, because the data is sent once, during the login.
 4. Wait until the tab shows your character. Press **Stop capture** when you are done; **Start capture** starts it again. If you log in with several characters while it runs, each one appears and a **Character** selector lets you switch between them.
 

@@ -1,18 +1,12 @@
 using AqwCompanion.App;
-using AqwCompanion.App.Account;
 using AqwCompanion.App.GameData;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Inventory;
 using AqwCompanion.App.Reputation;
-using AqwCompanion.App.SignIn;
-using AqwCompanion.Core.Account;
 using AqwCompanion.Capture;
-using AqwCompanion.Core.Badges;
 using AqwCompanion.Core.Capture;
-using AqwCompanion.Core.Equipment;
 using AqwCompanion.Core.Forgetting;
-using AqwCompanion.Core.Inventory;
 using AqwCompanion.Core.Persistence;
 using AqwCompanion.Core.Reputation;
 using AqwCompanion.Core.Wiki;
@@ -47,11 +41,6 @@ public sealed class ForgettingEffectTests : IDisposable
 
         Assert.True(result.IsComplete);
         Assert.Equal(["exports/y.zip", "logs/x.txt"], FilesUnderRoot());
-        Assert.Null(world.Account.CharacterName);
-        Assert.False(world.Account.Summary.HasData);
-        Assert.False(world.Account.Equipment.HasData);
-        Assert.False(world.Account.Badges.HasData);
-        Assert.False(world.Account.Inventory.HasData);
         Assert.Empty(world.HardFarms.Rows);
         Assert.True(world.HardFarms.ShowEmptyState);
         Assert.Empty(world.Reputation.Items);
@@ -78,11 +67,6 @@ public sealed class ForgettingEffectTests : IDisposable
             Assert.Equal(bytes, await File.ReadAllBytesAsync(Path.Combine(_paths.Root, path)));
         }
 
-        Assert.Equal("Test Hero", world.Account.CharacterName);
-        Assert.True(world.Account.Summary.HasData);
-        Assert.True(world.Account.Equipment.HasData);
-        Assert.True(world.Account.Badges.HasData);
-        Assert.True(world.Account.Inventory.HasData);
         Assert.Single(world.HardFarms.Rows);
         Assert.False(world.HardFarms.ShowEmptyState);
         Assert.Single(world.Reputation.Items);
@@ -92,15 +76,7 @@ public sealed class ForgettingEffectTests : IDisposable
 
     private async Task<World> BuildWorldAsync(LiteDbStoredDataStore store, bool gateFails)
     {
-        var persistence = new AccountDataPersistence(new StoredData(store, StoredKeys.Obsolete));
-        persistence.SaveIdentity("Test Hero", new AccountSummary(9585, "LEGEND", "Membership Expired", 3), ReadAt);
-        persistence.SaveEquipment(
-            new CharacterEquipment(
-                "Test Hero", 50, "Good", null, "M", "Warrior", null,
-                [new EquipmentSlot("Armor", "Plate", 1, false)], [new CharacterColor("Skin", 0xFFAA00)], 3),
-            ReadAt);
-        persistence.SaveBadges(new CharacterBadges([new Badge("First", "Did a thing", "Quests")]), ReadAt);
-        persistence.SaveInventory(new CharacterInventory([new InventoryItem("Test Sword", "Sword", 1, true, false)]), ReadAt);
+        var storedData = new StoredData(store, StoredKeys.Obsolete);
 
         var hardFarmStore = new HardFarmStore(new StoredData(store, StoredKeys.Obsolete));
         hardFarmStore.SaveList(new HardFarmList([new HardFarmGroup("Nation", ["blade-one"])], null), ReadAt);
@@ -121,7 +97,6 @@ public sealed class ForgettingEffectTests : IDisposable
         var hardFarms = new HardFarmsViewModel(
             hardFarmStore, new FakeHardFarmSync(), ActiveInventoryBuilder.Empty(), new FakeUrlLauncher());
         var reputation = new ReputationViewModel(reputationStore, new FakeReputationFilePicker(), source, TimeProvider.System);
-        var dialog = new FakeSignInDialog();
 
         var gameDataStore = new GameDataStore(new StoredData(store, StoredKeys.Obsolete));
         var profile = new CharacterProfile("Fictional Hero", 60, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, true, 11, 12, 13, 14, 15);
@@ -149,24 +124,19 @@ public sealed class ForgettingEffectTests : IDisposable
         Assert.Equal(CaptureState.Listening, session.State);
 
         var stateWhenRemoved = CaptureState.Idle;
-        AccountViewModel? account = null;
         var coordinator = new ForgetCoordinator(
             () =>
             {
                 stateWhenRemoved = session.State;
-                return !gateFails && persistence.Forget();
+                return !gateFails && storedData.Clear();
             },
-            () => [account!, hardFarms, reputation, session]);
-        account = AccountViewModelBuilder.Create(dialog, persistence: persistence, forgetting: coordinator);
+            () => [hardFarms, reputation, session]);
 
-        await account.RestoreStoredDataAsync();
         await hardFarms.RestoreAsync();
         await reputation.RestoreAsync();
-        Assert.Equal("Test Hero", account.CharacterName);
-        Assert.True(account.Summary.HasData && account.Equipment.HasData && account.Badges.HasData && account.Inventory.HasData);
         Assert.Single(hardFarms.Rows);
         Assert.Single(reputation.Items);
-        return new World(account, hardFarms, reputation, coordinator, session, () => stateWhenRemoved, () => sourceToken);
+        return new World(hardFarms, reputation, coordinator, session, () => stateWhenRemoved, () => sourceToken);
     }
 
     private List<string> FilesUnderRoot() =>
@@ -179,7 +149,6 @@ public sealed class ForgettingEffectTests : IDisposable
         FilesUnderRoot().ToDictionary(f => f, f => File.ReadAllBytes(Path.Combine(_paths.Root, f)));
 
     private sealed record World(
-        AccountViewModel Account,
         HardFarmsViewModel HardFarms,
         ReputationViewModel Reputation,
         ForgetCoordinator Coordinator,

@@ -1,4 +1,3 @@
-using AqwCompanion.App.Account;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Inventory;
 using AqwCompanion.Core.Wiki;

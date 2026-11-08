@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using AqwCompanion.App;
-using AqwCompanion.App.Account;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Inventory;
 using AqwCompanion.App.Shell;
@@ -33,7 +32,7 @@ public class HardFarmsViewTests
 
         public required FakeUrlLauncher Launcher { get; init; }
 
-        public required InventoryCardViewModel Inventory { get; init; }
+        public required FakeActiveInventory Inventory { get; init; }
     }
 
     private static HardFarmList SmallList() => new(
@@ -61,8 +60,8 @@ public class HardFarmsViewTests
 
         var sync = new FakeHardFarmSync { Pending = pending ?? [] };
         var launcher = new FakeUrlLauncher();
-        var inventory = new InventoryCardViewModel(new SidebarViewModel());
-        var vm = new HardFarmsViewModel(store, sync, ActiveInventoryBuilder.For(inventory), launcher);
+        var inventory = new FakeActiveInventory();
+        var vm = new HardFarmsViewModel(store, sync, inventory, launcher);
         await vm.RestoreAsync();
         var view = new HardFarmsView { DataContext = vm };
         var window = new Window { Width = 1100, Height = 700, Content = view };
@@ -115,7 +114,7 @@ public class HardFarmsViewTests
         var headers = tabs.Items.OfType<TabItem>().Select(t => t.Header).ToList();
         Assert.Contains("Hard Farms", headers);
         Assert.DoesNotContain("Tracker", headers);
-        Assert.Equal(6, headers.Count);
+        Assert.Equal(5, headers.Count);
         tabs.SelectedItem = tabs.Items.OfType<TabItem>().Single(t => Equals(t.Header, "Hard Farms"));
         SettleUntil(window, () => window.GetVisualDescendants().OfType<HardFarmsView>().Any(), "the Hard Farms tab to be created");
         var view = window.GetVisualDescendants().OfType<HardFarmsView>().SingleOrDefault();

@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using AqwCompanion.App.Account;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure.Formatting;
 using AqwCompanion.App.Inventory;
@@ -19,15 +18,15 @@ public class HardFarmsViewModelTests
     private readonly InMemoryStoredDataStore _inner = new();
     private readonly HardFarmStore _store;
     private readonly FakeHardFarmSync _sync = new();
-    private readonly InventoryCardViewModel _inventory = new(new SidebarViewModel());
+    private readonly FakeActiveInventory _inventory = new();
     private readonly CaptureRig _capture = new();
-    private readonly ActiveInventory _active;
+    private IActiveInventory _active;
     private readonly FakeUrlLauncher _launcher = new();
 
     public HardFarmsViewModelTests()
     {
         _store = new HardFarmStore(_inner.Module());
-        _active = new ActiveInventory(_inventory, _capture.CreateViewModel());
+        _active = _inventory;
     }
 
     private HardFarmsViewModel Build() => new(_store, _sync, _active, _launcher);
@@ -735,17 +734,17 @@ public class HardFarmsViewModelTests
     {
         var vm = await Loaded();
 
-        Assert.Equal("5 entries — refresh your account to see what you own", vm.SummaryText);
-        Assert.Equal("refresh your account to see what you own", HardFarmsViewModel.NoInventoryHint);
+        Assert.Equal("5 entries — log in to the game to see what you own", vm.SummaryText);
+        Assert.Equal("log in to the game to see what you own", HardFarmsViewModel.NoInventoryHint);
 
         vm.TypeFilter = vm.TypeOptions.Single(o => o.Value == WikiType.Pet);
-        Assert.Equal("1 entry — refresh your account to see what you own", vm.SummaryText);
+        Assert.Equal("1 entry — log in to the game to see what you own", vm.SummaryText);
 
         _inventory.Data = Owns("Pet One");
         Assert.Equal("1 of 1 owned", vm.SummaryText);
 
         _inventory.Data = null;
-        Assert.Equal("1 entry — refresh your account to see what you own", vm.SummaryText);
+        Assert.Equal("1 entry — log in to the game to see what you own", vm.SummaryText);
     }
 
     // --- Button, pending line and progress texts (AQW-0019) ---------------------------------------------------------
@@ -1016,8 +1015,9 @@ public class HardFarmsViewModelTests
     }
 
     [Fact]
-    public async Task The_captured_inventory_marks_entries_Owned_even_when_the_site_inventory_is_empty()
+    public async Task The_captured_inventory_marks_entries_Owned_or_Missing()
     {
+        _active = new ActiveInventory(_capture.CreateViewModel());
         var vm = await Loaded();
         Assert.All(vm.Rows, row => Assert.Equal(Ownership.Unknown, row.Ownership));
 
@@ -1030,39 +1030,15 @@ public class HardFarmsViewModelTests
     }
 
     [Fact]
-    public async Task Without_a_snapshot_the_site_inventory_still_decides()
+    public async Task Forgetting_the_capture_makes_ownership_unknown_again()
     {
-        _inventory.Data = Owns("Pet One");
-
+        _active = new ActiveInventory(_capture.CreateViewModel());
         var vm = await Loaded();
-
-        Assert.Equal(Ownership.Owned, vm.Rows.Single(r => r.Slug == "pet-one").Ownership);
-        Assert.Equal(Ownership.Missing, vm.Rows.Single(r => r.Slug == "blade-one").Ownership);
-    }
-
-    [Fact]
-    public async Task The_rows_are_refiltered_when_the_snapshot_arrives_and_the_captured_inventory_wins()
-    {
-        _inventory.Data = Owns("Pet One");
-        var vm = await Loaded();
-        Assert.Equal(Ownership.Owned, vm.Rows.Single(r => r.Slug == "pet-one").Ownership);
-
         await Capture("Blade One");
-
         Assert.Equal(Ownership.Owned, vm.Rows.Single(r => r.Slug == "blade-one").Ownership);
-        Assert.Equal(Ownership.Missing, vm.Rows.Single(r => r.Slug == "pet-one").Ownership);
-    }
-
-    [Fact]
-    public async Task Forgetting_the_capture_goes_back_to_the_site_inventory()
-    {
-        _inventory.Data = Owns("Pet One");
-        var vm = await Loaded();
-        await Capture("Blade One");
 
         ((IForgettable)_capture.Session).Forget();
 
-        Assert.Equal(Ownership.Owned, vm.Rows.Single(r => r.Slug == "pet-one").Ownership);
-        Assert.Equal(Ownership.Missing, vm.Rows.Single(r => r.Slug == "blade-one").Ownership);
+        Assert.All(vm.Rows, row => Assert.Equal(Ownership.Unknown, row.Ownership));
     }
 }

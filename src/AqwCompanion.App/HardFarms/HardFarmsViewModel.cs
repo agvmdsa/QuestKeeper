@@ -28,7 +28,7 @@ public partial class HardFarmsViewModel : ObservableObject, IForgettable
     public const string UpdateAccessibleName = "Update the Hard Farming list from the Wiki";
     public const string ContinueAccessibleName = "Continue reading the pending Wiki pages";
     public const string NoMatchesText = "No entries match the filters.";
-    public const string NoInventoryHint = "refresh your account to see what you own";
+    public const string NoInventoryHint = "log in to the game to see what you own";
     public const string LicenseText = "AQW Wiki (CC BY-SA 3.0)";
 
     public static readonly FilterOption<WikiType> AllTypes = new(null, "All types");
@@ -43,7 +43,7 @@ public partial class HardFarmsViewModel : ObservableObject, IForgettable
 
     private readonly IHardFarmStore _store;
     private readonly IHardFarmSync _sync;
-    private readonly ActiveInventory _inventory;
+    private readonly IActiveInventory _inventory;
     private readonly IUrlLauncher _launcher;
     private readonly Action<Action> _onUiThread;
 
@@ -72,7 +72,7 @@ public partial class HardFarmsViewModel : ObservableObject, IForgettable
     public HardFarmsViewModel(
         IHardFarmStore store,
         IHardFarmSync sync,
-        ActiveInventory inventory,
+        IActiveInventory inventory,
         IUrlLauncher launcher,
         Action<Action>? onUiThread = null)
     {

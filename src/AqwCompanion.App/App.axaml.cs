@@ -34,7 +34,6 @@ public partial class CompanionApp : Application
             _tray = tray;
             var trayIcon = new TrayIconSetup(tray);
             TrayIcon.SetIcons(this, [trayIcon.Icon]);
-            _ = main.Account.RestoreStoredDataAsync();
             _ = main.HardFarms.RestoreAsync();
             _ = main.Reputation.RestoreAsync();
             var capture = services.GetRequiredService<CaptureSession>();

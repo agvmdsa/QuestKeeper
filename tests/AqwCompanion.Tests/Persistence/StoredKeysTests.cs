@@ -38,6 +38,12 @@ public sealed class StoredKeysTests
     }
 
     [Fact]
+    public void The_records_of_the_old_website_sign_in_are_obsolete_so_older_databases_lose_them()
+    {
+        Assert.All(["identity", "summary", "equipment", "badges", "inventory"], name => Assert.Contains(name, StoredKeys.Obsolete));
+    }
+
+    [Fact]
     public void All_contains_every_public_stored_key_field()
     {
         var declared = typeof(StoredKeys)
@@ -55,7 +61,7 @@ public sealed class StoredKeysTests
     public void The_key_names_are_the_ones_older_databases_already_hold()
     {
         Assert.Equal(
-            ["reputation.data", "hardfarms.list", "hardfarms.indexes", "identity", "summary", "equipment", "badges", "inventory", "gamedata.characters"],
+            ["reputation.data", "hardfarms.list", "hardfarms.indexes", "gamedata.characters"],
             StoredKeys.All.Select(k => k.Name));
     }
 }

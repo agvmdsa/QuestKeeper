@@ -1,6 +1,5 @@
 using System.IO.Compression;
 using AqwCompanion.App;
-using AqwCompanion.App.Account;
 using AqwCompanion.App.Diagnostics;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Inventory;
@@ -112,14 +111,11 @@ public sealed class ViewModelTests : IDisposable
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task Signing_out_forgets_the_Hard_Farms_and_Reputation_tabs_but_a_dismissed_sign_out_does_not(bool completes)
+    public async Task Forgetting_empties_the_Hard_Farms_and_Reputation_tabs_but_a_cancelled_request_does_not(bool confirms)
     {
-        var dialog = new FakeSignInDialog { OnShow = _ => Task.FromResult(SignInResult.Connected("Test Hero")) };
-        var persistence = new FakeAccountDataPersistence();
         HardFarmsViewModel? hardFarmsRef = null;
         ReputationViewModel? reputationRef = null;
-        var account = AccountViewModelBuilder.Create(
-            dialog, persistence: persistence, forgetting: new ForgetCoordinator(persistence.Forget, () => [hardFarmsRef!, reputationRef!]));
+        var coordinator = new ForgetCoordinator(() => true, () => [hardFarmsRef!, reputationRef!]);
         var store = new HardFarmStore(new InMemoryStoredDataStore().Module());
         store.SaveList(new HardFarmList([new HardFarmGroup("Nation", ["blade-one"])], null), DateTimeOffset.UnixEpoch);
         var hardFarms = new HardFarmsViewModel(
@@ -133,30 +129,25 @@ public sealed class ViewModelTests : IDisposable
         reputationRef = reputation;
         await reputation.RestoreAsync();
         var main = new MainViewModel(
-            account, new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer()), hardFarms,
-            reputation, new CaptureRig().CreateViewModel());
-        await account.SignInCommand.ExecuteAsync(null);
+            new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer()), hardFarms,
+            reputation, new CaptureRig().CreateViewModel(forgetting: coordinator));
         Assert.Single(main.HardFarms.Rows);
         Assert.Single(main.Reputation.Items);
-        dialog.OnShow = _ => Task.FromResult(completes ? SignInResult.SignedOut() : SignInResult.Cancelled());
 
-        account.RequestSignOutCommand.Execute(null);
-        await account.ConfirmSignOutCommand.ExecuteAsync(null);
+        main.GameData.RequestForgetCommand.Execute(null);
+        (confirms ? main.GameData.ConfirmForgetCommand : main.GameData.CancelForgetCommand).Execute(null);
 
-        Assert.Equal(completes, main.HardFarms.Rows.Count == 0);
-        Assert.Equal(completes, main.HardFarms.ShowEmptyState);
-        Assert.Equal(completes, main.Reputation.Items.Count == 0);
-        Assert.Equal(completes, main.Reputation.IsEmpty);
+        Assert.Equal(confirms, main.HardFarms.Rows.Count == 0);
+        Assert.Equal(confirms, main.HardFarms.ShowEmptyState);
+        Assert.Equal(confirms, main.Reputation.Items.Count == 0);
+        Assert.Equal(confirms, main.Reputation.IsEmpty);
     }
 
     [Fact]
-    public async Task Signing_out_deletes_the_reputation_file_the_game_client_wrote()
+    public void Forgetting_deletes_the_reputation_file_the_game_client_wrote()
     {
-        var dialog = new FakeSignInDialog { OnShow = _ => Task.FromResult(SignInResult.Connected("Test Hero")) };
-        var persistence = new FakeAccountDataPersistence();
         ReputationViewModel? reputationRef = null;
-        var account = AccountViewModelBuilder.Create(
-            dialog, persistence: persistence, forgetting: new ForgetCoordinator(persistence.Forget, () => [reputationRef!]));
+        var coordinator = new ForgetCoordinator(() => true, () => [reputationRef!]);
         var source = new ReputationFileSource(_paths);
         Directory.CreateDirectory(_paths.ReputationDirectory);
         File.WriteAllText(source.Path, "{}");
@@ -164,18 +155,15 @@ public sealed class ViewModelTests : IDisposable
             new ReputationStore(new InMemoryStoredDataStore().Module()), new FakeReputationFilePicker(), source, TimeProvider.System);
         reputationRef = reputation;
         var main = new MainViewModel(
-            account, new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer()),
+            new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer()),
             new HardFarmsViewModel(
                 new HardFarmStore(new InMemoryStoredDataStore().Module()), new FakeHardFarmSync(), ActiveInventoryBuilder.Empty(), new FakeUrlLauncher()),
-            reputation, new CaptureRig().CreateViewModel());
-        await account.SignInCommand.ExecuteAsync(null);
+            reputation, new CaptureRig().CreateViewModel(forgetting: coordinator));
         Assert.True(File.Exists(source.Path));
-        dialog.OnShow = _ => Task.FromResult(SignInResult.SignedOut());
 
-        account.RequestSignOutCommand.Execute(null);
-        await account.ConfirmSignOutCommand.ExecuteAsync(null);
+        main.GameData.RequestForgetCommand.Execute(null);
+        main.GameData.ConfirmForgetCommand.Execute(null);
 
         Assert.False(File.Exists(source.Path));
-        Assert.NotNull(main.Reputation);
     }
 }

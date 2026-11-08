@@ -1,4 +1,3 @@
-using AqwCompanion.App.Account;
 using AqwCompanion.App.Diagnostics;
 using AqwCompanion.App.GameData;
 using AqwCompanion.App.HardFarms;
@@ -9,10 +8,9 @@ namespace AqwCompanion.App.Shell;
 
 public sealed class MainViewModel
 {
-    public MainViewModel(AccountViewModel account, WikiViewModel wiki, DiagnosticsViewModel diagnostics, HardFarmsViewModel hardFarms,
+    public MainViewModel(WikiViewModel wiki, DiagnosticsViewModel diagnostics, HardFarmsViewModel hardFarms,
         ReputationViewModel reputation, GameDataViewModel gameData)
     {
-        Account = account;
         Wiki = wiki;
         Diagnostics = diagnostics;
         HardFarms = hardFarms;
@@ -21,7 +19,6 @@ public sealed class MainViewModel
     }
 
     public string Title { get; } = AppInfo.ProductName;
-    public AccountViewModel Account { get; }
     public WikiViewModel Wiki { get; }
     public DiagnosticsViewModel Diagnostics { get; }
     public HardFarmsViewModel HardFarms { get; }

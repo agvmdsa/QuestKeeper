@@ -1,5 +1,4 @@
 using AqwCompanion.App;
-using AqwCompanion.App.Account;
 using AqwCompanion.App.GameData;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure;
@@ -34,7 +33,7 @@ public class CompositionRootTests
         Assert.Equal(AppInfo.ProductName, main.Title);
         Assert.NotNull(main.Wiki);
         Assert.NotNull(main.Diagnostics);
-        Assert.NotNull(main.Account);
+        Assert.NotNull(main.GameData);
     }
 
     [Fact]
@@ -63,18 +62,15 @@ public class CompositionRootTests
     }
 
     [Fact]
-    public void Container_resolves_the_inventory_pipeline_and_shares_the_card_with_the_account_tab()
+    public void Container_resolves_the_active_inventory_over_the_game_data()
     {
         var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
 
         using var services = CompositionRoot.Build(paths);
 
-        Assert.IsType<InventoryParser>(services.GetRequiredService<IPageParser<CharacterInventory>>());
-        Assert.NotNull(services.GetRequiredService<IngestionService<CharacterInventory>>());
-        Assert.IsType<CharacterInventoryLoader>(services.GetRequiredService<ICharacterInventoryLoader>());
-        Assert.Same(
-            services.GetRequiredService<InventoryCardViewModel>(),
-            services.GetRequiredService<AccountViewModel>().Inventory);
+        var inventory = services.GetRequiredService<IActiveInventory>();
+        Assert.IsType<ActiveInventory>(inventory);
+        Assert.Null(inventory.Current);
     }
 
     [Fact]
@@ -120,7 +116,7 @@ public class CompositionRootTests
         using var services = CompositionRoot.Build(paths);
 
         Assert.IsType<LiteDbStoredDataStore>(services.GetRequiredService<IStoredDataStore>());
-        Assert.IsType<AccountDataPersistence>(services.GetRequiredService<IAccountDataPersistence>());
+        Assert.NotNull(services.GetRequiredService<StoredData>());
         Assert.Same(TimeProvider.System, services.GetRequiredService<TimeProvider>());
     }
 

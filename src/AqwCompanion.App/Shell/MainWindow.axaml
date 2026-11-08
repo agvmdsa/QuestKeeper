@@ -2,7 +2,6 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:AqwCompanion.App.Shell"
         xmlns:local="using:AqwCompanion.App"
-        xmlns:account="using:AqwCompanion.App.Account"
         xmlns:wiki="using:AqwCompanion.App.Wiki"
         xmlns:hardfarms="using:AqwCompanion.App.HardFarms"
         xmlns:reputation="using:AqwCompanion.App.Reputation"
@@ -21,16 +20,13 @@
         <TextBlock x:Name="AppNameText" DockPanel.Dock="Left" Text="{x:Static local:AppInfo.ProductName}"
                    FontSize="18" FontWeight="Bold" Foreground="{DynamicResource AqwTextBright}"
                    VerticalAlignment="Center" />
-        <TextBlock x:Name="CharacterSummaryText" DockPanel.Dock="Right" Text="{Binding Account.ConnectionSummary}"
-                   IsVisible="{Binding Account.IsConnected}" Foreground="{DynamicResource AqwText}"
+        <TextBlock x:Name="CharacterSummaryText" DockPanel.Dock="Right" Text="{Binding GameData.SelectedCharacter}"
+                   IsVisible="{Binding GameData.HasCharacters}" Foreground="{DynamicResource AqwText}"
                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                    AutomationProperties.Name="Connected character" />
       </DockPanel>
     </Border>
   <TabControl x:Name="Tabs" Padding="0">
-    <TabItem Header="Account">
-      <account:AccountView DataContext="{Binding Account}" />
-    </TabItem>
     <TabItem Header="Wiki">
       <wiki:WikiView DataContext="{Binding Wiki}" />
     </TabItem>

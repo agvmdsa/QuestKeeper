@@ -1,8 +1,5 @@
 using System.Net;
-using AqwCompanion.App.Account;
-using AqwCompanion.App.Badges;
 using AqwCompanion.App.Diagnostics;
-using AqwCompanion.App.Equipment;
 using AqwCompanion.App.GameData;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure;
@@ -71,11 +68,6 @@ public static class CompositionRoot
             sp.GetRequiredService<IStoredDataStore>(),
             StoredKeys.Obsolete,
             (operation, exceptionTypeName) => Log.Error("Stored data {SafeOperation} failed: {ExceptionType}", operation, exceptionTypeName)));
-        services.AddSingleton<IAccountDataPersistence, AccountDataPersistence>();
-        services.AddSingleton<IAccountSessionData, AccountSessionData>();
-        services.AddSingleton<ICharacterEquipmentLoader, CharacterEquipmentLoader>();
-        services.AddSingleton<ICharacterBadgesLoader, CharacterBadgesLoader>();
-        services.AddSingleton<ICharacterInventoryLoader, CharacterInventoryLoader>();
         services.AddSingleton<IDelay, TaskDelay>();
         services.AddSingleton<IHardFarmStore, HardFarmStore>();
         services.AddSingleton<IHardFarmSync>(sp => new HardFarmSync(
@@ -87,7 +79,7 @@ public static class CompositionRoot
         services.AddSingleton(sp => new HardFarmsViewModel(
             sp.GetRequiredService<IHardFarmStore>(),
             sp.GetRequiredService<IHardFarmSync>(),
-            sp.GetRequiredService<ActiveInventory>(),
+            sp.GetRequiredService<IActiveInventory>(),
             sp.GetRequiredService<IUrlLauncher>(),
             OnUiThread));
         services.AddSingleton<IReputationStore, ReputationStore>();
@@ -113,25 +105,18 @@ public static class CompositionRoot
             sp.GetRequiredService<CaptureSession>(),
             sp.GetRequiredService<IMainWindowHost>(),
             sp.GetRequiredService<IApplicationExit>()));
-        services.AddSingleton<ActiveInventory>();
+        services.AddSingleton<IActiveInventory, ActiveInventory>();
         services.AddSingleton(sp => new GameDataViewModel(
             sp.GetRequiredService<CaptureSession>(), OnUiThread, sp.GetRequiredService<ForgetCoordinator>()));
         services.AddSingleton(sp => new ForgetCoordinator(
             () => sp.GetRequiredService<StoredData>().Clear(),
             () =>
             [
-                sp.GetRequiredService<AccountViewModel>(),
                 sp.GetRequiredService<HardFarmsViewModel>(),
                 sp.GetRequiredService<ReputationViewModel>(),
                 sp.GetRequiredService<CaptureSession>(),
             ]));
         services.AddSingleton<ISignInDialog, SignInDialog>();
-        services.AddSingleton<SidebarViewModel>();
-        services.AddSingleton<SummaryCardViewModel>();
-        services.AddSingleton<EquipmentCardViewModel>();
-        services.AddSingleton<BadgesCardViewModel>();
-        services.AddSingleton<InventoryCardViewModel>();
-        services.AddSingleton<AccountViewModel>();
         services.AddSingleton<WikiViewModel>();
         services.AddSingleton<DiagnosticsViewModel>();
         services.AddSingleton<MainViewModel>();

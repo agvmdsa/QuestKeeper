@@ -116,7 +116,7 @@ public class GameDataViewTests
 
         var tabs = window.FindControl<TabControl>("Tabs")!;
         var headers = tabs.Items.OfType<TabItem>().Select(t => t.Header).ToList();
-        Assert.Equal(6, headers.Count);
+        Assert.Equal(5, headers.Count);
         Assert.Equal(headers.IndexOf("Reputation") + 1, headers.IndexOf("Game data"));
         tabs.SelectedItem = tabs.Items.OfType<TabItem>().Single(t => Equals(t.Header, "Game data"));
         SettleUntil(window, () => window.GetVisualDescendants().OfType<GameDataView>().Any(), "the Game data tab to be created");

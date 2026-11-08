@@ -1,5 +1,4 @@
 using AqwCompanion.Tests.TestDoubles;
-using AqwCompanion.App.Account;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.Core.Persistence;
@@ -59,7 +58,7 @@ public sealed class HardFarmStoreLiteDbTests : IDisposable
     }
 
     [Fact]
-    public void Forgetting_the_account_data_removes_the_hard_farm_data_too()
+    public void Clearing_the_stored_data_removes_the_hard_farm_data_too()
     {
         var path = Path.Combine(_directory, "data", "companion.db");
         var database = new LiteDbStoredDataStore(path);
@@ -68,7 +67,7 @@ public sealed class HardFarmStoreLiteDbTests : IDisposable
         store.SaveIndex(new WikiIndex(WikiUrls.WeaponsSlug, WikiType.Weapon, [new WikiIndexEntry("blade-one", "Blade One")]), ReadAt);
         Assert.NotNull(store.LoadList());
 
-        Assert.True(new AccountDataPersistence(new StoredData(database, StoredKeys.Obsolete)).Forget());
+        Assert.True(new StoredData(database, StoredKeys.Obsolete).Clear());
 
         Assert.Null(database.Load<HardFarmStore.ListDto>(StoredKeys.HardFarmList.Name, 1));
         Assert.Null(database.Load<HardFarmStore.IndexesDto>(StoredKeys.HardFarmIndexes.Name, 1));

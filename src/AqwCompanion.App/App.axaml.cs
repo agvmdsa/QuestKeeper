@@ -1,3 +1,4 @@
+using AqwCompanion.App.GameData;
 using AqwCompanion.App.Infrastructure.Elevation;
 using AqwCompanion.App.Shell;
 using Avalonia;
@@ -21,6 +22,7 @@ public partial class CompanionApp : Application
             _ = main.Account.RestoreStoredDataAsync();
             _ = main.HardFarms.RestoreAsync();
             _ = main.Reputation.RestoreAsync();
+            _ = services.GetRequiredService<CaptureSession>().RestoreAsync();
             desktop.Exit += (_, _) => services.Dispose();
         }
 

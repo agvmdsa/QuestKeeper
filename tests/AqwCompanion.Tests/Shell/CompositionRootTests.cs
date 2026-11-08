@@ -1,13 +1,16 @@
 using AqwCompanion.App;
 using AqwCompanion.App.Account;
+using AqwCompanion.App.GameData;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure.Browser;
+using AqwCompanion.App.Infrastructure.Elevation;
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Inventory;
 using AqwCompanion.App.Shell;
 using AqwCompanion.App.Wiki;
 using AqwCompanion.App.SignIn;
 using AqwCompanion.Core.Account;
+using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Ingestion;
 using AqwCompanion.Core.Inventory;
 using AqwCompanion.Core.Persistence;
@@ -118,6 +121,50 @@ public class CompositionRootTests
         Assert.IsType<LiteDbStoredDataStore>(services.GetRequiredService<IStoredDataStore>());
         Assert.IsType<AccountDataPersistence>(services.GetRequiredService<IAccountDataPersistence>());
         Assert.Same(TimeProvider.System, services.GetRequiredService<TimeProvider>());
+    }
+
+    [Fact]
+    public void Container_resolves_the_capture_session_and_its_parts()
+    {
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
+
+        using var services = CompositionRoot.Build(paths);
+
+        var session = services.GetRequiredService<CaptureSession>();
+        Assert.Same(session, services.GetRequiredService<CaptureSession>());
+        Assert.Equal(CaptureState.Idle, session.State);
+        Assert.IsType<GameDataStore>(services.GetRequiredService<IGameDataStore>());
+        Assert.IsType<WindowsProcessElevation>(services.GetRequiredService<IProcessElevation>());
+        Assert.IsType<AvaloniaApplicationExit>(services.GetRequiredService<IApplicationExit>());
+        Assert.False(Directory.Exists(paths.Root));
+    }
+
+    [Fact]
+    public async Task The_capture_session_resolved_from_the_container_takes_part_in_forgetting()
+    {
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
+        try
+        {
+            using var services = CompositionRoot.Build(paths);
+            var profile = new AqwCompanion.Core.Capture.CharacterProfile("Fictional Hero", 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0, 0);
+            services.GetRequiredService<IGameDataStore>().Save([new AqwCompanion.Core.Capture.CharacterSnapshot(profile, [], [], [], DateTimeOffset.UnixEpoch)]);
+            var session = services.GetRequiredService<CaptureSession>();
+            await session.RestoreAsync();
+            Assert.Single(session.Characters);
+
+            var result = services.GetRequiredService<ForgetCoordinator>().Forget();
+
+            Assert.True(result.IsComplete);
+            Assert.Empty(session.Characters);
+            Assert.Empty(services.GetRequiredService<IGameDataStore>().Load());
+        }
+        finally
+        {
+            if (Directory.Exists(paths.Root))
+            {
+                Directory.Delete(paths.Root, recursive: true);
+            }
+        }
     }
 
     [Fact]

@@ -1,12 +1,15 @@
 using AqwCompanion.App;
 using AqwCompanion.App.Account;
+using AqwCompanion.App.GameData;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Inventory;
 using AqwCompanion.App.Reputation;
 using AqwCompanion.App.SignIn;
 using AqwCompanion.Core.Account;
+using AqwCompanion.Capture;
 using AqwCompanion.Core.Badges;
+using AqwCompanion.Core.Capture;
 using AqwCompanion.Core.Equipment;
 using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Inventory;
@@ -53,6 +56,11 @@ public sealed class ForgettingEffectTests : IDisposable
         Assert.True(world.HardFarms.ShowEmptyState);
         Assert.Empty(world.Reputation.Items);
         Assert.True(world.Reputation.IsEmpty);
+        Assert.Empty(world.Session.Characters);
+        Assert.Equal(CaptureState.Idle, world.Session.State);
+        Assert.Equal(default, world.Session.Counters);
+        Assert.Equal(CaptureState.Done, world.StateWhenStoredDataWasRemoved);
+        Assert.True(world.SourceToken.IsCancellationRequested);
     }
 
     [Fact]
@@ -79,6 +87,7 @@ public sealed class ForgettingEffectTests : IDisposable
         Assert.False(world.HardFarms.ShowEmptyState);
         Assert.Single(world.Reputation.Items);
         Assert.False(world.Reputation.IsEmpty);
+        Assert.Equal("Fictional Hero", Assert.Single(world.Session.Characters).Profile.Name);
     }
 
     private async Task<World> BuildWorldAsync(LiteDbStoredDataStore store, bool gateFails)
@@ -113,10 +122,41 @@ public sealed class ForgettingEffectTests : IDisposable
             hardFarmStore, new FakeHardFarmSync(), new InventoryCardViewModel(new SidebarViewModel()), new FakeUrlLauncher());
         var reputation = new ReputationViewModel(reputationStore, new FakeReputationFilePicker(), source, TimeProvider.System);
         var dialog = new FakeSignInDialog();
+
+        var gameDataStore = new GameDataStore(new StoredData(store, StoredKeys.Obsolete));
+        var profile = new CharacterProfile("Fictional Hero", 60, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, true, 11, 12, 13, 14, 15);
+        gameDataStore.Save([new CharacterSnapshot(profile, [new FactionStanding(5, "Fictional Order", 3, 5000, 6400, 1400)], [], [], ReadAt)]);
+        var sourceStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sourceToken = CancellationToken.None;
+        var session = new CaptureSession(
+            () => new FakePacketSource(async (_, token) =>
+            {
+                sourceToken = token;
+                sourceStarted.SetResult();
+                try
+                {
+                    await new TaskCompletionSource().Task.WaitAsync(token);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }),
+            new FakeProcessElevation(), () => NpcapStatus.Available, () => true, gameDataStore,
+            new FakeDelay { Gate = new TaskCompletionSource() }, TimeProvider.System, new FakeApplicationExit(), _paths);
+        await session.RestoreAsync();
+        _ = session.StartAsync();
+        await sourceStarted.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.Equal(CaptureState.Listening, session.State);
+
+        var stateWhenRemoved = CaptureState.Idle;
         AccountViewModel? account = null;
         var coordinator = new ForgetCoordinator(
-            () => !gateFails && persistence.Forget(),
-            () => [account!, hardFarms, reputation]);
+            () =>
+            {
+                stateWhenRemoved = session.State;
+                return !gateFails && persistence.Forget();
+            },
+            () => [account!, hardFarms, reputation, session]);
         account = AccountViewModelBuilder.Create(dialog, persistence: persistence, forgetting: coordinator);
 
         await account.RestoreStoredDataAsync();
@@ -126,7 +166,7 @@ public sealed class ForgettingEffectTests : IDisposable
         Assert.True(account.Summary.HasData && account.Equipment.HasData && account.Badges.HasData && account.Inventory.HasData);
         Assert.Single(hardFarms.Rows);
         Assert.Single(reputation.Items);
-        return new World(account, hardFarms, reputation, coordinator);
+        return new World(account, hardFarms, reputation, coordinator, session, () => stateWhenRemoved, () => sourceToken);
     }
 
     private List<string> FilesUnderRoot() =>
@@ -142,5 +182,13 @@ public sealed class ForgettingEffectTests : IDisposable
         AccountViewModel Account,
         HardFarmsViewModel HardFarms,
         ReputationViewModel Reputation,
-        ForgetCoordinator Coordinator);
+        ForgetCoordinator Coordinator,
+        CaptureSession Session,
+        Func<CaptureState> StateAtRemoval,
+        Func<CancellationToken> Token)
+    {
+        public CaptureState StateWhenStoredDataWasRemoved => StateAtRemoval();
+
+        public CancellationToken SourceToken => Token();
+    }
 }

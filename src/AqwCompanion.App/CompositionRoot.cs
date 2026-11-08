@@ -3,15 +3,18 @@ using AqwCompanion.App.Account;
 using AqwCompanion.App.Badges;
 using AqwCompanion.App.Diagnostics;
 using AqwCompanion.App.Equipment;
+using AqwCompanion.App.GameData;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure;
 using AqwCompanion.App.Infrastructure.Browser;
+using AqwCompanion.App.Infrastructure.Elevation;
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Inventory;
 using AqwCompanion.App.Reputation;
 using AqwCompanion.App.Shell;
 using AqwCompanion.App.SignIn;
 using AqwCompanion.App.Wiki;
+using AqwCompanion.Capture;
 using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Badges;
 using AqwCompanion.Core.Diagnostics;
@@ -101,9 +104,28 @@ public static class CompositionRoot
         services.AddSingleton<IReputationFilePicker, ReputationFilePicker>();
         services.AddSingleton<IReputationAutoSource>(sp => new ReputationFileSource(sp.GetRequiredService<AppPaths>()));
         services.AddSingleton<ReputationViewModel>();
+        services.AddSingleton<IGameDataStore, GameDataStore>();
+        services.AddSingleton<IProcessElevation, WindowsProcessElevation>();
+        services.AddSingleton<IApplicationExit, AvaloniaApplicationExit>();
+        services.AddSingleton(sp => new CaptureSession(
+            () => OperatingSystem.IsWindows() ? new LivePacketSource() : new NullPacketSource(),
+            sp.GetRequiredService<IProcessElevation>(),
+            NpcapAvailability.Check,
+            OperatingSystem.IsWindows,
+            sp.GetRequiredService<IGameDataStore>(),
+            sp.GetRequiredService<IDelay>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<IApplicationExit>(),
+            sp.GetRequiredService<AppPaths>()));
         services.AddSingleton(sp => new ForgetCoordinator(
             () => sp.GetRequiredService<IAccountDataPersistence>().Forget(),
-            () => [sp.GetRequiredService<AccountViewModel>(), sp.GetRequiredService<HardFarmsViewModel>(), sp.GetRequiredService<ReputationViewModel>()]));
+            () =>
+            [
+                sp.GetRequiredService<AccountViewModel>(),
+                sp.GetRequiredService<HardFarmsViewModel>(),
+                sp.GetRequiredService<ReputationViewModel>(),
+                sp.GetRequiredService<CaptureSession>(),
+            ]));
         services.AddSingleton<ISignInDialog, SignInDialog>();
         services.AddSingleton<SidebarViewModel>();
         services.AddSingleton<SummaryCardViewModel>();

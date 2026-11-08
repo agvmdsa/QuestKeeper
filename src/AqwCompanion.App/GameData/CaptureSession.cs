@@ -10,6 +10,8 @@ namespace AqwCompanion.App.GameData;
 /// One Capture session at a time: checks the system, Npcap and administrator rights, listens through a packet source until it is
 /// stopped or the source ends, keeps one snapshot per Character (newest wins) and stores them. It logs nothing that comes
 /// from the traffic. State is guarded by a lock; <see cref="Changed"/> is raised outside of it and may come from capture threads.
+/// After a login, the live events of the connection replace the Character's snapshot; those updates are saved a few seconds after
+/// the last one (through <see cref="IDelay"/>, one pending save at a time) and at once when the session stops.
 /// </summary>
 public sealed class CaptureSession(
     Func<IPacketSource> sourceFactory,
@@ -17,12 +19,16 @@ public sealed class CaptureSession(
     Func<NpcapStatus> npcap,
     Func<bool> isWindows,
     IGameDataStore store,
+    IDelay delay,
     TimeProvider clock,
     IApplicationExit exit,
     AppPaths paths) : IForgettable
 {
     /// <summary>The most Characters kept; the oldest is dropped first.</summary>
     public const int MaxCharacters = GameDataStore.MaxCharacters;
+
+    /// <summary>How long after the last live update the snapshots are saved.</summary>
+    public static readonly TimeSpan SaveDelay = TimeSpan.FromSeconds(5);
 
     private readonly object _gate = new();
     private CaptureState _state;
@@ -37,8 +43,14 @@ public sealed class CaptureSession(
     private bool _forgotten;
     private bool _restoreStarted;
     private int _epoch;
+    private readonly Dictionary<string, int> _liveCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DateTimeOffset> _liveAt = new(StringComparer.OrdinalIgnoreCase);
+    private bool _dirty;
+    private bool _saving;
+    private long _saveStamp;
+    private CancellationTokenSource? _saveCts;
 
-    /// <summary>Raised on every state change and every captured Character, never periodically. May come from any thread.</summary>
+    /// <summary>Raised on every state change, every captured Character and every live update, never periodically. May come from any thread.</summary>
     public event EventHandler? Changed;
 
     public CaptureState State
@@ -148,6 +160,21 @@ public sealed class CaptureSession(
         }
     }
 
+    /// <summary>The numbers of the live reading after the logins; all zero before the first start.</summary>
+    public CaptureLiveDiagnostics Live
+    {
+        get
+        {
+            CaptureEngine? engine;
+            lock (_gate)
+            {
+                engine = _engine;
+            }
+
+            return engine?.Live ?? CaptureLiveDiagnostics.Empty;
+        }
+    }
+
     /// <summary>One snapshot per Character name (ignoring case); a newer capture replaces the older one.</summary>
     public IReadOnlyList<CharacterSnapshot> Characters
     {
@@ -166,6 +193,27 @@ public sealed class CaptureSession(
         lock (_gate)
         {
             return _capturedNames.Contains(name);
+        }
+    }
+
+    /// <summary>True when the Character (ignoring case) has received at least one live update since it was captured.</summary>
+    public bool IsLive(string name) => LiveUpdateCount(name) > 0;
+
+    /// <summary>How many live updates the Character (ignoring case) received since it was captured; kept in memory only.</summary>
+    public int LiveUpdateCount(string name)
+    {
+        lock (_gate)
+        {
+            return _liveCounts.GetValueOrDefault(name);
+        }
+    }
+
+    /// <summary>When the Character (ignoring case) received its last live update; null when it received none. Kept in memory only.</summary>
+    public DateTimeOffset? LastLiveUpdateUtc(string name)
+    {
+        lock (_gate)
+        {
+            return _liveAt.TryGetValue(name, out var at) ? at : null;
         }
     }
 
@@ -269,6 +317,7 @@ public sealed class CaptureSession(
 
         Cancel(run.Cts);
         run.Cts.Dispose();
+        FlushSave();
         if (raise)
         {
             OnChanged();
@@ -278,7 +327,9 @@ public sealed class CaptureSession(
     /// <summary>Ends a listening session; the state becomes Done.</summary>
     public void Stop()
     {
-        if (EndRun(CaptureState.Done))
+        var changed = EndRun(CaptureState.Done);
+        FlushSave();
+        if (changed)
         {
             OnChanged();
         }
@@ -337,6 +388,7 @@ public sealed class CaptureSession(
         }
 
         Cancel(cts);
+        FlushSave();
         if (changed)
         {
             OnChanged();
@@ -354,6 +406,7 @@ public sealed class CaptureSession(
     void IForgettable.Forget()
     {
         CancellationTokenSource? cts;
+        CancellationTokenSource? saveCts;
         lock (_gate)
         {
             _epoch++;
@@ -361,6 +414,12 @@ public sealed class CaptureSession(
             _current = null;
             _characters = [];
             _capturedNames.Clear();
+            _liveCounts.Clear();
+            _liveAt.Clear();
+            _dirty = false;
+            _saving = false;
+            saveCts = _saveCts;
+            _saveCts = null;
             _engine = null;
             _source = null;
             _state = CaptureState.Idle;
@@ -370,6 +429,7 @@ public sealed class CaptureSession(
         }
 
         Cancel(cts);
+        Cancel(saveCts);
         OnChanged();
     }
 
@@ -394,6 +454,7 @@ public sealed class CaptureSession(
                 var engine = new CaptureEngine(clock);
                 run = new Run(engine);
                 engine.CharacterCaptured += snapshot => OnCaptured(run, snapshot);
+                engine.CharacterUpdated += snapshot => OnUpdated(run, snapshot);
                 _engine = engine;
                 _source = null;
                 _current = run;
@@ -444,10 +505,120 @@ public sealed class CaptureSession(
 
             _characters = [.. list];
             _capturedNames.Add(snapshot.Profile.Name);
+            _liveCounts.Remove(snapshot.Profile.Name);
+            _liveAt.Remove(snapshot.Profile.Name);
+            _dirty = false;
             store.Save(_characters);
         }
 
         OnChanged();
+    }
+
+    // A live event changed the snapshot of a Character: replace it, count it and save it a few seconds after the last one.
+    private void OnUpdated(Run run, CharacterSnapshot snapshot)
+    {
+        lock (_gate)
+        {
+            if (_current != run)
+            {
+                return;
+            }
+
+            var index = Array.FindIndex(_characters, c => string.Equals(c.Profile.Name, snapshot.Profile.Name, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+            {
+                return;
+            }
+
+            var name = _characters[index].Profile.Name;
+            _characters = [.. _characters.Select((c, i) => i == index ? snapshot : c)];
+            _liveCounts[name] = _liveCounts.GetValueOrDefault(name) + 1;
+            _liveAt[name] = clock.GetUtcNow();
+            _dirty = true;
+            _saveStamp++;
+            if (!_saving)
+            {
+                _saving = true;
+                _saveCts = new CancellationTokenSource();
+                var token = _saveCts.Token;
+                var epoch = _epoch;
+                _ = Task.Run(() => SaveAfterQuietAsync(epoch, token));
+            }
+        }
+
+        OnChanged();
+    }
+
+    // Waits SaveDelay after the last update (more updates while waiting wait again), then saves once. A wait that was cancelled
+    // (by a flush or by forgetting) ends without touching anything: whoever cancelled it settled the state.
+    private async Task SaveAfterQuietAsync(int epoch, CancellationToken token)
+    {
+        try
+        {
+            while (true)
+            {
+                long stamp;
+                lock (_gate)
+                {
+                    stamp = _saveStamp;
+                }
+
+                await delay.DelayAsync(SaveDelay, token).ConfigureAwait(false);
+                lock (_gate)
+                {
+                    if (token.IsCancellationRequested || epoch != _epoch)
+                    {
+                        return;
+                    }
+
+                    if (_saveStamp != stamp)
+                    {
+                        continue;
+                    }
+
+                    if (_dirty)
+                    {
+                        _dirty = false;
+                        store.Save(_characters);
+                    }
+
+                    _saving = false;
+                    _saveCts = null;
+                    return;
+                }
+            }
+        }
+        catch (Exception)
+        {
+            lock (_gate)
+            {
+                if (!token.IsCancellationRequested)
+                {
+                    // The wait itself failed: drop the pending state so the next update starts a new one.
+                    _saving = false;
+                    _saveCts = null;
+                }
+            }
+        }
+    }
+
+    // Saves the live updates not saved yet at once and ends the pending wait.
+    private void FlushSave()
+    {
+        CancellationTokenSource? cts;
+        lock (_gate)
+        {
+            cts = _saveCts;
+            _saveCts = null;
+            _saving = false;
+            if (_dirty)
+            {
+                _dirty = false;
+                store.Save(_characters);
+            }
+        }
+
+        Cancel(cts);
     }
 
     private bool EndRun(CaptureState state)

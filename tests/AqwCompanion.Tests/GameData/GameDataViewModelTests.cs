@@ -68,7 +68,7 @@ public class GameDataViewModelTests
         Assert.Equal("Stop capture", GameDataViewModel.StopText);
         Assert.Equal("Restart as administrator", GameDataViewModel.RestartText);
         Assert.Equal("https://npcap.com/", GameDataViewModel.NpcapUrl);
-        Assert.Equal("It starts by itself when the app opens and listens until you press Stop capture. It reads only the login data shown here, never your e-mail, IP address or password.", GameDataViewModel.PrivacyText);
+        Assert.Equal("It starts by itself when the app opens and listens until you press Stop capture. It reads your login data and your own gold, experience, item and class point events, and never your e-mail address, IP address, password or other players' data.", GameDataViewModel.PrivacyText);
         Assert.Equal(
             "The capture is already listening. Open the game launcher and log in; your data appears here when the login has been read.",
             GameDataViewModel.EmptyText);
@@ -265,7 +265,7 @@ public class GameDataViewModelTests
         store.Stored.Add(Snapshot("Zeta Hero", new DateTimeOffset(2030, 1, 2, 0, 0, 0, TimeSpan.Zero)));
         store.Stored.Add(Snapshot("Mid Hero", new DateTimeOffset(2030, 1, 1, 0, 0, 0, TimeSpan.Zero)));
         var session = new CaptureSession(
-            () => rig.Source, rig.Elevation, () => rig.Npcap, () => rig.IsWindows, store, TimeProvider.System, rig.Exit,
+            () => rig.Source, rig.Elevation, () => rig.Npcap, () => rig.IsWindows, store, rig.Delay, TimeProvider.System, rig.Exit,
             new AppPaths("/tmp/aqw-fictional-root"));
         var vm = new GameDataViewModel(session);
 

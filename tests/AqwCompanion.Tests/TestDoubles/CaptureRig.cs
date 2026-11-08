@@ -14,6 +14,9 @@ public sealed class CaptureRig
 
     public FakeGameDataStore Store { get; } = new();
 
+    /// <summary>The wait before live updates are saved; completes at once unless a test sets its Gate.</summary>
+    public FakeDelay Delay { get; } = new();
+
     public NpcapStatus Npcap { get; set; } = NpcapStatus.Available;
 
     public bool IsWindows { get; set; } = true;
@@ -23,7 +26,7 @@ public sealed class CaptureRig
     public CaptureSession Session { get; }
 
     public CaptureRig() => Session = new CaptureSession(
-        () => Source, Elevation, () => Npcap, () => IsWindows, Store, TimeProvider.System, Exit,
+        () => Source, Elevation, () => Npcap, () => IsWindows, Store, Delay, TimeProvider.System, Exit,
         new AppPaths("/tmp/aqw-fictional-root"));
 
     /// <summary>A source that hands over the segments and ends at once.</summary>

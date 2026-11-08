@@ -10,7 +10,8 @@ namespace AqwCompanion.App.GameData;
 /// <summary>
 /// The Game data tab: controls a <see cref="CaptureSession"/> and shows the selected Character's profile, faction standings
 /// and items. The session raises its change event from capture threads, so the app passes <c>onUiThread</c> to run the
-/// update on the UI thread (without it, inline). It never logs.
+/// update on the UI thread (without it, inline); a burst of changes queues one update at a time, with no timer. The profile, the
+/// standings and the items follow the live updates by themselves, there is no refresh to press for them. It never logs.
 /// </summary>
 public partial class GameDataViewModel : ObservableObject
 {
@@ -28,7 +29,9 @@ public partial class GameDataViewModel : ObservableObject
     public const string DoneText = "Capture finished.";
     public const string NoDeviceText = "No network device could be opened.";
     public const string DriverErrorText = "The capture driver reported an error.";
-    public const string PrivacyText = "It starts by itself when the app opens and listens until you press Stop capture. It reads only the login data shown here, never your e-mail, IP address or password.";
+    public const string PrivacyText = "It starts by itself when the app opens and listens until you press Stop capture. It reads your login data and your own gold, experience, item and class point events, and never your e-mail address, IP address, password or other players' data.";
+    public const string CaptureDetailsText = "Capture details";
+    public const string LiveNotTrackedText = "Buying, quests, reputation and level-ups are not tracked yet; log in again to refresh.";
     public const string EarlierSessionHintText = "A game session that started before this app was opened is running. Its data cannot be read until you log in again, for example by switching server.";
     public const string EmptyText = "The capture is already listening. Open the game launcher and log in; your data appears here when the login has been read.";
 
@@ -42,6 +45,11 @@ public partial class GameDataViewModel : ObservableObject
     private string? _selectedCharacter;
     private string _itemFilter = string.Empty;
     private CharacterSnapshot? _active;
+    private int _refreshQueued;
+    private IReadOnlyList<FactionStanding>? _shownFactions;
+    private IReadOnlyList<OwnedItem>? _shownItems;
+    private IReadOnlyList<OwnedItem>? _shownHouseItems;
+    private CharacterProfile? _shownProfile;
 
     public GameDataViewModel(CaptureSession session, Action<Action>? onUiThread = null)
     {
@@ -52,7 +60,7 @@ public partial class GameDataViewModel : ObservableObject
         RestartAsAdministratorCommand = new RelayCommand(() => session.RelaunchAsAdministrator(), () => NeedsAdministrator);
         RefreshCommand = new RelayCommand(RefreshNumbers);
         Refresh();
-        session.Changed += (_, _) => _onUiThread(Refresh);
+        session.Changed += (_, _) => QueueRefresh();
     }
 
     public IAsyncRelayCommand StartCommand { get; }
@@ -148,6 +156,16 @@ public partial class GameDataViewModel : ObservableObject
 
     public bool HasCapturedText => CapturedText.Length > 0;
 
+    /// <summary>How many live updates the selected Character got and since when, plus what is not tracked; empty when it got none.</summary>
+    public string LiveText { get; private set; } = string.Empty;
+
+    public bool HasLiveText => LiveText.Length > 0;
+
+    /// <summary>The gold and exp of the last kill as the capture read them, to compare with the game; empty when there is none.</summary>
+    public string LastGainText { get; private set; } = string.Empty;
+
+    public bool HasLastGain => LastGainText.Length > 0;
+
     public IReadOnlyList<string> ProfileLines { get; private set; } = [];
 
     public IReadOnlyList<GameFactionRow> Factions { get; private set; } = [];
@@ -171,6 +189,30 @@ public partial class GameDataViewModel : ObservableObject
 
     /// <summary>The selected Character's snapshot, or null.</summary>
     public CharacterSnapshot? ActiveSnapshot => _active;
+
+    // A burst of session changes (every live event raises one) queues a single refresh: while one is waiting for the UI thread, the
+    // others add nothing, because the refresh reads the newest state when it runs.
+    private void QueueRefresh()
+    {
+        if (Interlocked.Exchange(ref _refreshQueued, 1) == 1)
+        {
+            return;
+        }
+
+        try
+        {
+            _onUiThread(() =>
+            {
+                Volatile.Write(ref _refreshQueued, 0);
+                Refresh();
+            });
+        }
+        catch (Exception)
+        {
+            Volatile.Write(ref _refreshQueued, 0);
+            throw;
+        }
+    }
 
     private void Refresh()
     {
@@ -349,34 +391,78 @@ public partial class GameDataViewModel : ObservableObject
 
         ProfileHeadline = snapshot is null ? string.Empty : string.Create(CultureInfo.InvariantCulture, $"{snapshot.Profile.Name} · Lv {snapshot.Profile.Level}");
         CapturedText = snapshot is null ? string.Empty : CapturedTextFor(snapshot);
-        ProfileLines = snapshot is null ? [] : ProfileLinesFor(snapshot.Profile);
-        Factions = snapshot is null
-            ? []
-            : [.. snapshot.Factions.OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase).Select(FactionRow)];
-        _allItems = snapshot is null
-            ? []
-            : [.. snapshot.Items.Concat(snapshot.HouseItems)
-                .OrderBy(i => i.Type, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(ItemRow)];
-        if (snapshot is null && _itemFilter.Length > 0)
-        {
-            _itemFilter = string.Empty;
-            OnPropertyChanged(nameof(ItemFilter));
-        }
-
+        LiveText = snapshot is null ? string.Empty : LiveTextFor(snapshot);
+        LastGainText = snapshot is null ? string.Empty : LastGainTextFor(snapshot);
         OnPropertyChanged(nameof(ActiveSnapshot));
         OnPropertyChanged(nameof(ProfileHeadline));
         OnPropertyChanged(nameof(CapturedText));
         OnPropertyChanged(nameof(HasCapturedText));
-        OnPropertyChanged(nameof(ProfileLines));
-        OnPropertyChanged(nameof(Factions));
-        ApplyFilter();
+        OnPropertyChanged(nameof(LiveText));
+        OnPropertyChanged(nameof(HasLiveText));
+        OnPropertyChanged(nameof(LastGainText));
+        OnPropertyChanged(nameof(HasLastGain));
+
+        // Only what changed is rebuilt: a gold update keeps the same standings and items, so their lists (and scroll positions) stay.
+        if (snapshot is null || snapshot.Profile != _shownProfile)
+        {
+            _shownProfile = snapshot?.Profile;
+            ProfileLines = snapshot is null ? [] : ProfileLinesFor(snapshot.Profile);
+            OnPropertyChanged(nameof(ProfileLines));
+        }
+
+        if (snapshot is null || !ReferenceEquals(snapshot.Factions, _shownFactions))
+        {
+            _shownFactions = snapshot?.Factions;
+            Factions = snapshot is null
+                ? []
+                : [.. snapshot.Factions.OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase).Select(FactionRow)];
+            OnPropertyChanged(nameof(Factions));
+        }
+
+        var itemsChanged = snapshot is null
+            || !ReferenceEquals(snapshot.Items, _shownItems)
+            || !ReferenceEquals(snapshot.HouseItems, _shownHouseItems);
+        if (itemsChanged)
+        {
+            _shownItems = snapshot?.Items;
+            _shownHouseItems = snapshot?.HouseItems;
+            _allItems = snapshot is null
+                ? []
+                : [.. snapshot.Items.Concat(snapshot.HouseItems)
+                    .OrderBy(i => i.Type, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(ItemRow)];
+            if (snapshot is null && _itemFilter.Length > 0)
+            {
+                _itemFilter = string.Empty;
+                OnPropertyChanged(nameof(ItemFilter));
+            }
+
+            ApplyFilter();
+        }
 
         if (changed)
         {
             ActiveSnapshotChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    private string LiveTextFor(CharacterSnapshot snapshot)
+    {
+        var count = _session.LiveUpdateCount(snapshot.Profile.Name);
+        return count == 0
+            ? string.Empty
+            : string.Create(
+                CultureInfo.InvariantCulture,
+                $"Live: {Format(count)} {(count == 1 ? "update" : "updates")} since {LocalTimeText.Format(snapshot.CapturedAtUtc)}. {LiveNotTrackedText}");
+    }
+
+    private string LastGainTextFor(CharacterSnapshot snapshot)
+    {
+        var live = _session.Live;
+        return !_session.IsLive(snapshot.Profile.Name) || (live.LastGoldGain == 0 && live.LastExpGain == 0)
+            ? string.Empty
+            : string.Create(CultureInfo.InvariantCulture, $"Last kill: +{Format(live.LastGoldGain)} gold, +{Format(live.LastExpGain)} exp");
     }
 
     private string CapturedTextFor(CharacterSnapshot snapshot)

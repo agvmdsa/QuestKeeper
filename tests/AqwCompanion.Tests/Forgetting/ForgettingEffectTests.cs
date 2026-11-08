@@ -142,7 +142,7 @@ public sealed class ForgettingEffectTests : IDisposable
                 }
             }),
             new FakeProcessElevation(), () => NpcapStatus.Available, () => true, gameDataStore,
-            TimeProvider.System, new FakeApplicationExit(), _paths);
+            new FakeDelay(), TimeProvider.System, new FakeApplicationExit(), _paths);
         await session.RestoreAsync();
         _ = session.StartAsync();
         await sourceStarted.Task.WaitAsync(TimeSpan.FromSeconds(30));

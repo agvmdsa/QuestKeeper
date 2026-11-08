@@ -29,6 +29,8 @@ public class CaptureSessionTests
 
         public int FactoryCalls { get; private set; }
 
+        public FakeDelay Delay { get; } = new();
+
         public List<string> Events { get; } = [];
 
         public CaptureSession Create()
@@ -39,7 +41,7 @@ public class CaptureSessionTests
                     FactoryCalls++;
                     return Source;
                 },
-                Elevation, () => Npcap, () => IsWindows, Store, TimeProvider.System, Exit, Paths);
+                Elevation, () => Npcap, () => IsWindows, Store, Delay, TimeProvider.System, Exit, Paths);
             session.Changed += (_, _) =>
             {
                 lock (Events)
@@ -296,7 +298,7 @@ public class CaptureSessionTests
     {
         var session = new CaptureSession(
             () => throw new InvalidOperationException("driver"), new FakeProcessElevation(), () => NpcapStatus.Available,
-            () => true, new FakeGameDataStore(), TimeProvider.System,
+            () => true, new FakeGameDataStore(), new FakeDelay(), TimeProvider.System,
             new FakeApplicationExit(), new AppPaths("/tmp/x"));
 
         await session.StartAsync().WaitAsync(Wait);

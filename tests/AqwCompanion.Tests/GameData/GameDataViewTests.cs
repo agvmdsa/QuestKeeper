@@ -9,6 +9,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
@@ -44,7 +45,7 @@ public class GameDataViewTests
             }
         });
         var view = new GameDataView { DataContext = vm };
-        var window = new Window { Width = 1100, Height = 800, Content = view };
+        var window = new Window { Width = 1100, Height = 700, Content = view };
         window.Show();
         window.UpdateLayout();
         Flush();
@@ -85,6 +86,12 @@ public class GameDataViewTests
 
     private static void Flush() => Dispatcher.UIThread.RunJobs();
 
+    private static void ExpandDetails(Host h)
+    {
+        h.View.Named<Expander>("GameDataCaptureDetails").IsExpanded = true;
+        SettleUntil(h.Window, () => h.View.Named<Button>("GameDataRefresh").IsEffectivelyVisible, "the capture details to open");
+    }
+
     private static void Press(Host h, string buttonName) => h.View.Named<Button>(buttonName).Command!.Execute(null);
 
     private static IEnumerable<string?> TextsNamed(Host h, string name) =>
@@ -120,6 +127,7 @@ public class GameDataViewTests
     public void Before_any_capture_the_empty_state_the_privacy_note_and_the_start_button_are_shown()
     {
         var h = Build();
+        ExpandDetails(h);
 
         var empty = h.View.Named<TextBlock>("GameDataEmptyState");
         Assert.True(empty.IsEffectivelyVisible);
@@ -236,6 +244,7 @@ public class GameDataViewTests
     public void The_other_commands_line_is_hidden_until_there_are_names_and_then_shows_them()
     {
         var h = Build();
+        ExpandDetails(h);
         var line = h.View.Named<SelectableTextBlock>("GameDataOtherNames");
         Assert.False(line.IsEffectivelyVisible);
 
@@ -269,6 +278,7 @@ public class GameDataViewTests
     public void The_refresh_button_and_the_details_line_exist_with_their_texts()
     {
         var h = Build();
+        ExpandDetails(h);
 
         var refresh = h.View.Named<Button>("GameDataRefresh");
         Assert.Equal("Refresh numbers", refresh.Content);
@@ -301,6 +311,7 @@ public class GameDataViewTests
     public void The_connections_and_samples_lines_are_selectable_and_shown_only_with_content()
     {
         var h = Build();
+        ExpandDetails(h);
         var connections = h.View.Named<SelectableTextBlock>("GameDataConnections");
         var samples = h.View.Named<SelectableTextBlock>("GameDataSamples");
         Assert.False(connections.IsEffectivelyVisible);
@@ -319,5 +330,87 @@ public class GameDataViewTests
         Assert.StartsWith("Connections: 1 seen", connections.Text);
         Assert.StartsWith("Unreadable messages: #1", samples.Text);
         Assert.Equal(samples.Text, AutomationProperties.GetName(samples));
+    }
+
+    private static byte[] GoldExp(int gold, int exp) =>
+        PlainJson(Envelope("addGoldExp", new Dictionary<string, object?> { ["intGold"] = gold, ["intExp"] = exp, ["typ"] = "m", ["id"] = 4 }));
+
+    [AvaloniaFact]
+    public void The_capture_details_are_in_a_collapsed_expander_that_holds_the_refresh_button()
+    {
+        var h = Build();
+
+        var expander = h.View.Named<Expander>("GameDataCaptureDetails");
+        Assert.False(expander.IsExpanded);
+        Assert.Equal("Capture details", expander.Header);
+        var content = Assert.IsAssignableFrom<Panel>(expander.Content);
+        var refresh = content.Children.OfType<Button>().Single(b => b.Name == "GameDataRefresh");
+        Assert.Same(h.Vm.RefreshCommand, refresh.Command);
+        Assert.Contains(content.Children, c => c.Name == "GameDataCountersText");
+        Assert.Contains(content.GetLogicalDescendants().OfType<SelectableTextBlock>(), t => t.Name == "GameDataCommands");
+
+        ExpandDetails(h);
+
+        Assert.True(h.View.Named<Button>("GameDataRefresh").IsEffectivelyVisible);
+        Assert.Equal("Refresh numbers", h.View.Named<Button>("GameDataRefresh").Content);
+    }
+
+    [AvaloniaFact]
+    public void Nothing_but_the_state_the_hint_and_the_privacy_text_stays_outside_the_details()
+    {
+        var h = Build();
+
+        var card = h.View.Named<Border>("GameDataCaptureCard");
+        var outside = card.GetLogicalDescendants()
+            .OfType<Control>()
+            .Where(c => c.Name is { Length: > 0 } && c.Name.StartsWith("GameData", StringComparison.Ordinal))
+            .Where(c => !c.GetLogicalAncestors().OfType<Expander>().Any() && c is not Expander)
+            .Select(c => c.Name)
+            .ToList();
+
+        Assert.Equal(
+            ["GameDataTitle", "GameDataStartButton", "GameDataStopButton", "GameDataRestartButton", "GameDataStateText", "GameDataHint", "GameDataNpcapLink", "GameDataPrivacyText"],
+            outside);
+    }
+
+    [AvaloniaFact]
+    public void Live_updates_show_in_the_profile_without_pressing_anything()
+    {
+        var traffic = Connection();
+        traffic.Server.Add(ServerData(traffic.NextServerSequence, [.. GoldExp(40, 15), 0, .. GoldExp(1200, 340), 0]));
+        var h = Captured(traffic.Server);
+
+        SettleUntil(h.Window, () => TextsNamed(h, "GameDataProfileLine").Contains("Gold: 9,876,544,450"), "the gold to follow the live events");
+        var live = h.View.Named<TextBlock>("GameDataLiveText");
+        var gain = h.View.Named<TextBlock>("GameDataLastGain");
+        SettleUntil(h.Window, () => live.IsEffectivelyVisible && gain.IsEffectivelyVisible, "the live lines");
+
+        Assert.StartsWith("Live: 2 updates since ", live.Text);
+        Assert.EndsWith("Buying, quests, reputation and level-ups are not tracked yet; log in again to refresh.", live.Text);
+        Assert.Equal("Last kill: +1,200 gold, +340 exp", gain.Text);
+        Assert.Equal(gain.Text, AutomationProperties.GetName(gain));
+        Assert.Equal(live.Text, AutomationProperties.GetName(live));
+    }
+
+    [AvaloniaFact]
+    public void The_live_lines_are_hidden_without_updates()
+    {
+        var h = Captured(Connection().Server);
+
+        Assert.False(h.View.Named<TextBlock>("GameDataLiveText").IsEffectivelyVisible);
+        Assert.False(h.View.Named<TextBlock>("GameDataLastGain").IsEffectivelyVisible);
+    }
+
+    [AvaloniaFact]
+    public void The_privacy_text_is_the_planned_one_and_stays_visible_with_the_details_collapsed()
+    {
+        var h = Build();
+
+        var privacy = h.View.Named<TextBlock>("GameDataPrivacyText");
+
+        Assert.True(privacy.IsEffectivelyVisible);
+        Assert.Equal(
+            "It starts by itself when the app opens and listens until you press Stop capture. It reads your login data and your own gold, experience, item and class point events, and never your e-mail address, IP address, password or other players' data.",
+            privacy.Text);
     }
 }

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using AqwCompanion.Core.Capture;
@@ -269,5 +270,136 @@ public class MessageDecoderTests
     {
         Assert.Equal(DecodeFailure.NoCommand, FailureOf(Bytes("{\"a\":1}")));
         Assert.Equal(DecodeFailure.NoCommand, FailureOf(EncodeBlob(new Dictionary<string, object?> { ["b"] = new Dictionary<string, object?> { ["o"] = new Dictionary<string, object?> { ["note"] = new string('a', 60) } } })));
+    }
+
+    private static byte[] Json(string cmd = "initUserData") => PlainJson(Envelope(cmd, Body()));
+
+    private static byte[] RawDeflate(byte[] content)
+    {
+        using var output = new MemoryStream();
+        using (var deflate = new DeflateStream(output, CompressionLevel.SmallestSize, leaveOpen: true))
+        {
+            deflate.Write(content);
+        }
+        return output.ToArray();
+    }
+
+    private static byte[] Header(int length) => Enumerable.Range(0, length).Select(i => (byte)(0xA0 + i % 16)).ToArray();
+
+    private static byte[] Base64Of(byte[] blob, string marker = "Z") => Encoding.ASCII.GetBytes(marker + Convert.ToBase64String(blob));
+
+    [Fact]
+    public void Json_deflated_raw_behind_a_four_byte_header_is_decoded()
+    {
+        using var message = MessageDecoder.Decode(Base64Of([.. Header(4), .. RawDeflate(Json())]));
+
+        Assert.NotNull(message);
+        Assert.Equal("initUserData", message.Command);
+    }
+
+    [Fact]
+    public void Zlib_behind_an_eleven_byte_header_is_decoded()
+    {
+        using var message = MessageDecoder.Decode(Base64Of([.. Header(11), .. Compress(Json("loadInventoryBig"))]));
+
+        Assert.NotNull(message);
+        Assert.Equal("loadInventoryBig", message.Command);
+    }
+
+    [Fact]
+    public void A_stream_at_the_last_header_offset_is_found_and_one_byte_further_is_not()
+    {
+        using var found = MessageDecoder.Decode(Base64Of([.. Header(32), .. RawDeflate(Json())]));
+        Assert.NotNull(found);
+
+        Assert.Equal(DecodeFailure.NoCompressionHeader, FailureOf(Base64Of([.. Header(33), .. RawDeflate(Json())])));
+        Assert.Equal(DecodeFailure.NoCompressionHeader, FailureOf(Base64Of([.. Header(33), .. Compress(Json())])));
+    }
+
+    [Fact]
+    public void Inflated_data_that_is_mostly_binary_is_rejected()
+    {
+        var junk = new byte[400];
+        new Random(7).NextBytes(junk);
+
+        Assert.Equal(DecodeFailure.NoCompressionHeader, FailureOf(Base64Of([.. Header(6), .. RawDeflate(junk)])));
+    }
+
+    [Fact]
+    public void Base64_inside_base64_is_decoded_one_level()
+    {
+        var inner = EncodeBlob(Envelope("loadInventoryBig", Body()), 0);
+
+        using var message = MessageDecoder.Decode(Base64Of(inner));
+
+        Assert.NotNull(message);
+        Assert.Equal("loadInventoryBig", message.Command);
+    }
+
+    [Fact]
+    public void Two_nested_levels_are_not_decoded()
+    {
+        var inner = EncodeBlob(Envelope("loadInventoryBig", Body()), 0);
+        var twice = Base64Of(Encoding.ASCII.GetBytes(Convert.ToBase64String(inner)));
+
+        Assert.Null(MessageDecoder.Decode(twice));
+        Assert.Equal(DecodeFailure.NoCompressionHeader, FailureOf(twice));
+    }
+
+    [Fact]
+    public void Decoding_a_two_megabyte_printable_blob_is_fast()
+    {
+        var printable = new byte[1_500_000];
+        var random = new Random(11);
+        for (var i = 0; i < printable.Length; i++)
+        {
+            printable[i] = (byte)random.Next(32, 127);
+        }
+
+        var encoded = Base64Of(printable, "");
+        Assert.True(encoded.Length <= MessageDecoder.MaxEncodedBytes);
+        var watch = Stopwatch.StartNew();
+        var message = MessageDecoder.Decode(encoded);
+        watch.Stop();
+
+        Assert.Null(message);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2), $"took {watch.Elapsed}");
+    }
+
+    [Fact]
+    public void Decoding_a_two_megabyte_binary_blob_is_fast()
+    {
+        var binary = new byte[1_500_000];
+        new Random(12).NextBytes(binary);
+
+        var encoded = Base64Of(binary, "");
+        Assert.True(encoded.Length <= MessageDecoder.MaxEncodedBytes);
+        var watch = Stopwatch.StartNew();
+        var message = MessageDecoder.Decode(encoded);
+        watch.Stop();
+
+        Assert.Null(message);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2), $"took {watch.Elapsed}");
+    }
+
+    [Fact]
+    public void Decoding_a_two_megabyte_base64_alphabet_blob_is_fast()
+    {
+        // Printable and itself valid base64, so the nested level also runs all its readings.
+        const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        var random = new Random(13);
+        var text = new byte[1_500_000];
+        for (var i = 0; i < text.Length; i++)
+        {
+            text[i] = (byte)alphabet[random.Next(alphabet.Length)];
+        }
+
+        var encoded = Base64Of(text, "");
+        var watch = Stopwatch.StartNew();
+        var message = MessageDecoder.Decode(encoded);
+        watch.Stop();
+
+        Assert.Null(message);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2), $"took {watch.Elapsed}");
     }
 }

@@ -8,7 +8,9 @@ namespace AqwCompanion.Core.Capture;
 /// <summary>
 /// Turns one NUL-free message of the game stream into its command and parsed JSON, in memory only. A message is plain JSON
 /// (starts with <c>{</c>) or an encoded blob: 0-8 marker characters, base64 (padding may be missing), then zlib or gzip whose
-/// content is JSON. Text messages (<c>%xt%</c>), XML and anything else carry no allowed data and give nothing.
+/// content is JSON. When no reading starts with a compression header, two fallbacks of the validated probe follow: a zlib or raw
+/// deflate stream behind a binary header of up to 32 bytes (accepted only when the inflated data is mostly printable), and base64
+/// inside base64 (one nested level). Text messages (<c>%xt%</c>), XML and anything else carry no allowed data and give nothing.
 /// </summary>
 public static class MessageDecoder
 {
@@ -21,6 +23,8 @@ public static class MessageDecoder
     private const int MaxMarkerChars = 8;
     private const int MaxDroppedSuffixChars = 3;
     private const int MinBase64Chars = 8;
+    private const int MaxHeaderOffset = 32;
+    private const int PrintableProbeBytes = 200;
 
     /// <summary>
     /// null when: not JSON and not an encoded blob, a bound is exceeded, the JSON is invalid or has no b.o.cmd string. Never throws.
@@ -60,7 +64,7 @@ public static class MessageDecoder
                 return null;
             }
 
-            var inflated = InflateBlob(message, out failure);
+            var inflated = InflateBlob(message, 0, out failure);
             return inflated is null ? null : Parse(inflated, out failure);
         }
         catch (Exception)
@@ -110,11 +114,13 @@ public static class MessageDecoder
 
     /// <summary>
     /// Tries the marker and padding readings in the order of the validated probe; the first that inflates to JSON wins. When none
-    /// does, <paramref name="failure"/> is the most advanced stage any reading reached.
+    /// does, the header offset and nested base64 fallbacks run on the first valid base64 reading. <paramref name="failure"/> is
+    /// the most advanced stage any reading reached. <paramref name="depth"/> is the number of base64 levels already unwrapped.
     /// </summary>
-    private static byte[]? InflateBlob(ReadOnlySpan<byte> raw, out DecodeFailure failure)
+    private static byte[]? InflateBlob(ReadOnlySpan<byte> raw, int depth, out DecodeFailure failure)
     {
         failure = DecodeFailure.NotBase64;
+        byte[]? fallback = null;
         for (var dropLast = 0; dropLast <= MaxDroppedSuffixChars; dropLast++)
         {
             for (var dropFirst = 0; dropFirst <= MaxMarkerChars; dropFirst++)
@@ -131,6 +137,7 @@ public static class MessageDecoder
                     continue;
                 }
 
+                fallback ??= blob;
                 failure = Advance(failure, DecodeFailure.NoCompressionHeader);
                 var result = TryInflate(blob);
                 if (result.Overflow)
@@ -157,7 +164,69 @@ public static class MessageDecoder
             }
         }
 
+        return fallback is null ? null : TryFallbacks(fallback, depth, ref failure);
+    }
+
+    /// <summary>
+    /// The two fallbacks of the probe on one decoded reading: a stream behind a binary header of 0-32 bytes (zlib, then raw deflate
+    /// at each offset; at most 66 bounded inflates), then base64 inside base64 when the bytes are more than 95% printable.
+    /// </summary>
+    private static byte[]? TryFallbacks(byte[] blob, int depth, ref DecodeFailure failure)
+    {
+        for (var offset = 0; offset <= MaxHeaderOffset && offset < blob.Length; offset++)
+        {
+            foreach (var kind in new[] { StreamKind.Raw, StreamKind.ZLib })
+            {
+                var result = Inflate(blob, offset, kind);
+                if (result.Overflow)
+                {
+                    failure = DecodeFailure.TooBigWhenInflated;
+                    return null;
+                }
+
+                if (result.Data is not { Length: > 0 } data || !MostlyPrintable(data.AsSpan(0, Math.Min(data.Length, PrintableProbeBytes)), 0.9))
+                {
+                    continue;
+                }
+
+                if (data[0] == (byte)'{')
+                {
+                    failure = DecodeFailure.None;
+                    return data;
+                }
+
+                failure = Advance(failure, DecodeFailure.InflatedNotJson);
+            }
+        }
+
+        if (depth == 0 && MostlyPrintable(blob, 0.95, strictlyMore: true))
+        {
+            var inner = InflateBlob(blob, depth + 1, out var innerFailure);
+            if (inner is not null)
+            {
+                failure = DecodeFailure.None;
+                return inner;
+            }
+
+            failure = Advance(failure, innerFailure);
+        }
+
         return null;
+    }
+
+    private static bool MostlyPrintable(ReadOnlySpan<byte> data, double share, bool strictlyMore = false)
+    {
+        var printable = 0;
+        foreach (var b in data)
+        {
+            if (b is >= 32 and < 127 or 9 or 10 or 13)
+            {
+                printable++;
+            }
+        }
+
+        var ratio = printable / (double)Math.Max(1, data.Length);
+        return strictlyMore ? ratio > share : printable >= share * data.Length;
     }
 
     // The enum lists the stages in the order a message passes through them.
@@ -183,26 +252,42 @@ public static class MessageDecoder
 
     private readonly record struct InflateResult(byte[]? Data, bool Overflow, bool HasHeader);
 
+    private enum StreamKind
+    {
+        ZLib,
+        GZip,
+        Raw,
+    }
+
     private static InflateResult TryInflate(byte[] blob)
+    {
+        if (blob.Length >= 2 && blob[0] == 0x78 && blob[1] is 0x01 or 0x5E or 0x9C or 0xDA)
+        {
+            return Inflate(blob, 0, StreamKind.ZLib) with { HasHeader = true };
+        }
+
+        if (blob.Length >= 2 && blob[0] == 0x1F && blob[1] == 0x8B)
+        {
+            return Inflate(blob, 0, StreamKind.GZip) with { HasHeader = true };
+        }
+
+        return default;
+    }
+
+    /// <summary>Inflates the bytes from <paramref name="offset"/> on through the bounded reader; a failure gives no data.</summary>
+    private static InflateResult Inflate(byte[] blob, int offset, StreamKind kind)
     {
         Stream? decompressor = null;
         try
         {
-            var input = new MemoryStream(blob, writable: false);
-            if (blob.Length >= 2 && blob[0] == 0x78 && blob[1] is 0x01 or 0x5E or 0x9C or 0xDA)
+            var input = new MemoryStream(blob, offset, blob.Length - offset, writable: false);
+            decompressor = kind switch
             {
-                decompressor = new ZLibStream(input, CompressionMode.Decompress);
-            }
-            else if (blob.Length >= 2 && blob[0] == 0x1F && blob[1] == 0x8B)
-            {
-                decompressor = new GZipStream(input, CompressionMode.Decompress);
-            }
-            else
-            {
-                return default;
-            }
-
-            return ReadBounded(decompressor) with { HasHeader = true };
+                StreamKind.ZLib => new ZLibStream(input, CompressionMode.Decompress),
+                StreamKind.GZip => new GZipStream(input, CompressionMode.Decompress),
+                _ => new DeflateStream(input, CompressionMode.Decompress),
+            };
+            return ReadBounded(decompressor);
         }
         catch (InvalidDataException)
         {

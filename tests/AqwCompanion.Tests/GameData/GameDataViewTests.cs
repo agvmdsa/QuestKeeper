@@ -44,7 +44,7 @@ public class GameDataViewTests
             }
         });
         var view = new GameDataView { DataContext = vm };
-        var window = new Window { Width = 1100, Height = 700, Content = view };
+        var window = new Window { Width = 1100, Height = 800, Content = view };
         window.Show();
         window.UpdateLayout();
         Flush();

@@ -124,12 +124,13 @@ public class CaptureEngineTests
     }
 
     [Fact]
-    public void After_completion_further_segments_are_not_decoded()
+    public void After_completion_further_encoded_messages_are_skipped_not_decoded()
     {
         var (engine, captured) = NewEngine();
         var traffic = Connection();
         Feed(engine, traffic.Server);
         var before = engine.Counters;
+        var skippedBefore = engine.Live.LiveEncodedSkipped;
 
         var extra = EncodeBlob(StandardInventory());
         engine.Accept(ServerData(traffic.NextServerSequence, [.. extra, 0]));
@@ -138,8 +139,10 @@ public class CaptureEngineTests
         var after = engine.Counters;
         Assert.Single(captured);
         Assert.Equal(before.MessagesDecoded, after.MessagesDecoded);
-        Assert.Equal(before.SegmentsDropped + 2, after.SegmentsDropped);
+        Assert.Equal(before.CharactersCaptured, after.CharactersCaptured);
+        Assert.Equal(before.SegmentsDropped, after.SegmentsDropped);
         Assert.Equal(before.SegmentsSeen + 2, after.SegmentsSeen);
+        Assert.Equal(skippedBefore + 2, engine.Live.LiveEncodedSkipped);
     }
 
     [Fact]

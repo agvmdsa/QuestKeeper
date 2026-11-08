@@ -109,6 +109,21 @@
                                      TextWrapping="Wrap" IsVisible="{Binding HasDetails}"
                                      AutomationProperties.Name="{Binding DetailsText}" />
               </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding !IsForgetPending}">
+                <Button x:Name="GameDataForgetButton" Content="{x:Static gd:GameDataViewModel.ForgetText}"
+                        Command="{Binding RequestForgetCommand}" AutomationProperties.Name="Forget my data" />
+              </StackPanel>
+              <StackPanel x:Name="GameDataForgetConfirm" Spacing="4" IsVisible="{Binding IsForgetPending}">
+                <TextBlock Text="{x:Static gd:GameDataViewModel.ForgetPromptText}" TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button x:Name="GameDataForgetConfirmButton" Content="Remove" Command="{Binding ConfirmForgetCommand}"
+                          AutomationProperties.Name="Confirm forgetting my data" />
+                  <Button x:Name="GameDataForgetCancelButton" Content="Cancel" Command="{Binding CancelForgetCommand}"
+                          AutomationProperties.Name="Cancel forgetting my data" />
+                </StackPanel>
+              </StackPanel>
+              <TextBlock x:Name="GameDataForgetStatus" Text="{Binding ForgetStatusText}" TextWrapping="Wrap"
+                         IsVisible="{Binding HasForgetStatus}" AutomationProperties.Name="{Binding ForgetStatusText}" />
             </StackPanel>
           </Expander>
           <TextBlock x:Name="GameDataPrivacyText" Text="{x:Static gd:GameDataViewModel.PrivacyText}" Classes="muted"

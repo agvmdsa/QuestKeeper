@@ -2,6 +2,7 @@ using AqwCompanion.App;
 using AqwCompanion.App.GameData;
 using AqwCompanion.Capture;
 using AqwCompanion.Core.Capture;
+using AqwCompanion.Core.Forgetting;
 
 namespace AqwCompanion.Tests.TestDoubles;
 
@@ -41,5 +42,6 @@ public sealed class CaptureRig
             return Task.CompletedTask;
         });
 
-    public GameDataViewModel CreateViewModel(Action<Action>? onUiThread = null) => new(Session, onUiThread);
+    public GameDataViewModel CreateViewModel(Action<Action>? onUiThread = null, ForgetCoordinator? forgetting = null) =>
+        new(Session, onUiThread, forgetting);
 }

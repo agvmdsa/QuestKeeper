@@ -114,9 +114,10 @@ public static class CompositionRoot
             sp.GetRequiredService<IMainWindowHost>(),
             sp.GetRequiredService<IApplicationExit>()));
         services.AddSingleton<ActiveInventory>();
-        services.AddSingleton(sp => new GameDataViewModel(sp.GetRequiredService<CaptureSession>(), OnUiThread));
+        services.AddSingleton(sp => new GameDataViewModel(
+            sp.GetRequiredService<CaptureSession>(), OnUiThread, sp.GetRequiredService<ForgetCoordinator>()));
         services.AddSingleton(sp => new ForgetCoordinator(
-            () => sp.GetRequiredService<IAccountDataPersistence>().Forget(),
+            () => sp.GetRequiredService<StoredData>().Clear(),
             () =>
             [
                 sp.GetRequiredService<AccountViewModel>(),

@@ -123,6 +123,37 @@ What to check: does the list match the in-game reputation (rank, total rep, rep 
 
 The script was written from reading Skua's source and has not been run: the field names come from `Faction.cs` (`iRep` is the total, `iSpillRep` the progress in the current rank, `iRepToRank` the total needed for the rank), and `Bot.ShouldExit`, `Bot.Sleep` and `Bot.Log` from its script interface. If Skua reports a compile error when loading it, send the message back and the script gets fixed. The file format is `schema: 1`; files over 1 MiB, with more than 500 factions or with an unknown schema are rejected, and signing out removes the imported data and the file, with everything else.
 
+## Game data capture (Windows, branch `poc/reputation-discovery`)
+
+The **Game data** tab reads the login data of your own characters from the game's network traffic, on your own machine, while the game logs in. It shows the profile numbers, the faction standings (with rank and what is still missing for the next one) and the owned items, and **Hard Farms** uses the captured inventory first to mark what you own. It is read-only: the app never sends anything to the game and never acts for you.
+
+> Reading the game's traffic is a different risk class from reading the website, which is what the rest of this app does. It is probably not allowed by the game's terms and can get an account banned. Use a throwaway account, and do it knowingly.
+
+What you need:
+
+- Windows, and [Npcap](https://npcap.com/) installed by you from its own site. The app never installs or bundles Npcap; it only checks that it is there.
+- Administrator rights, because the capture driver needs them.
+
+Steps:
+
+1. Open the app and the **Game data** tab, then press **Start capture**.
+2. If the tab says it needs administrator rights, press **Restart as administrator** and accept the Windows prompt. The app restarts with the same data folder. If it says Npcap is missing, install it and press **Start capture** again.
+3. Press **Start capture** again, and only then open the game launcher and log in. The capture has to be running before the login, because the data is sent once, during the login.
+4. Wait until the tab shows your character. Press **Stop capture** when you are done (it also ends by itself after 10 minutes). If you log in with several characters while it runs, each one appears and a **Character** selector lets you switch between them.
+
+What the app reads and keeps on this machine: from the server's login messages only, the character name and level, experience, gold, AC, class points, days played, membership days, bag, bank, house and loadout slots, active boosts, the faction reputation totals, and for each owned item its name, type, item id (and class id for classes), quantity, level and flags (AC, member, equipped, worn, quest, bank, house, temporary). Ranks are computed from the Wiki's reputation table. Data from the client to the server, where the login travels, is dropped before anything is looked at, and it only listens to TCP ports 5588 to 5594.
+
+What is never kept: your e-mail address, IP address, user and character ids, password, the account creation date, and anything about other players.
+
+**Sign out** on the Account tab removes the captured data too, together with everything else the app saved.
+
+Limits and what is not verified:
+
+- A capture session lasts at most 10 minutes. At most 16 characters are kept; the oldest is dropped first.
+- The bank, quests and achievements are not read as data of their own. Whether the game sends your bank items in the login data is not verified, so do not rely on them. Class points of owned classes are not captured, so Hard Farms matches classes by name only.
+- The Reputation tab and its Skua flow above are unchanged and separate from this.
+- **The capture adapter (the part that talks to Npcap) has not been run on a real Windows machine yet.** It is tested here only with generated traffic on fake network sources. Expect that the first real run can fail, for example with "No network device could be opened." Nothing in this section is a promise that it works on your machine.
+
 ## Not affiliated
 
 AQW Companion is an unofficial fan project. It is not made by, endorsed by or connected to Artix Entertainment. AdventureQuest Worlds and its content belong to their owners.

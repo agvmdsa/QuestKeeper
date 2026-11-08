@@ -1,0 +1,81 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:gd="using:AqwCompanion.App.GameData"
+             x:Class="AqwCompanion.App.GameData.CaptureDebugView"
+             x:DataType="gd:GameDataViewModel">
+  <UserControl.Styles>
+    <Style Selector="TextBlock.muted">
+      <Setter Property="Foreground" Value="{DynamicResource AqwTextMuted}" />
+    </Style>
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="{DynamicResource AqwSurface}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AqwBorder}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="ClipToBounds" Value="True" />
+    </Style>
+    <!-- A slim header for the collapsed capture details, so the page keeps its room for the data. -->
+    <Style Selector="Expander /template/ ToggleButton#ExpanderHeader">
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="8,4" />
+    </Style>
+    <Style Selector="TextBlock.columnTitle">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource AqwTextBright}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border x:Name="GameDataCaptureCard" Classes="card">
+    <StackPanel Margin="16,10" Spacing="4">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock x:Name="GameDataTitle" Text="{x:Static gd:GameDataViewModel.TitleText}" FontSize="16" Classes="columnTitle"
+                   VerticalAlignment="Center" Margin="0,0,8,0" />
+        <Button x:Name="GameDataStartButton" Classes="primary" Content="{x:Static gd:GameDataViewModel.StartText}"
+                Command="{Binding StartCommand}" AutomationProperties.Name="Start the capture of the game login" />
+        <Button x:Name="GameDataStopButton" Content="{x:Static gd:GameDataViewModel.StopText}"
+                Command="{Binding StopCommand}" AutomationProperties.Name="Stop the capture" />
+        <Button x:Name="GameDataRestartButton" Content="{x:Static gd:GameDataViewModel.RestartText}"
+                Command="{Binding RestartAsAdministratorCommand}" IsVisible="{Binding NeedsAdministrator}"
+                AutomationProperties.Name="Restart the app as administrator" />
+      </StackPanel>
+      <TextBlock x:Name="GameDataStateText" Text="{Binding StateText}" TextWrapping="Wrap"
+                 AutomationProperties.Name="{Binding StateText}" />
+      <TextBlock x:Name="GameDataHint" Text="{Binding HintText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
+                 TextWrapping="Wrap" IsVisible="{Binding HasHint}" AutomationProperties.Name="{Binding HintText}" />
+      <SelectableTextBlock x:Name="GameDataNpcapLink" Text="{x:Static gd:GameDataViewModel.NpcapUrl}"
+                           IsVisible="{Binding NpcapMissing}" Foreground="{DynamicResource AqwLink}"
+                           AutomationProperties.Name="Npcap download address" />
+      <Expander x:Name="GameDataCaptureDetails" Header="{x:Static gd:GameDataViewModel.CaptureDetailsText}" IsExpanded="True"
+                HorizontalAlignment="Stretch" AutomationProperties.Name="Capture details">
+        <StackPanel Spacing="8" Margin="0,4,0,0">
+          <Button x:Name="GameDataRefresh" Content="{x:Static gd:GameDataViewModel.RefreshText}"
+                  Command="{Binding RefreshCommand}" AutomationProperties.Name="Refresh the capture numbers" />
+          <TextBlock x:Name="GameDataCountersText" Text="{Binding CountersText}" Classes="muted"
+                     AutomationProperties.Name="{Binding CountersText}" />
+          <StackPanel Spacing="0">
+            <SelectableTextBlock x:Name="GameDataDecoding" Text="{Binding DecodingText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
+                                 TextWrapping="Wrap" IsVisible="{Binding HasDecoding}"
+                                 AutomationProperties.Name="{Binding DecodingText}" />
+            <SelectableTextBlock x:Name="GameDataConnections" Text="{Binding ConnectionsText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
+                                 TextWrapping="Wrap" IsVisible="{Binding HasConnections}"
+                                 AutomationProperties.Name="{Binding ConnectionsText}" />
+            <SelectableTextBlock x:Name="GameDataSamples" Text="{Binding SamplesText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
+                                 TextWrapping="Wrap" IsVisible="{Binding HasSamples}"
+                                 AutomationProperties.Name="{Binding SamplesText}" />
+            <SelectableTextBlock x:Name="GameDataCommands" Text="{Binding CommandsText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
+                                 TextWrapping="Wrap" IsVisible="{Binding HasCommands}"
+                                 AutomationProperties.Name="{Binding CommandsText}" />
+            <SelectableTextBlock x:Name="GameDataOtherNames" Text="{Binding OtherNamesText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
+                                 TextWrapping="Wrap" IsVisible="{Binding HasOtherNames}"
+                                 AutomationProperties.Name="{Binding OtherNamesText}" />
+            <SelectableTextBlock x:Name="GameDataDetails" Text="{Binding DetailsText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
+                                 TextWrapping="Wrap" IsVisible="{Binding HasDetails}"
+                                 AutomationProperties.Name="{Binding DetailsText}" />
+          </StackPanel>
+        </StackPanel>
+      </Expander>
+      <TextBlock x:Name="GameDataPrivacyText" Text="{x:Static gd:GameDataViewModel.PrivacyText}" Classes="muted"
+                 TextWrapping="Wrap" />
+    </StackPanel>
+  </Border>
+</UserControl>

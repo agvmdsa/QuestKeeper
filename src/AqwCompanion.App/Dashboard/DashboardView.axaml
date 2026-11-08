@@ -1,0 +1,125 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:shell="using:AqwCompanion.App.Shell"
+             xmlns:gd="using:AqwCompanion.App.GameData"
+             xmlns:hf="using:AqwCompanion.App.HardFarms"
+             x:Class="AqwCompanion.App.Dashboard.DashboardView"
+             x:DataType="shell:MainViewModel">
+  <UserControl.Styles>
+    <Style Selector="TextBlock.muted">
+      <Setter Property="Foreground" Value="{DynamicResource AqwTextMuted}" />
+    </Style>
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="{DynamicResource AqwSurface}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AqwBorder}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="ClipToBounds" Value="True" />
+    </Style>
+    <Style Selector="Border.cardHeader">
+      <Setter Property="Background" Value="{DynamicResource AqwHeader}" />
+      <Setter Property="Padding" Value="14,7" />
+    </Style>
+    <Style Selector="TextBlock.cardTitle">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="FontSize" Value="15" />
+      <Setter Property="Foreground" Value="{DynamicResource AqwTextBright}" />
+    </Style>
+    <Style Selector="ProgressBar.rank">
+      <Setter Property="Height" Value="5" />
+      <Setter Property="MinHeight" Value="5" />
+      <Setter Property="Minimum" Value="0" />
+      <Setter Property="Maximum" Value="1" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Foreground" Value="{DynamicResource AqwBorder}" />
+      <Setter Property="Background" Value="{DynamicResource AqwSurfaceRaised}" />
+    </Style>
+  </UserControl.Styles>
+
+  <UserControl.Resources>
+    <DataTemplate x:Key="FigureTemplate" x:DataType="gd:ProfileFigure">
+      <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,24,0">
+        <TextBlock Text="{Binding Label}" Classes="muted" VerticalAlignment="Center" />
+        <TextBlock Text="{Binding Value}" FontWeight="SemiBold" Foreground="{DynamicResource AqwTextBright}" VerticalAlignment="Center" />
+      </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate x:Key="FactionTemplate" x:DataType="gd:GameFactionRow">
+      <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" Margin="0,5">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock x:Name="DashboardFactionName" Text="{Binding Name}" FontWeight="SemiBold"
+                     Foreground="{DynamicResource AqwTextBright}" TextTrimming="CharacterEllipsis" />
+          <TextBlock x:Name="DashboardFactionRank" Text="{Binding Rank}" Classes="muted" />
+        </StackPanel>
+        <TextBlock x:Name="DashboardFactionToNext" Grid.Column="1" Classes="muted"
+                   Text="{Binding ToNextRank, StringFormat='{}{0} to next'}" />
+        <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Classes="rank" Margin="0,3,0,0" Value="{Binding Fraction}"
+                     AutomationProperties.Name="{Binding Progress, StringFormat='Progress to the next rank: {0}'}" />
+      </Grid>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <Grid RowDefinitions="Auto,*" ColumnDefinitions="*,*" Margin="12">
+    <!-- The character: headline and live gain on the band, then the five numbers on one line. -->
+    <Border x:Name="DashboardProfileCard" Grid.ColumnSpan="2" Classes="card" Margin="0,0,0,12"
+            IsVisible="{Binding GameData.HasCharacters}">
+      <StackPanel>
+        <Border Classes="cardHeader">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock x:Name="DashboardProfileHeadline" Text="{Binding GameData.ProfileHeadline}" Classes="cardTitle"
+                       FontSize="18" AutomationProperties.Name="{Binding GameData.ProfileHeadline}" />
+            <TextBlock x:Name="DashboardLastGain" Grid.Column="1" Text="{Binding GameData.LastGainText}"
+                       Foreground="{DynamicResource AqwSuccess}" FontWeight="SemiBold" VerticalAlignment="Center"
+                       IsVisible="{Binding GameData.HasLastGain}" AutomationProperties.Name="{Binding GameData.LastGainText}" />
+          </Grid>
+        </Border>
+        <ItemsControl x:Name="DashboardFigures" ItemsSource="{Binding GameData.ProfileFigures}" Margin="14,8,14,2"
+                      ItemTemplate="{StaticResource FigureTemplate}" AutomationProperties.Name="Character numbers">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+        </ItemsControl>
+        <TextBlock x:Name="DashboardCapturedText" Text="{Binding GameData.CapturedText}" Classes="muted" FontSize="12"
+                   Margin="14,0,14,8" TextWrapping="Wrap" IsVisible="{Binding GameData.HasCapturedText}"
+                   AutomationProperties.Name="{Binding GameData.CapturedText}" />
+      </StackPanel>
+    </Border>
+
+    <Border x:Name="DashboardEmptyCard" Grid.ColumnSpan="2" Classes="card" Margin="0,0,0,12"
+            IsVisible="{Binding !GameData.HasCharacters}">
+      <TextBlock x:Name="DashboardEmptyState" Text="{x:Static gd:GameDataViewModel.EmptyText}" TextWrapping="Wrap"
+                 Margin="14,12" />
+    </Border>
+
+    <Border x:Name="DashboardReputationCard" Grid.Row="1" Classes="card" Margin="0,0,6,0">
+      <Grid RowDefinitions="Auto,*">
+        <Border Classes="cardHeader">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Text="Reputation" Classes="cardTitle" />
+            <TextBlock Grid.Column="1" Text="closest to the next rank first" Classes="muted" FontSize="12"
+                       VerticalAlignment="Center" />
+          </Grid>
+        </Border>
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+          <Panel>
+            <ItemsControl x:Name="DashboardFactionList" ItemsSource="{Binding GameData.Factions}" Margin="14,4"
+                          ItemTemplate="{StaticResource FactionTemplate}" AutomationProperties.Name="Faction standings" />
+            <TextBlock x:Name="DashboardFactionsEmpty" Text="Your factions appear here after the next login." Classes="muted"
+                       Margin="14,10" TextWrapping="Wrap" IsVisible="{Binding !GameData.HasCharacters}" />
+          </Panel>
+        </ScrollViewer>
+      </Grid>
+    </Border>
+
+    <Border x:Name="DashboardHardFarmsCard" Grid.Row="1" Grid.Column="1" Classes="card" Margin="6,0,0,0">
+      <Grid RowDefinitions="Auto,*">
+        <Border Classes="cardHeader">
+          <TextBlock Text="Hard Farms" Classes="cardTitle" />
+        </Border>
+        <hf:HardFarmsView x:Name="DashboardHardFarms" Grid.Row="1" DataContext="{Binding HardFarms}" />
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

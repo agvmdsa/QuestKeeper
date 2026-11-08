@@ -1,3 +1,4 @@
+using AqwCompanion.App.Debug;
 using AqwCompanion.App.GameData;
 
 namespace AqwCompanion.App.Shell;
@@ -17,14 +18,16 @@ public sealed class TrayController
     private readonly IMainWindowHost _window;
     private readonly IApplicationExit _exit;
     private readonly TimeSpan _stopTimeout;
+    private readonly DebugModeController? _debug;
     private int _exiting;
 
-    public TrayController(CaptureSession session, IMainWindowHost window, IApplicationExit exit, TimeSpan? stopTimeout = null)
+    public TrayController(CaptureSession session, IMainWindowHost window, IApplicationExit exit, TimeSpan? stopTimeout = null, DebugModeController? debug = null)
     {
         _session = session;
         _window = window;
         _exit = exit;
         _stopTimeout = stopTimeout ?? DefaultStopTimeout;
+        _debug = debug;
         _session.Changed += (_, _) => Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -51,6 +54,9 @@ public sealed class TrayController
 
     /// <summary>Shows the window.</summary>
     public void Open() => _window.Show();
+
+    /// <summary>Opens or closes the debug window; does nothing when the app wired no debug mode.</summary>
+    public void ToggleDebug() => _debug?.Toggle();
 
     /// <summary>Stops a listening capture; otherwise starts one without waiting for it to end.</summary>
     public void ToggleCapture()

@@ -2,16 +2,22 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:AqwCompanion.App.Shell"
         xmlns:local="using:AqwCompanion.App"
-        xmlns:hardfarms="using:AqwCompanion.App.HardFarms"
-        xmlns:gamedata="using:AqwCompanion.App.GameData"
-        xmlns:diagnostics="using:AqwCompanion.App.Diagnostics"
+        xmlns:dashboard="using:AqwCompanion.App.Dashboard"
         x:Class="AqwCompanion.App.Shell.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="{Binding Title}"
         Icon="/Assets/app.png"
-        Width="1100" Height="720">
+        Width="1100" Height="720" MinWidth="900" MinHeight="600">
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Ctrl+Shift+D" Command="{Binding ToggleDebugCommand}" />
+  </Window.KeyBindings>
+  <Window.Styles>
+    <Style Selector="TextBlock#FooterDot.live">
+      <Setter Property="Foreground" Value="{DynamicResource AqwSuccess}" />
+    </Style>
+  </Window.Styles>
   <DockPanel>
-    <!-- Plum top bar: the app name on the left, the connected character on the right. -->
+    <!-- Plum top bar: the app name on the left, the character and the settings on the right. -->
     <Border x:Name="TopBar" DockPanel.Dock="Top" Background="{DynamicResource AqwTopBar}"
             BorderBrush="{DynamicResource AqwBorder}" BorderThickness="0,0,0,1" Padding="16,10">
       <DockPanel LastChildFill="False">
@@ -20,22 +26,31 @@
                    VerticalAlignment="Center" />
         <Button x:Name="SettingsButton" DockPanel.Dock="Right" Content="Settings" Margin="12,0,0,0" Command="{Binding ShowSettingsCommand}"
                 VerticalAlignment="Center" AutomationProperties.Name="Open the settings" />
+        <ComboBox x:Name="CharacterSelector" DockPanel.Dock="Right" MinWidth="180" ItemsSource="{Binding GameData.CharacterNames}"
+                  SelectedItem="{Binding GameData.SelectedCharacter, Mode=TwoWay}" IsVisible="{Binding GameData.HasSeveralCharacters}"
+                  VerticalAlignment="Center" AutomationProperties.Name="Character" />
         <TextBlock x:Name="CharacterSummaryText" DockPanel.Dock="Right" Text="{Binding GameData.SelectedCharacter}"
-                   IsVisible="{Binding GameData.HasCharacters}" Foreground="{DynamicResource AqwOnTopBar}"
+                   IsVisible="{Binding GameData.HasOneCharacter}" Foreground="{DynamicResource AqwOnTopBar}"
                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                    AutomationProperties.Name="Connected character" />
       </DockPanel>
     </Border>
-  <TabControl x:Name="Tabs" Padding="0">
-    <TabItem Header="Hard Farms">
-      <hardfarms:HardFarmsView DataContext="{Binding HardFarms}" />
-    </TabItem>
-    <TabItem Header="Game data">
-      <gamedata:GameDataView DataContext="{Binding GameData}" />
-    </TabItem>
-    <TabItem Header="Diagnostics">
-      <diagnostics:DiagnosticsView DataContext="{Binding Diagnostics}" />
-    </TabItem>
-  </TabControl>
+
+    <!-- The footer: the state of the capture in a few words, and whether the data is live or saved. -->
+    <Border x:Name="Footer" DockPanel.Dock="Bottom" Background="{DynamicResource AqwHeader}"
+            BorderBrush="{DynamicResource AqwBorder}" BorderThickness="0,1,0,0" Padding="16,6">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <TextBlock x:Name="FooterDot" Text="●" Margin="0,0,8,0" VerticalAlignment="Center"
+                   Foreground="{DynamicResource AqwTextMuted}" Classes.live="{Binding GameData.IsListening}" />
+        <TextBlock x:Name="FooterText" Grid.Column="1" Text="{Binding GameData.FooterText}" TextTrimming="CharacterEllipsis"
+                   Foreground="{DynamicResource AqwTextSecondary}" VerticalAlignment="Center"
+                   AutomationProperties.Name="{Binding GameData.FooterText}" />
+        <TextBlock x:Name="FooterCaptured" Grid.Column="2" Text="{Binding GameData.CapturedText}" TextTrimming="CharacterEllipsis"
+                   Foreground="{DynamicResource AqwTextSecondary}" VerticalAlignment="Center" MaxWidth="560"
+                   IsVisible="{Binding GameData.HasCapturedText}" AutomationProperties.Name="{Binding GameData.CapturedText}" />
+      </Grid>
+    </Border>
+
+    <dashboard:DashboardView x:Name="Dashboard" />
   </DockPanel>
 </Window>

@@ -106,7 +106,7 @@ public class GameDataViewModelLiveTests
     }
 
     [Fact]
-    public async Task Selling_an_item_updates_the_item_rows()
+    public async Task Selling_an_item_adds_the_gold_to_the_profile()
     {
         var sell = PlainJson(Envelope("sellItem", new Dictionary<string, object?>
         {
@@ -115,8 +115,6 @@ public class GameDataViewModelLiveTests
 
         var (_, vm) = await Run(sell);
 
-        Assert.Equal("2 items", vm.ItemsSummary);
-        Assert.DoesNotContain(vm.Items, item => item.Name == "Fictional Class");
         Assert.Contains("Gold: 9,876,543,235", vm.ProfileLines);
     }
 

@@ -35,6 +35,7 @@ public partial class CompanionApp : Application
             var trayIcon = new TrayIconSetup(tray);
             TrayIcon.SetIcons(this, [trayIcon.Icon]);
             _ = main.HardFarms.RestoreAsync();
+            main.Debug.Start();
             var capture = services.GetRequiredService<CaptureSession>();
             _ = capture.RestoreAsync();
             _ = capture.StartAsync();

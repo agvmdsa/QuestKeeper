@@ -21,6 +21,33 @@ public class TrayControllerTests
         }
     }
 
+    [Fact]
+    public void Toggling_debug_from_the_tray_flips_the_debug_mode()
+    {
+        var settings = new AqwCompanion.App.Settings.SettingsViewModel(
+            new FakeAppSettingsStore(), new AqwCompanion.Core.Forgetting.ForgetCoordinator(() => true, () => []));
+        var host = new FakeDebugWindowHost();
+        var setup = new Setup();
+        var controller = new TrayController(
+            setup.Rig.Session, setup.Window, setup.Exit, debug: new AqwCompanion.App.Debug.DebugModeController(settings, host));
+
+        controller.ToggleDebug();
+        Assert.True(host.IsOpen);
+
+        controller.ToggleDebug();
+        Assert.False(host.IsOpen);
+    }
+
+    [Fact]
+    public void Toggling_debug_without_a_debug_mode_does_nothing()
+    {
+        var setup = new Setup();
+
+        var ex = Record.Exception(setup.Controller.ToggleDebug);
+
+        Assert.Null(ex);
+    }
+
     private sealed class Setup
     {
         public Setup(TimeSpan? stopTimeout = null)

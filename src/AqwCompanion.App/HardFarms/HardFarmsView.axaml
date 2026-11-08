@@ -39,18 +39,21 @@
 
   <UserControl.Resources>
     <DataTemplate x:Key="HardFarmRowTemplate" x:DataType="hf:HardFarmRow">
-      <Grid ColumnDefinitions="*,100,170,100,Auto" Margin="0,4">
-        <TextBlock x:Name="HardFarmsRowName" Grid.Column="0" Text="{Binding Name}"
-                   Foreground="{DynamicResource AqwTextBright}" TextWrapping="Wrap" VerticalAlignment="Center" />
-        <TextBlock x:Name="HardFarmsRowType" Grid.Column="1" Text="{Binding TypeText}" Classes="muted"
-                   VerticalAlignment="Center" />
-        <TextBlock x:Name="HardFarmsRowGroup" Grid.Column="2" Text="{Binding Group}" Classes="muted"
-                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-        <Border Grid.Column="3" Classes="badge" Classes.owned="{Binding IsOwned}"
-                Classes.missing="{Binding IsMissing}" Classes.unknown="{Binding IsUnknown}">
+      <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,3">
+        <StackPanel Grid.Column="0" Spacing="0" VerticalAlignment="Center">
+          <TextBlock x:Name="HardFarmsRowName" Text="{Binding Name}"
+                     Foreground="{DynamicResource AqwTextBright}" TextWrapping="Wrap" />
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock x:Name="HardFarmsRowType" Text="{Binding TypeText}" Classes="muted" FontSize="12" />
+            <TextBlock x:Name="HardFarmsRowGroup" Text="{Binding Group}" Classes="muted" FontSize="12"
+                       TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+        </StackPanel>
+        <Border Grid.Column="1" Classes="badge" Classes.owned="{Binding IsOwned}"
+                Classes.missing="{Binding IsMissing}" Classes.unknown="{Binding IsUnknown}" Margin="8,0">
           <TextBlock x:Name="HardFarmsRowBadge" Text="{Binding OwnershipText}" FontWeight="SemiBold" />
         </Border>
-        <Button x:Name="HardFarmsOpenButton" Grid.Column="4" Margin="8,0,0,0" Content="Open on the Wiki"
+        <Button x:Name="HardFarmsOpenButton" Grid.Column="2" Content="Wiki" Padding="8,2"
                 CommandParameter="{Binding}"
                 Command="{Binding $parent[UserControl].((hf:HardFarmsViewModel)DataContext).OpenOnWikiCommand}"
                 AutomationProperties.Name="{Binding Name, StringFormat='Open {0} on the Wiki'}" />
@@ -59,9 +62,9 @@
   </UserControl.Resources>
 
   <!-- The list sits in the star-sized row of a grid that gets the tab's height, so its panel can virtualize. -->
-  <Grid x:Name="HardFarmsLayout" RowDefinitions="Auto,Auto,Auto,*" Margin="16">
+  <Grid x:Name="HardFarmsLayout" RowDefinitions="Auto,Auto,Auto,*" Margin="12">
     <StackPanel Grid.Row="0" Spacing="6" Margin="0,0,0,12">
-      <StackPanel Orientation="Horizontal" Spacing="8">
+      <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="4">
         <Button x:Name="HardFarmsUpdateButton" Classes="primary" Content="{Binding UpdateButtonText}"
                 Command="{Binding UpdateCommand}" AutomationProperties.Name="{Binding UpdateButtonAccessibleName}" />
         <Button x:Name="HardFarmsCancelButton" Content="Cancel" Command="{Binding CancelCommand}"
@@ -70,7 +73,7 @@
                    VerticalAlignment="Center" AutomationProperties.Name="{Binding ProgressText}" />
         <TextBlock x:Name="HardFarmsStatusLine" Text="{Binding StatusText}" IsVisible="{Binding HasStatus}"
                    VerticalAlignment="Center" TextWrapping="Wrap" AutomationProperties.Name="{Binding StatusText}" />
-      </StackPanel>
+      </WrapPanel>
       <TextBlock x:Name="HardFarmsPendingLine" Text="{Binding PendingText}" IsVisible="{Binding ShowPending}"
                  AutomationProperties.Name="{Binding PendingText}" />
       <TextBlock x:Name="HardFarmsLastUpdatedLine" Text="{Binding LastUpdatedText}" Classes="muted"
@@ -79,16 +82,16 @@
                  IsVisible="{Binding HasCredit}" AutomationProperties.Name="{Binding CreditText}" />
     </StackPanel>
 
-    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8" IsVisible="{Binding HasList}">
-      <ComboBox x:Name="HardFarmsTypeFilter" Width="150" ItemsSource="{Binding TypeOptions}"
+    <WrapPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,4" IsVisible="{Binding HasList}">
+      <ComboBox x:Name="HardFarmsTypeFilter" Width="130" Margin="0,0,8,6" ItemsSource="{Binding TypeOptions}"
                 SelectedItem="{Binding TypeFilter, Mode=TwoWay}" AutomationProperties.Name="Filter by item type" />
-      <ComboBox x:Name="HardFarmsGroupFilter" Width="190" ItemsSource="{Binding GroupOptions}"
+      <ComboBox x:Name="HardFarmsGroupFilter" Width="150" Margin="0,0,8,6" ItemsSource="{Binding GroupOptions}"
                 SelectedItem="{Binding GroupFilter, Mode=TwoWay}" AutomationProperties.Name="Filter by group" />
-      <ComboBox x:Name="HardFarmsOwnedFilter" Width="120" ItemsSource="{Binding OwnedOptions}"
+      <ComboBox x:Name="HardFarmsOwnedFilter" Width="110" Margin="0,0,8,6" ItemsSource="{Binding OwnedOptions}"
                 SelectedItem="{Binding OwnedFilter, Mode=TwoWay}" AutomationProperties.Name="Filter by owned status" />
-      <TextBox x:Name="HardFarmsSearchBox" Width="240" Text="{Binding SearchText, Mode=TwoWay}"
+      <TextBox x:Name="HardFarmsSearchBox" Width="180" Margin="0,0,8,6" Text="{Binding SearchText, Mode=TwoWay}"
                Watermark="Search by name" AutomationProperties.Name="Search the Hard Farming list by name" />
-    </StackPanel>
+    </WrapPanel>
 
     <StackPanel Grid.Row="2" Margin="0,0,0,8" Spacing="4" IsVisible="{Binding HasList}">
       <TextBlock x:Name="HardFarmsSummaryLine" Text="{Binding SummaryText}" FontWeight="SemiBold"

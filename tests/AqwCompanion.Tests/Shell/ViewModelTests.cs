@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using AqwCompanion.App;
+using AqwCompanion.App.Debug;
 using AqwCompanion.App.Diagnostics;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Inventory;
@@ -98,7 +99,8 @@ public sealed class ViewModelTests : IDisposable
         await hardFarms.RestoreAsync();
         var main = new MainViewModel(
             new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor())), hardFarms,
-            new CaptureRig().CreateViewModel(), new SettingsViewModel(new FakeAppSettingsStore(), coordinator), new FakeSettingsDialog());
+            new CaptureRig().CreateViewModel(), new SettingsViewModel(new FakeAppSettingsStore(), coordinator), new FakeSettingsDialog(),
+            NoDebug());
         Assert.Single(main.HardFarms.Rows);
 
         main.Settings.RequestForgetCommand.Execute(null);
@@ -106,6 +108,21 @@ public sealed class ViewModelTests : IDisposable
 
         Assert.Equal(confirms, main.HardFarms.Rows.Count == 0);
         Assert.Equal(confirms, main.HardFarms.ShowEmptyState);
+    }
+
+    private static DebugModeController NoDebug() =>
+        new(new SettingsViewModel(new FakeAppSettingsStore(), new ForgetCoordinator(() => true, () => [])), new FakeDebugWindowHost());
+
+    [Fact]
+    public void Ctrl_Shift_D_toggles_the_debug_window_through_the_main_view_model()
+    {
+        var built = MainViewModelBuilder.Create();
+
+        built.Main.ToggleDebugCommand.Execute(null);
+        Assert.True(built.DebugHost.IsOpen);
+
+        built.Main.ToggleDebugCommand.Execute(null);
+        Assert.False(built.DebugHost.IsOpen);
     }
 
     [Fact]
@@ -117,7 +134,7 @@ public sealed class ViewModelTests : IDisposable
             new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor())),
             new HardFarmsViewModel(
                 new HardFarmStore(new InMemoryStoredDataStore().Module()), new FakeHardFarmSync(), ActiveInventoryBuilder.Empty(), new FakeUrlLauncher()),
-            new CaptureRig().CreateViewModel(), settings, dialog);
+            new CaptureRig().CreateViewModel(), settings, dialog, NoDebug());
 
         main.ShowSettingsCommand.Execute(null);
 

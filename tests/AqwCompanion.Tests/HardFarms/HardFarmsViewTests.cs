@@ -102,27 +102,6 @@ public class HardFarmsViewTests
             && Realized(h.View.Named<ListBox>("HardFarmsList")) == count, $"{count} rows to be realized");
 
     [AvaloniaFact]
-    public void The_tab_is_called_Hard_Farms_and_the_Tracker_placeholder_is_gone()
-    {
-        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
-        using var services = CompositionRoot.Build(paths);
-        var window = new MainWindow { DataContext = services.GetRequiredService<MainViewModel>() };
-
-        window.Show();
-
-        var tabs = window.FindControl<TabControl>("Tabs")!;
-        var headers = tabs.Items.OfType<TabItem>().Select(t => t.Header).ToList();
-        Assert.Contains("Hard Farms", headers);
-        Assert.DoesNotContain("Tracker", headers);
-        Assert.Equal(3, headers.Count);
-        tabs.SelectedItem = tabs.Items.OfType<TabItem>().Single(t => Equals(t.Header, "Hard Farms"));
-        SettleUntil(window, () => window.GetVisualDescendants().OfType<HardFarmsView>().Any(), "the Hard Farms tab to be created");
-        var view = window.GetVisualDescendants().OfType<HardFarmsView>().SingleOrDefault();
-        Assert.NotNull(view);
-        Assert.Same(services.GetRequiredService<MainViewModel>().HardFarms, view.DataContext);
-    }
-
-    [AvaloniaFact]
     public async Task Before_any_import_the_empty_state_is_shown_and_there_is_no_list()
     {
         var h = await Build();

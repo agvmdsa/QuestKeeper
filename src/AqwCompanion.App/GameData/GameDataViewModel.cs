@@ -33,6 +33,8 @@ public partial class GameDataViewModel : ObservableObject
     public const string CaptureDetailsText = "Capture details";
     public const string LiveNotTrackedText = "Buying, quests, reputation and level-ups are not tracked yet; log in again to refresh.";
     public const string EarlierSessionHintText = "A game session that started before this app was opened is running. Its data cannot be read until you log in again, for example by switching server.";
+    public const string FooterWaitingText = "Waiting for a login";
+    public const string FooterCapturingText = "Capturing";
     public const string EmptyText = "The capture is already listening. Open the game launcher and log in; your data appears here when the login has been read.";
 
     private const int MaxRank = 10;
@@ -41,14 +43,10 @@ public partial class GameDataViewModel : ObservableObject
     private readonly Action<Action> _onUiThread;
 
     private IReadOnlyList<CharacterSnapshot> _characters = [];
-    private IReadOnlyList<GameItemRow> _allItems = [];
     private string? _selectedCharacter;
-    private string _itemFilter = string.Empty;
     private CharacterSnapshot? _active;
     private int _refreshQueued;
     private IReadOnlyList<FactionStanding>? _shownFactions;
-    private IReadOnlyList<OwnedItem>? _shownItems;
-    private IReadOnlyList<OwnedItem>? _shownHouseItems;
     private CharacterProfile? _shownProfile;
 
     public GameDataViewModel(CaptureSession session, Action<Action>? onUiThread = null)
@@ -76,6 +74,9 @@ public partial class GameDataViewModel : ObservableObject
     public event EventHandler? ActiveSnapshotChanged;
 
     public string StateText { get; private set; } = IdleText;
+
+    /// <summary>A short line for the window footer: waiting, capturing, or the state itself when it needs the player's attention.</summary>
+    public string FooterText { get; private set; } = IdleText;
 
     public string CountersText { get; private set; } = string.Empty;
 
@@ -126,6 +127,8 @@ public partial class GameDataViewModel : ObservableObject
 
     public bool HasCharacters => CharacterNames.Count > 0;
 
+    public bool HasOneCharacter => CharacterNames.Count == 1;
+
     public bool HasSeveralCharacters => CharacterNames.Count > 1;
 
     /// <summary>The selected Character's name, or null when there is none; a name that does not exist is ignored.</summary>
@@ -168,24 +171,11 @@ public partial class GameDataViewModel : ObservableObject
 
     public IReadOnlyList<string> ProfileLines { get; private set; } = [];
 
+    /// <summary>The numbers shown across the top of the dashboard; empty when there is no Character.</summary>
+    public IReadOnlyList<ProfileFigure> ProfileFigures { get; private set; } = [];
+
     public IReadOnlyList<GameFactionRow> Factions { get; private set; } = [];
 
-    public IReadOnlyList<GameItemRow> Items { get; private set; } = [];
-
-    /// <summary>Item names containing this text (ignoring case) are listed.</summary>
-    public string ItemFilter
-    {
-        get => _itemFilter;
-        set
-        {
-            if (SetProperty(ref _itemFilter, value ?? string.Empty))
-            {
-                ApplyFilter();
-            }
-        }
-    }
-
-    public string ItemsSummary { get; private set; } = string.Empty;
 
     /// <summary>The selected Character's snapshot, or null.</summary>
     public CharacterSnapshot? ActiveSnapshot => _active;
@@ -224,11 +214,16 @@ public partial class GameDataViewModel : ObservableObject
         NeedsAdministrator = state == CaptureState.NeedsAdministrator;
         NpcapMissing = state == CaptureState.NpcapMissing;
         StateText = StateTextFor(state, _session.Failure, _session.Counters.CharactersCaptured);
+        FooterText = state == CaptureState.Listening
+            ? (_session.Counters.CharactersCaptured > 0 ? FooterCapturingText : FooterWaitingText)
+            : StateText;
         ReadNumbers();
 
         _selectedCharacter = ChooseSelection();
 
         OnPropertyChanged(nameof(StateText));
+        OnPropertyChanged(nameof(FooterText));
+        OnPropertyChanged(nameof(HasOneCharacter));
         OnPropertyChanged(nameof(CountersText));
         OnPropertyChanged(nameof(DecodingText));
         OnPropertyChanged(nameof(HasDecoding));
@@ -407,7 +402,9 @@ public partial class GameDataViewModel : ObservableObject
         {
             _shownProfile = snapshot?.Profile;
             ProfileLines = snapshot is null ? [] : ProfileLinesFor(snapshot.Profile);
+            ProfileFigures = snapshot is null ? [] : ProfileFiguresFor(snapshot.Profile);
             OnPropertyChanged(nameof(ProfileLines));
+            OnPropertyChanged(nameof(ProfileFigures));
         }
 
         if (snapshot is null || !ReferenceEquals(snapshot.Factions, _shownFactions))
@@ -415,30 +412,8 @@ public partial class GameDataViewModel : ObservableObject
             _shownFactions = snapshot?.Factions;
             Factions = snapshot is null
                 ? []
-                : [.. snapshot.Factions.OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase).Select(FactionRow)];
+                : [.. snapshot.Factions.OrderBy(Missing).ThenBy(f => f.Name, StringComparer.OrdinalIgnoreCase).Select(FactionRow)];
             OnPropertyChanged(nameof(Factions));
-        }
-
-        var itemsChanged = snapshot is null
-            || !ReferenceEquals(snapshot.Items, _shownItems)
-            || !ReferenceEquals(snapshot.HouseItems, _shownHouseItems);
-        if (itemsChanged)
-        {
-            _shownItems = snapshot?.Items;
-            _shownHouseItems = snapshot?.HouseItems;
-            _allItems = snapshot is null
-                ? []
-                : [.. snapshot.Items.Concat(snapshot.HouseItems)
-                    .OrderBy(i => i.Type, StringComparer.OrdinalIgnoreCase)
-                    .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
-                    .Select(ItemRow)];
-            if (snapshot is null && _itemFilter.Length > 0)
-            {
-                _itemFilter = string.Empty;
-                OnPropertyChanged(nameof(ItemFilter));
-            }
-
-            ApplyFilter();
         }
 
         if (changed)
@@ -471,20 +446,6 @@ public partial class GameDataViewModel : ObservableObject
         return _session.IsCapturedThisSession(snapshot.Profile.Name)
             ? $"Captured {time} in this session."
             : $"Saved from an earlier session ({time}). Log in again to refresh it.";
-    }
-
-    private void ApplyFilter()
-    {
-        var needle = _itemFilter.Trim();
-        Items = needle.Length == 0
-            ? _allItems
-            : [.. _allItems.Where(item => item.Name.Contains(needle, StringComparison.OrdinalIgnoreCase))];
-        var noun = _allItems.Count == 1 ? "item" : "items";
-        ItemsSummary = Items.Count == _allItems.Count
-            ? string.Create(CultureInfo.InvariantCulture, $"{Format(_allItems.Count)} {noun}")
-            : string.Create(CultureInfo.InvariantCulture, $"{Format(Items.Count)} of {Format(_allItems.Count)} {noun}");
-        OnPropertyChanged(nameof(Items));
-        OnPropertyChanged(nameof(ItemsSummary));
     }
 
     private static string StateTextFor(CaptureState state, CaptureFailure failure, int captured) => state switch
@@ -524,6 +485,15 @@ public partial class GameDataViewModel : ObservableObject
         return lines;
     }
 
+    private static List<ProfileFigure> ProfileFiguresFor(CharacterProfile p) =>
+    [
+        new("Gold", Format(p.Gold)),
+        new("Exp", Format(p.Exp) + " / " + Format(p.ExpToLevel)),
+        new("AC", Format(p.Coins)),
+        new("Class points", Format(p.ClassPoints)),
+        new("Days played", Format(p.DaysPlayed)),
+    ];
+
     private static void AddBoost(List<string> lines, string label, int value)
     {
         if (value != 0)
@@ -545,6 +515,10 @@ public partial class GameDataViewModel : ObservableObject
             : "Not a member";
     }
 
+    // What is still missing for the next rank; a faction at the maximum rank has nothing to earn and goes last.
+    private static long Missing(FactionStanding f) =>
+        f.Rank >= MaxRank ? long.MaxValue : Math.Max(0, (long)f.RepToRank - f.SpillRep);
+
     private static GameFactionRow FactionRow(FactionStanding f)
     {
         var maxed = f.Rank >= MaxRank;
@@ -553,26 +527,8 @@ public partial class GameDataViewModel : ObservableObject
             "Rank " + Format(f.Rank),
             Format(f.Rep),
             maxed ? "Max rank" : Format(f.SpillRep) + " / " + Format(f.RepToRank),
-            maxed ? Format(0) : Format(Math.Max(0, f.RepToRank - f.SpillRep)));
-    }
-
-    private static GameItemRow ItemRow(OwnedItem item) =>
-        new(item.Name, item.Type, Format(item.Quantity), Format(item.Level), FlagsText(item.Flags));
-
-    private static string FlagsText(ItemFlags flags)
-    {
-        (ItemFlags Flag, string Text)[] order =
-        [
-            (ItemFlags.Coins, "AC"),
-            (ItemFlags.Upgrade, "Member"),
-            (ItemFlags.Equipped, "Equipped"),
-            (ItemFlags.Worn, "Worn"),
-            (ItemFlags.Quest, "Quest"),
-            (ItemFlags.Bank, "Bank"),
-            (ItemFlags.House, "House"),
-            (ItemFlags.Temp, "Temp"),
-        ];
-        return string.Join(" · ", order.Where(entry => flags.HasFlag(entry.Flag)).Select(entry => entry.Text));
+            maxed ? Format(0) : Format(Math.Max(0, f.RepToRank - f.SpillRep)),
+            maxed ? 1 : f.RepToRank <= 0 ? 0 : Math.Clamp((double)f.SpillRep / f.RepToRank, 0, 1));
     }
 
     private static string Format(long value) => value.ToString("N0", CultureInfo.InvariantCulture);

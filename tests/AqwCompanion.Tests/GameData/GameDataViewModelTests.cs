@@ -91,7 +91,6 @@ public class GameDataViewModelTests
         Assert.Equal(string.Empty, vm.ProfileHeadline);
         Assert.Empty(vm.ProfileLines);
         Assert.Empty(vm.Factions);
-        Assert.Empty(vm.Items);
     }
 
     [Fact]
@@ -379,6 +378,74 @@ public class GameDataViewModelTests
     }
 
     [Fact]
+    public async Task The_footer_says_waiting_while_listening_without_a_character_and_the_state_otherwise()
+    {
+        var (source, started) = Holding();
+        var rig = new CaptureRig { Source = source };
+        var vm = rig.CreateViewModel();
+        Assert.Equal(GameDataViewModel.IdleText, vm.FooterText);
+
+        var run = vm.StartCommand.ExecuteAsync(null);
+        await started.Task.WaitAsync(Wait);
+        Assert.Equal(GameDataViewModel.FooterWaitingText, vm.FooterText);
+
+        vm.StopCommand.Execute(null);
+        await run.WaitAsync(Wait);
+        Assert.Equal(GameDataViewModel.DoneText, vm.FooterText);
+    }
+
+    [Fact]
+    public async Task The_footer_says_capturing_once_a_character_was_captured()
+    {
+        var (source, started) = Holding(Connection().Server);
+        var rig = new CaptureRig { Source = source };
+        var vm = rig.CreateViewModel();
+
+        var run = vm.StartCommand.ExecuteAsync(null);
+        await started.Task.WaitAsync(Wait);
+
+        Assert.True(vm.HasCharacters);
+        Assert.Equal(GameDataViewModel.FooterCapturingText, vm.FooterText);
+        vm.StopCommand.Execute(null);
+        await run.WaitAsync(Wait);
+    }
+
+    [Fact]
+    public async Task One_character_is_named_in_the_top_bar_and_several_use_the_selector()
+    {
+        var (_, one) = await Captured(Connection(clientPort: 50000, name: "First Hero").Server);
+        Assert.True(one.HasOneCharacter);
+        Assert.False(one.HasSeveralCharacters);
+
+        var (_, two) = await Captured(
+            Connection(clientPort: 50000, name: "First Hero").Server, Connection(clientPort: 50001, name: "Second Hero").Server);
+        Assert.False(two.HasOneCharacter);
+        Assert.True(two.HasSeveralCharacters);
+    }
+
+    [Fact]
+    public async Task The_dashboard_figures_are_the_five_numbers_a_player_checks_at_a_glance()
+    {
+        var (_, vm) = await Captured(Connection().Server);
+
+        Assert.Equal(
+            [
+                new ProfileFigure("Gold", "9,876,543,210"),
+                new ProfileFigure("Exp", "123,456 / 654,321"),
+                new ProfileFigure("AC", "777"),
+                new ProfileFigure("Class points", "5,000"),
+                new ProfileFigure("Days played", "300"),
+            ],
+            vm.ProfileFigures);
+    }
+
+    [Fact]
+    public void Without_a_character_there_are_no_dashboard_figures()
+    {
+        Assert.Empty(new CaptureRig().CreateViewModel().ProfileFigures);
+    }
+
+    [Fact]
     public async Task Boosts_that_are_zero_are_left_out_and_an_expired_membership_is_shown_as_expired()
     {
         var data = ProfileData();
@@ -407,60 +474,17 @@ public class GameDataViewModelTests
     }
 
     [Fact]
-    public async Task Factions_are_sorted_by_name_with_rank_progress_and_what_is_missing()
+    public async Task Factions_are_sorted_by_what_is_missing_for_the_next_rank_with_max_ranks_last()
     {
         var (_, vm) = await Captured(Connection().Server);
 
         Assert.Equal(
             [
-                new GameFactionRow("Fictional Order", "Rank 3", "5,000", "1,400 / 6,400", "5,000"),
-                new GameFactionRow("Fresh Order", "Rank 1", "0", "0 / 900", "900"),
-                new GameFactionRow("Other Order", "Rank 10", "302,500", "Max rank", "0"),
+                new GameFactionRow("Fresh Order", "Rank 1", "0", "0 / 900", "900", 0),
+                new GameFactionRow("Fictional Order", "Rank 3", "5,000", "1,400 / 6,400", "5,000", 1400d / 6400d),
+                new GameFactionRow("Other Order", "Rank 10", "302,500", "Max rank", "0", 1),
             ],
             vm.Factions);
-    }
-
-    [Fact]
-    public async Task Items_are_sorted_by_type_then_name_with_their_flags_in_a_fixed_order()
-    {
-        var inventory = LoadInventoryBig(
-            [Faction(5, "Fictional Order", 5000)],
-            [
-                Item("Zed Blade", "Sword", itemId: 1, qty: 3, level: 40, temp: true, bank: true, quest: true, wear: true, equip: true, upgrade: true, coins: true),
-                Item("Alpha Blade", "Sword", itemId: 2),
-                Item("Fictional Class", "Class", itemId: 3, classId: 9),
-            ],
-            [Item("Fictional Chair", "House Item", itemId: 4, house: true)]);
-        var connection = Connection(includeInventory: false, extraServerMessages: [EncodeBlob(inventory)]);
-        var (_, vm) = await Captured(connection.Server);
-
-        Assert.Equal(
-            [
-                new GameItemRow("Fictional Class", "Class", "1", "1", string.Empty),
-                new GameItemRow("Fictional Chair", "House Item", "1", "1", "House"),
-                new GameItemRow("Alpha Blade", "Sword", "1", "1", string.Empty),
-                new GameItemRow("Zed Blade", "Sword", "3", "40", "AC · Member · Equipped · Worn · Quest · Bank · Temp"),
-            ],
-            vm.Items);
-        Assert.Equal("4 items", vm.ItemsSummary);
-    }
-
-    [Fact]
-    public async Task The_item_filter_narrows_by_name_ignoring_case_and_the_summary_says_so()
-    {
-        var (_, vm) = await Captured(Connection().Server);
-        Assert.Equal("3 items", vm.ItemsSummary);
-
-        vm.ItemFilter = "  BLADE ";
-
-        Assert.Equal("Fictional Blade", Assert.Single(vm.Items).Name);
-        Assert.Equal("1 of 3 items", vm.ItemsSummary);
-        vm.ItemFilter = "nothing like this";
-        Assert.Empty(vm.Items);
-        Assert.Equal("0 of 3 items", vm.ItemsSummary);
-        vm.ItemFilter = string.Empty;
-        Assert.Equal(3, vm.Items.Count);
-        Assert.Equal("3 items", vm.ItemsSummary);
     }
 
     [Fact]
@@ -488,7 +512,6 @@ public class GameDataViewModelTests
     public async Task Forgetting_empties_everything_and_clears_the_selection()
     {
         var (rig, vm) = await Captured(Connection().Server);
-        vm.ItemFilter = "blade";
         var changes = 0;
         vm.ActiveSnapshotChanged += (_, _) => changes++;
 
@@ -504,7 +527,6 @@ public class GameDataViewModelTests
         Assert.Equal(string.Empty, vm.ProfileHeadline);
         Assert.Empty(vm.ProfileLines);
         Assert.Empty(vm.Factions);
-        Assert.Empty(vm.Items);
         Assert.Equal(string.Empty, vm.ItemFilter);
         Assert.Equal("0 items", vm.ItemsSummary);
     }
@@ -590,7 +612,6 @@ public class GameDataViewModelTests
                      nameof(GameDataViewModel.StateText), nameof(GameDataViewModel.CountersText), nameof(GameDataViewModel.IsListening),
                      nameof(GameDataViewModel.CharacterNames), nameof(GameDataViewModel.HasCharacters), nameof(GameDataViewModel.SelectedCharacter),
                      nameof(GameDataViewModel.ProfileHeadline), nameof(GameDataViewModel.ProfileLines), nameof(GameDataViewModel.Factions),
-                     nameof(GameDataViewModel.Items), nameof(GameDataViewModel.ItemsSummary),
                  })
         {
             Assert.Contains(name, changed);

@@ -1,4 +1,5 @@
 using System.Net;
+using AqwCompanion.App.Debug;
 using AqwCompanion.App.Diagnostics;
 using AqwCompanion.App.GameData;
 using AqwCompanion.App.HardFarms;
@@ -71,12 +72,15 @@ public static class CompositionRoot
         services.AddSingleton(sp => new TrayController(
             sp.GetRequiredService<CaptureSession>(),
             sp.GetRequiredService<IMainWindowHost>(),
-            sp.GetRequiredService<IApplicationExit>()));
+            sp.GetRequiredService<IApplicationExit>(),
+            debug: sp.GetRequiredService<DebugModeController>()));
         services.AddSingleton<IActiveInventory, ActiveInventory>();
         services.AddSingleton(sp => new GameDataViewModel(sp.GetRequiredService<CaptureSession>(), OnUiThread));
         services.AddSingleton<IAppSettingsStore>(sp => new JsonAppSettingsStore(sp.GetRequiredService<AppPaths>().SettingsPath));
         services.AddSingleton(sp => new SettingsViewModel(sp.GetRequiredService<IAppSettingsStore>(), sp.GetRequiredService<ForgetCoordinator>()));
         services.AddSingleton<ISettingsDialog, AvaloniaSettingsDialog>();
+        services.AddSingleton<IDebugWindowHost, AvaloniaDebugWindowHost>();
+        services.AddSingleton<DebugModeController>();
         services.AddSingleton(sp => new ForgetCoordinator(
             () => sp.GetRequiredService<StoredData>().Clear(),
             () =>

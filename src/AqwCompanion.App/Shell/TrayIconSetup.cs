@@ -6,7 +6,7 @@ using Avalonia.Threading;
 namespace AqwCompanion.App.Shell;
 
 /// <summary>
-/// Builds the notification-area icon and its menu (Open, Start or Stop capture, Exit) over a <see cref="TrayController"/>.
+/// Builds the notification-area icon and its menu (Open, Start or Stop capture, Debug mode, Exit) over a <see cref="TrayController"/>.
 /// Deliberately thin and not covered by tests: it needs a real desktop platform. Create and dispose it on the UI thread.
 /// </summary>
 public sealed class TrayIconSetup : IDisposable
@@ -23,12 +23,15 @@ public sealed class TrayIconSetup : IDisposable
         _capture.Click += (_, _) => controller.ToggleCapture();
         var open = new NativeMenuItem("Open");
         open.Click += (_, _) => controller.Open();
+        var debug = new NativeMenuItem("Debug mode");
+        debug.Click += (_, _) => controller.ToggleDebug();
         var exit = new NativeMenuItem("Exit");
         exit.Click += (_, _) => _ = controller.ExitAsync();
 
         var menu = new NativeMenu();
         menu.Items.Add(open);
         menu.Items.Add(_capture);
+        menu.Items.Add(debug);
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(exit);
 

@@ -71,6 +71,6 @@ public class TrayWindowTests
         using var setup = new TrayIconSetup(services.GetRequiredService<TrayController>());
 
         Assert.Equal("AQW Companion - not capturing", setup.Icon.ToolTipText);
-        Assert.Equal(4, setup.Icon.Menu!.Items.Count);
+        Assert.Equal(5, setup.Icon.Menu!.Items.Count);
     }
 }

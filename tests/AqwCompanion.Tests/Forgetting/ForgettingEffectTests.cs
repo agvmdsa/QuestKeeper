@@ -83,7 +83,7 @@ public sealed class ForgettingEffectTests : IDisposable
 
     private async Task<World> BuildWorldAsync(LiteDbStoredDataStore store, bool gateFails)
     {
-        var persistence = new AccountDataPersistence(store);
+        var persistence = new AccountDataPersistence(new StoredData(store, StoredKeys.Obsolete));
         persistence.SaveIdentity("Test Hero", new AccountSummary(9585, "LEGEND", "Membership Expired", 3), ReadAt);
         persistence.SaveEquipment(
             new CharacterEquipment(

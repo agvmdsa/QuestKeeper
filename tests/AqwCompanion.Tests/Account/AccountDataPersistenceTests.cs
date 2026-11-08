@@ -1,4 +1,5 @@
 using AqwCompanion.App.Account;
+using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Badges;
 using AqwCompanion.Core.Equipment;
@@ -17,7 +18,7 @@ public sealed class AccountDataPersistenceTests
 
     private readonly InMemoryStoredDataStore _store = new();
 
-    private AccountDataPersistence Build() => new(_store);
+    private AccountDataPersistence Build() => new(_store.Module());
 
     private static CharacterEquipment Equipment(string? name) =>
         new(name, 10, null, null, null, "Fake Class", null,
@@ -55,11 +56,11 @@ public sealed class AccountDataPersistenceTests
     {
         var sut = Build();
         sut.SaveIdentity("Fakehero", Summary, At);
-        Assert.True(_store.Items.ContainsKey(AccountDataPersistence.SummaryKey));
+        Assert.True(_store.Items.ContainsKey(StoredKeys.Summary.Name));
 
         sut.SaveIdentity("Fakehero", null, At);
 
-        Assert.False(_store.Items.ContainsKey(AccountDataPersistence.SummaryKey));
+        Assert.False(_store.Items.ContainsKey(StoredKeys.Summary.Name));
         Assert.Null(sut.Restore()?.Summary);
     }
 
@@ -74,8 +75,8 @@ public sealed class AccountDataPersistenceTests
         // A fresh coordinator: nothing was restored in memory.
         Build().SaveIdentity("Hero B", Summary, At);
 
-        Assert.False(_store.Items.ContainsKey(AccountDataPersistence.EquipmentKey));
-        Assert.False(_store.Items.ContainsKey(AccountDataPersistence.BadgesKey));
+        Assert.False(_store.Items.ContainsKey(StoredKeys.Equipment.Name));
+        Assert.False(_store.Items.ContainsKey(StoredKeys.Badges.Name));
         Assert.Equal("Hero B", Assert.IsType<RestoredAccount>(sut.Restore()).CharacterName);
     }
 
@@ -89,8 +90,8 @@ public sealed class AccountDataPersistenceTests
 
         sut.SaveIdentity("HERO a", Summary, At.AddMinutes(5));
 
-        Assert.True(_store.Items.ContainsKey(AccountDataPersistence.EquipmentKey));
-        Assert.True(_store.Items.ContainsKey(AccountDataPersistence.BadgesKey));
+        Assert.True(_store.Items.ContainsKey(StoredKeys.Equipment.Name));
+        Assert.True(_store.Items.ContainsKey(StoredKeys.Badges.Name));
     }
 
     [Fact]
@@ -102,8 +103,8 @@ public sealed class AccountDataPersistenceTests
 
         sut.SaveIdentity("Hero B", Summary, At);
 
-        Assert.False(_store.Items.ContainsKey(AccountDataPersistence.EquipmentKey));
-        Assert.False(_store.Items.ContainsKey(AccountDataPersistence.BadgesKey));
+        Assert.False(_store.Items.ContainsKey(StoredKeys.Equipment.Name));
+        Assert.False(_store.Items.ContainsKey(StoredKeys.Badges.Name));
     }
 
     [Fact]
@@ -156,17 +157,17 @@ public sealed class AccountDataPersistenceTests
         sut.SaveBadges(Badges, At);
 
         sut.RemoveBadges();
-        Assert.False(_store.Items.ContainsKey(AccountDataPersistence.BadgesKey));
-        Assert.True(_store.Items.ContainsKey(AccountDataPersistence.EquipmentKey));
-        Assert.True(_store.Items.ContainsKey(AccountDataPersistence.IdentityKey));
-        Assert.True(_store.Items.ContainsKey(AccountDataPersistence.SummaryKey));
+        Assert.False(_store.Items.ContainsKey(StoredKeys.Badges.Name));
+        Assert.True(_store.Items.ContainsKey(StoredKeys.Equipment.Name));
+        Assert.True(_store.Items.ContainsKey(StoredKeys.Identity.Name));
+        Assert.True(_store.Items.ContainsKey(StoredKeys.Summary.Name));
 
         sut.SaveBadges(Badges, At);
         sut.RemoveEquipment();
-        Assert.False(_store.Items.ContainsKey(AccountDataPersistence.EquipmentKey));
-        Assert.True(_store.Items.ContainsKey(AccountDataPersistence.BadgesKey));
-        Assert.True(_store.Items.ContainsKey(AccountDataPersistence.IdentityKey));
-        Assert.True(_store.Items.ContainsKey(AccountDataPersistence.SummaryKey));
+        Assert.False(_store.Items.ContainsKey(StoredKeys.Equipment.Name));
+        Assert.True(_store.Items.ContainsKey(StoredKeys.Badges.Name));
+        Assert.True(_store.Items.ContainsKey(StoredKeys.Identity.Name));
+        Assert.True(_store.Items.ContainsKey(StoredKeys.Summary.Name));
     }
 
     [Fact]
@@ -240,8 +241,8 @@ public sealed class AccountDataPersistenceTests
 
         Assert.Equal(Inventory, restored.Inventory);
         Assert.Equal(At.AddMinutes(3), restored.InventoryReadAtUtc);
-        Assert.True(_store.Items.ContainsKey(AccountDataPersistence.InventoryKey));
-        Assert.Equal("inventory", AccountDataPersistence.InventoryKey);
+        Assert.True(_store.Items.ContainsKey(StoredKeys.Inventory.Name));
+        Assert.Equal("inventory", StoredKeys.Inventory.Name);
     }
 
     [Fact]
@@ -268,10 +269,10 @@ public sealed class AccountDataPersistenceTests
         sut.SaveInventory(Inventory, At);
 
         sut.SaveIdentity("HERO a", Summary, At.AddMinutes(1));
-        Assert.True(_store.Items.ContainsKey(AccountDataPersistence.InventoryKey));
+        Assert.True(_store.Items.ContainsKey(StoredKeys.Inventory.Name));
 
         Build().SaveIdentity("Hero B", Summary, At);
-        Assert.False(_store.Items.ContainsKey(AccountDataPersistence.InventoryKey));
+        Assert.False(_store.Items.ContainsKey(StoredKeys.Inventory.Name));
     }
 
     [Fact]
@@ -283,8 +284,8 @@ public sealed class AccountDataPersistenceTests
 
         sut.RemoveInventory();
 
-        Assert.False(_store.Items.ContainsKey(AccountDataPersistence.InventoryKey));
-        Assert.True(_store.Items.ContainsKey(AccountDataPersistence.BadgesKey));
+        Assert.False(_store.Items.ContainsKey(StoredKeys.Inventory.Name));
+        Assert.True(_store.Items.ContainsKey(StoredKeys.Badges.Name));
     }
 
     [Fact]
@@ -296,7 +297,7 @@ public sealed class AccountDataPersistenceTests
 
         Assert.True(sut.Forget());
 
-        Assert.False(_store.Items.ContainsKey(AccountDataPersistence.InventoryKey));
+        Assert.False(_store.Items.ContainsKey(StoredKeys.Inventory.Name));
     }
 
     [Fact]
@@ -311,5 +312,31 @@ public sealed class AccountDataPersistenceTests
             sut.SaveInventory(Inventory, At);
             sut.RemoveInventory();
         }));
+    }
+
+    [Fact]
+    public void Forget_reports_a_failing_clear_by_operation_and_exception_type_only()
+    {
+        var failures = new List<(string Operation, string Type)>();
+        var sut = new AccountDataPersistence(_store.Module((operation, type) => failures.Add((operation, type))));
+
+        _store.FailNext = true;
+
+        Assert.False(sut.Forget());
+        Assert.Equal([("Clear", "IOException")], failures);
+    }
+
+    [Fact]
+    public void A_record_of_another_version_is_not_restored_and_does_not_hide_the_others()
+    {
+        var sut = Build();
+        sut.SaveIdentity("Fakehero", Summary, At);
+        sut.SaveEquipment(Equipment("Fakehero"), At);
+        _store.Versions[StoredKeys.Summary.Name] = 99;
+
+        var restored = Assert.IsType<RestoredAccount>(sut.Restore());
+
+        Assert.Null(restored.Summary);
+        Assert.NotNull(restored.Equipment);
     }
 }

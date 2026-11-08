@@ -68,7 +68,7 @@ public sealed class HardFarmStoreLiteDbTests : IDisposable
         store.SaveIndex(new WikiIndex(WikiUrls.WeaponsSlug, WikiType.Weapon, [new WikiIndexEntry("blade-one", "Blade One")]), ReadAt);
         Assert.NotNull(store.LoadList());
 
-        Assert.True(new AccountDataPersistence(database).Forget());
+        Assert.True(new AccountDataPersistence(new StoredData(database, StoredKeys.Obsolete)).Forget());
 
         Assert.Null(database.Load<HardFarmStore.ListDto>(StoredKeys.HardFarmList.Name, 1));
         Assert.Null(database.Load<HardFarmStore.IndexesDto>(StoredKeys.HardFarmIndexes.Name, 1));

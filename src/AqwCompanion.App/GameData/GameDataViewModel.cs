@@ -1,7 +1,6 @@
 using System.Globalization;
 using AqwCompanion.App.Infrastructure.Formatting;
 using AqwCompanion.Core.Capture;
-using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Reputation;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -34,17 +33,12 @@ public partial class GameDataViewModel : ObservableObject
     public const string CaptureDetailsText = "Capture details";
     public const string LiveNotTrackedText = "Buying, quests, reputation and level-ups are not tracked yet; log in again to refresh.";
     public const string EarlierSessionHintText = "A game session that started before this app was opened is running. Its data cannot be read until you log in again, for example by switching server.";
-    public const string ForgetText = "Forget my data";
-    public const string ForgetPromptText = "Remove everything the app saved on this computer? Your game data and the Hard Farms list are cleared until the next login.";
-    public const string ForgetCompleteText = "Everything the app saved was removed from this computer.";
-    public const string ForgetFailedText = "Could not remove the stored data. Close other copies of the app and try again.";
     public const string EmptyText = "The capture is already listening. Open the game launcher and log in; your data appears here when the login has been read.";
 
     private const int MaxRank = 10;
 
     private readonly CaptureSession _session;
     private readonly Action<Action> _onUiThread;
-    private readonly ForgetCoordinator? _forgetting;
 
     private IReadOnlyList<CharacterSnapshot> _characters = [];
     private IReadOnlyList<GameItemRow> _allItems = [];
@@ -57,18 +51,14 @@ public partial class GameDataViewModel : ObservableObject
     private IReadOnlyList<OwnedItem>? _shownHouseItems;
     private CharacterProfile? _shownProfile;
 
-    public GameDataViewModel(CaptureSession session, Action<Action>? onUiThread = null, ForgetCoordinator? forgetting = null)
+    public GameDataViewModel(CaptureSession session, Action<Action>? onUiThread = null)
     {
         _session = session;
-        _forgetting = forgetting;
         _onUiThread = onUiThread ?? (action => action());
         StartCommand = new AsyncRelayCommand(session.StartAsync, () => CanStart);
         StopCommand = new RelayCommand(session.Stop, () => IsListening);
         RestartAsAdministratorCommand = new RelayCommand(() => session.RelaunchAsAdministrator(), () => NeedsAdministrator);
         RefreshCommand = new RelayCommand(RefreshNumbers);
-        RequestForgetCommand = new RelayCommand(() => IsForgetPending = true, () => _forgetting is not null);
-        CancelForgetCommand = new RelayCommand(() => IsForgetPending = false);
-        ConfirmForgetCommand = new RelayCommand(ConfirmForget, () => _forgetting is not null);
         Refresh();
         session.Changed += (_, _) => QueueRefresh();
     }
@@ -82,28 +72,10 @@ public partial class GameDataViewModel : ObservableObject
     /// <summary>Re-reads the capture numbers once; there is no timer.</summary>
     public IRelayCommand RefreshCommand { get; }
 
-    /// <summary>Asks for confirmation before forgetting; only offered when the app wired a coordinator.</summary>
-    public IRelayCommand RequestForgetCommand { get; }
-
-    public IRelayCommand CancelForgetCommand { get; }
-
-    /// <summary>Forgets everything the app saved: stops work, removes the stored data, then clears memory.</summary>
-    public IRelayCommand ConfirmForgetCommand { get; }
-
     /// <summary>Raised after the properties updated, when the selected Character's snapshot is another object than before.</summary>
     public event EventHandler? ActiveSnapshotChanged;
 
     public string StateText { get; private set; } = IdleText;
-
-    [ObservableProperty]
-    private bool _isForgetPending;
-
-    /// <summary>The result of the last Forgetting; empty before one was asked for.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasForgetStatus))]
-    private string _forgetStatusText = string.Empty;
-
-    public bool HasForgetStatus => ForgetStatusText.Length > 0;
 
     public string CountersText { get; private set; } = string.Empty;
 
@@ -287,22 +259,6 @@ public partial class GameDataViewModel : ObservableObject
         RestartAsAdministratorCommand.NotifyCanExecuteChanged();
 
         UpdateActive();
-    }
-
-    private void ConfirmForget()
-    {
-        IsForgetPending = false;
-        if (_forgetting is null)
-        {
-            return;
-        }
-
-        var result = _forgetting.Forget();
-        ForgetStatusText = !result.StoredDataRemoved
-            ? ForgetFailedText
-            : result.IsComplete
-                ? ForgetCompleteText
-                : ForgetCompleteText + " Some data could not be removed: " + string.Join(", ", result.NotForgotten) + ".";
     }
 
     private void RefreshNumbers()

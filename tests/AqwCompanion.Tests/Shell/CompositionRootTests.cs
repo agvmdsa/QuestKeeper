@@ -5,6 +5,7 @@ using AqwCompanion.App.Infrastructure;
 using AqwCompanion.App.Infrastructure.Elevation;
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Inventory;
+using AqwCompanion.App.Settings;
 using AqwCompanion.App.Shell;
 using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Inventory;
@@ -53,6 +54,19 @@ public class CompositionRootTests
         var inventory = services.GetRequiredService<IActiveInventory>();
         Assert.IsType<ActiveInventory>(inventory);
         Assert.Null(inventory.Current);
+    }
+
+    [Fact]
+    public void Container_resolves_the_settings_and_the_dialog_without_opening_a_window()
+    {
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
+
+        using var services = CompositionRoot.Build(paths);
+
+        Assert.IsType<JsonAppSettingsStore>(services.GetRequiredService<IAppSettingsStore>());
+        Assert.IsType<AvaloniaSettingsDialog>(services.GetRequiredService<ISettingsDialog>());
+        Assert.Same(services.GetRequiredService<SettingsViewModel>(), services.GetRequiredService<MainViewModel>().Settings);
+        Assert.False(Directory.Exists(paths.Root));
     }
 
     [Fact]

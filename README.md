@@ -31,7 +31,7 @@ Seeing what you own, your faction ranks and what is missing for the next rank me
 - **Read-only** — the app never sends anything to the game and never acts for you.
 - **Game data** — profile numbers, faction standings with rank and what is missing for the next one, and your items, updated while you play.
 - **Hard Farms** — a list imported from the Wiki on your click (CC BY-SA, never bundled) that marks what you own from the captured inventory.
-- **Saved locally** — the last data is kept in a local database, so the app opens with it. **Forget my data** (Game data tab, inside **Capture details**) removes everything the app saved.
+- **Saved locally** — the last data is kept in a local database, so the app opens with it. **Forget my data** (in **Settings**) removes everything the app saved.
 - **No telemetry** — nothing leaves your machine. When something breaks you can export a diagnostics zip yourself, with the logs redacted, and send it only if you choose to.
 
 ## Install
@@ -47,7 +47,7 @@ AQW Companion needs 64-bit Windows. Your data, logs and crash reports live under
 
 - **Game data** — open the app (it asks for administrator rights), then log in to the game. Your character appears in the **Game data** tab. Details are in [Game data capture](#game-data-capture-windows).
 - **Hard Farms** — import the list from the Wiki with the button in the tab; ownership comes from the captured inventory.
-- **Forget my data** — in the **Game data** tab, inside **Capture details**; asks for confirmation, then removes what the app saved locally.
+- **Settings** — the **Settings** button in the top bar opens a dialog with **Forget my data** (asks for confirmation, then removes what the app saved locally), the privacy text, the credits and a debug mode switch.
 - **Diagnostics** — the **Diagnostics** tab shows where the logs are and exports the diagnostics zip.
 
 ## Build from source
@@ -96,7 +96,7 @@ What is never kept: your e-mail address, IP address, user and character ids, pas
 
 If you open the app while you are already logged in to the game: the data saved from your last session is shown, labelled as saved from an earlier session. The app cannot read a login that was sent before it started listening, and it says so when it sees a game connection whose start it missed. Switching server or logging in again sends the login again and fixes it. Live updates (below) only start after a login the app saw.
 
-**Forget my data** (inside **Capture details**) removes the captured data too, together with everything else the app saved. Data that older versions saved from the account website is removed by the app by itself; the folder an older version used for an exported Skua reputation file is removed by **Forget my data**.
+**Forget my data** (in **Settings**) removes the captured data too, together with everything else the app saved. Data that older versions saved from the account website is removed by the app by itself; the folder an older version used for an exported Skua reputation file is removed by **Forget my data**.
 
 Tray icon and a single instance:
 

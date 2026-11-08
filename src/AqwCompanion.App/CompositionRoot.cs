@@ -6,6 +6,7 @@ using AqwCompanion.App.Infrastructure;
 using AqwCompanion.App.Infrastructure.Elevation;
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Inventory;
+using AqwCompanion.App.Settings;
 using AqwCompanion.App.Shell;
 using AqwCompanion.Capture;
 using AqwCompanion.Core.Diagnostics;
@@ -72,8 +73,10 @@ public static class CompositionRoot
             sp.GetRequiredService<IMainWindowHost>(),
             sp.GetRequiredService<IApplicationExit>()));
         services.AddSingleton<IActiveInventory, ActiveInventory>();
-        services.AddSingleton(sp => new GameDataViewModel(
-            sp.GetRequiredService<CaptureSession>(), OnUiThread, sp.GetRequiredService<ForgetCoordinator>()));
+        services.AddSingleton(sp => new GameDataViewModel(sp.GetRequiredService<CaptureSession>(), OnUiThread));
+        services.AddSingleton<IAppSettingsStore>(sp => new JsonAppSettingsStore(sp.GetRequiredService<AppPaths>().SettingsPath));
+        services.AddSingleton(sp => new SettingsViewModel(sp.GetRequiredService<IAppSettingsStore>(), sp.GetRequiredService<ForgetCoordinator>()));
+        services.AddSingleton<ISettingsDialog, AvaloniaSettingsDialog>();
         services.AddSingleton(sp => new ForgetCoordinator(
             () => sp.GetRequiredService<StoredData>().Clear(),
             () =>

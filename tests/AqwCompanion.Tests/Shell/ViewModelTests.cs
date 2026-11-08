@@ -3,12 +3,12 @@ using AqwCompanion.App;
 using AqwCompanion.App.Diagnostics;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Inventory;
+using AqwCompanion.App.Settings;
 using AqwCompanion.App.Shell;
 using AqwCompanion.Core.Wiki;
 using AqwCompanion.Core.Diagnostics;
 using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Ingestion;
-using AqwCompanion.Core.Reputation;
 using AqwCompanion.Tests.TestDoubles;
 
 namespace AqwCompanion.Tests.Shell;
@@ -86,7 +86,7 @@ public sealed class ViewModelTests : IDisposable
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task Forgetting_empties_the_Hard_Farms_but_a_cancelled_request_does_not(bool confirms)
+    public async Task Forgetting_in_the_settings_empties_the_Hard_Farms_but_a_cancelled_request_does_not(bool confirms)
     {
         HardFarmsViewModel? hardFarmsRef = null;
         var coordinator = new ForgetCoordinator(() => true, () => [hardFarmsRef!]);
@@ -98,13 +98,29 @@ public sealed class ViewModelTests : IDisposable
         await hardFarms.RestoreAsync();
         var main = new MainViewModel(
             new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor())), hardFarms,
-            new CaptureRig().CreateViewModel(forgetting: coordinator));
+            new CaptureRig().CreateViewModel(), new SettingsViewModel(new FakeAppSettingsStore(), coordinator), new FakeSettingsDialog());
         Assert.Single(main.HardFarms.Rows);
 
-        main.GameData.RequestForgetCommand.Execute(null);
-        (confirms ? main.GameData.ConfirmForgetCommand : main.GameData.CancelForgetCommand).Execute(null);
+        main.Settings.RequestForgetCommand.Execute(null);
+        (confirms ? main.Settings.ConfirmForgetCommand : main.Settings.CancelForgetCommand).Execute(null);
 
         Assert.Equal(confirms, main.HardFarms.Rows.Count == 0);
         Assert.Equal(confirms, main.HardFarms.ShowEmptyState);
+    }
+
+    [Fact]
+    public void The_settings_command_opens_the_dialog_with_the_settings()
+    {
+        var dialog = new FakeSettingsDialog();
+        var settings = new SettingsViewModel(new FakeAppSettingsStore(), new ForgetCoordinator(() => true, () => []));
+        var main = new MainViewModel(
+            new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor())),
+            new HardFarmsViewModel(
+                new HardFarmStore(new InMemoryStoredDataStore().Module()), new FakeHardFarmSync(), ActiveInventoryBuilder.Empty(), new FakeUrlLauncher()),
+            new CaptureRig().CreateViewModel(), settings, dialog);
+
+        main.ShowSettingsCommand.Execute(null);
+
+        Assert.Same(settings, Assert.Single(dialog.Shown));
     }
 }

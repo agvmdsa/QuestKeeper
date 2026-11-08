@@ -1,0 +1,79 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:st="using:AqwCompanion.App.Settings"
+        x:Class="AqwCompanion.App.Settings.SettingsWindow"
+        x:DataType="st:SettingsViewModel"
+        Title="Settings"
+        Icon="/Assets/app.png"
+        Width="560" SizeToContent="Height" CanResize="False" WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <Style Selector="StackPanel.section">
+      <Setter Property="Margin" Value="0" />
+    </Style>
+    <Style Selector="Border.divider">
+      <Setter Property="BorderBrush" Value="{DynamicResource AqwBorder}" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="Padding" Value="20,12" />
+    </Style>
+    <Style Selector="TextBlock.sectionTitle">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource AqwTextBright}" />
+    </Style>
+    <Style Selector="TextBlock.muted">
+      <Setter Property="Foreground" Value="{DynamicResource AqwTextMuted}" />
+    </Style>
+  </Window.Styles>
+
+  <StackPanel Background="{DynamicResource AqwSurface}">
+    <Border Background="{DynamicResource AqwHeader}" Padding="20,12">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock x:Name="SettingsTitle" Text="{x:Static st:SettingsViewModel.TitleText}" FontSize="18" FontWeight="Bold"
+                   Foreground="{DynamicResource AqwTextBright}" VerticalAlignment="Center" />
+        <Button x:Name="SettingsCloseButton" Grid.Column="1" Content="Close" Command="{Binding CloseCommand}"
+                AutomationProperties.Name="Close the settings" />
+      </Grid>
+    </Border>
+
+    <Border Classes="divider">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="sectionTitle" Text="{x:Static st:SettingsViewModel.DebugTitleText}" />
+          <TextBlock Classes="muted" TextWrapping="Wrap" Text="{x:Static st:SettingsViewModel.DebugDescriptionText}" />
+        </StackPanel>
+        <ToggleSwitch x:Name="SettingsDebugSwitch" Grid.Column="1" IsChecked="{Binding DebugMode, Mode=TwoWay}"
+                      OnContent="" OffContent="" VerticalAlignment="Center" AutomationProperties.Name="Debug mode" />
+      </Grid>
+    </Border>
+
+    <Border Classes="divider">
+      <StackPanel Spacing="8">
+        <TextBlock Classes="sectionTitle" Text="{x:Static st:SettingsViewModel.PrivacyTitleText}" />
+        <TextBlock x:Name="SettingsPrivacyText" Classes="muted" TextWrapping="Wrap" Text="{x:Static st:SettingsViewModel.PrivacyText}" />
+        <StackPanel x:Name="SettingsForgetAsk" Orientation="Horizontal" Spacing="8" IsVisible="{Binding !IsForgetPending}">
+          <Button x:Name="SettingsForgetButton" Content="{x:Static st:SettingsViewModel.ForgetText}"
+                  Command="{Binding RequestForgetCommand}" AutomationProperties.Name="Forget my data" />
+        </StackPanel>
+        <StackPanel x:Name="SettingsForgetConfirm" Spacing="6" IsVisible="{Binding IsForgetPending}">
+          <TextBlock Foreground="{DynamicResource AqwDangerText}" TextWrapping="Wrap" Text="{x:Static st:SettingsViewModel.ForgetPromptText}" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button x:Name="SettingsForgetConfirmButton" Content="Remove" Command="{Binding ConfirmForgetCommand}"
+                    AutomationProperties.Name="Confirm forgetting my data" />
+            <Button x:Name="SettingsForgetCancelButton" Content="Cancel" Command="{Binding CancelForgetCommand}"
+                    AutomationProperties.Name="Cancel forgetting my data" />
+          </StackPanel>
+        </StackPanel>
+        <TextBlock x:Name="SettingsForgetStatus" TextWrapping="Wrap" Text="{Binding ForgetStatusText}"
+                   IsVisible="{Binding HasForgetStatus}" AutomationProperties.Name="{Binding ForgetStatusText}" />
+      </StackPanel>
+    </Border>
+
+    <Border Classes="divider">
+      <StackPanel Spacing="4">
+        <TextBlock Classes="sectionTitle" Text="{x:Static st:SettingsViewModel.CreditsTitleText}" />
+        <TextBlock x:Name="SettingsCreditsText" Classes="muted" TextWrapping="Wrap" Text="{x:Static st:SettingsViewModel.CreditsText}" />
+      </StackPanel>
+    </Border>
+
+    <TextBlock x:Name="SettingsVersion" Classes="muted" Margin="20,10" Text="{Binding Version, StringFormat='AQW Companion {0}'}" />
+  </StackPanel>
+</Window>

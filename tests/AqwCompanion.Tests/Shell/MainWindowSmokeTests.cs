@@ -21,6 +21,7 @@ public class MainWindowSmokeTests
         Assert.Equal(AppInfo.ProductName, window.Title);
         var tabs = window.FindControl<TabControl>("Tabs")!;
         Assert.Equal(3, tabs.ItemCount);
+        Assert.Equal("Settings", window.FindControl<Button>("SettingsButton")!.Content);
         Assert.Equal("Hard Farms", Assert.IsType<TabItem>(tabs.Items[0]).Header);
     }
 }

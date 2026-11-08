@@ -26,8 +26,7 @@ public partial class SettingsViewModel : ObservableObject
         "character name and level, gold, experience, AC, class points, days played, membership days, faction reputation, and your items. " +
         "It never reads or keeps your e-mail address, IP address, password, user or character ids, or anything about other players. " +
         "It never sends anything to the game and never acts for you. Nothing leaves this computer; the only network access is to the AQW Wiki, " +
-        "when you ask for the Hard Farms list. The data is saved locally so the app opens with it, and Forget my data removes it. " +
-        "Reading the game's traffic is probably not allowed by the game's terms and can get an account banned: use a throwaway account.";
+        "when you ask for the Hard Farms list. The data is saved locally so the app opens with it, and Forget my data removes it.";
 
     public const string CreditsText =
         "Unofficial fan project, not made by, endorsed by or connected to Artix Entertainment. AdventureQuest Worlds belongs to its owners. " +

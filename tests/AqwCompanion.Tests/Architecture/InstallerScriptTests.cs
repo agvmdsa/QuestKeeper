@@ -36,6 +36,15 @@ public class InstallerScriptTests
     }
 
     [Fact]
+    public void The_start_after_install_entry_uses_shellexec_so_the_administrator_prompt_can_show()
+    {
+        var launch = Script().Split('\n').Single(line => line.Contains("Description: \"Start ", StringComparison.Ordinal));
+
+        Assert.Contains("shellexec", launch);
+        Assert.Contains("postinstall", launch);
+    }
+
+    [Fact]
     public void The_installer_removes_the_start_with_windows_task_and_never_deletes_data_without_asking()
     {
         var script = Script();

@@ -30,8 +30,6 @@ Seeing what you own, your faction ranks and what is missing for the next rank me
 - **One screen.** Your character, your factions (closest to the next rank first) and the Hard Farms list, with what you own marked from your captured inventory.
 - **Local.** Everything is saved on your computer. **Forget my data** (in **Settings**) removes it. No telemetry.
 
-> Reading the game's traffic is probably not allowed by the game's terms and can get an account banned. Use a throwaway account, and do it knowingly.
-
 ## Install
 
 You need 64-bit Windows and [Npcap](https://npcap.com/), which you install yourself from its own site: its license does not allow other programs to bundle it. Npcap is free for personal use on up to five computers.

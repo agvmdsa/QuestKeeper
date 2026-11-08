@@ -65,7 +65,8 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Tasks: deskto
 [Run]
 ; Only offered when Npcap is missing; the player decides by leaving the box checked or not.
 Filename: "{#NpcapUrl}"; Description: "Open the Npcap download page (needed to read the game data)"; Flags: shellexec postinstall skipifsilent; Check: not NpcapInstalled
-Filename: "{app}\{#MyAppExe}"; Description: "Start {#MyAppName}"; Flags: nowait postinstall skipifsilent
+; shellexec: the app asks for administrator rights, and only ShellExecute can show that prompt (CreateProcess fails with code 740).
+Filename: "{app}\{#MyAppExe}"; Description: "Start {#MyAppName}"; Flags: shellexec nowait postinstall skipifsilent
 
 [UninstallRun]
 ; "Start with Windows" in the app's settings creates this scheduled task.

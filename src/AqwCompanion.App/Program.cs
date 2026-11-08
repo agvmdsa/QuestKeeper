@@ -1,4 +1,5 @@
 using AqwCompanion.App.Infrastructure;
+using AqwCompanion.App.Infrastructure.Elevation;
 using Avalonia;
 using Serilog;
 
@@ -9,7 +10,7 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        var paths = AppPaths.ForCurrentUser(AppInfo.ExeName);
+        var paths = AppPaths.ForCurrentUser(AppInfo.ExeName, StartupArguments.TryGetDataRoot(args));
 
         Log.Logger = LoggingSetup.CreateLogger(paths, AppInfo.Version);
         Log.Information("Starting {SafeProduct} {SafeVersion}", AppInfo.ProductName, AppInfo.Version);

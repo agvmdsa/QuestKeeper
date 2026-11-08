@@ -9,6 +9,9 @@ public sealed record AppPaths(string Root)
     public string ReputationDirectory => Path.Combine(Root, "reputation");
     public string DatabasePath => Path.Combine(DataDirectory, "companion.db");
 
-    public static AppPaths ForCurrentUser(string appName) =>
-        new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), appName));
+    /// <summary>The per-user root, or <paramref name="dataRoot"/> when it names an existing directory (an elevated relaunch).</summary>
+    public static AppPaths ForCurrentUser(string appName, string? dataRoot = null) =>
+        dataRoot is not null && Directory.Exists(dataRoot)
+            ? new(dataRoot)
+            : new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), appName));
 }

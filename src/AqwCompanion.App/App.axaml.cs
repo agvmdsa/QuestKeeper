@@ -1,3 +1,4 @@
+using AqwCompanion.App.Infrastructure.Elevation;
 using AqwCompanion.App.Shell;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -14,7 +15,7 @@ public partial class CompanionApp : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var services = CompositionRoot.Build(AppPaths.ForCurrentUser(AppInfo.ExeName));
+            var services = CompositionRoot.Build(AppPaths.ForCurrentUser(AppInfo.ExeName, StartupArguments.TryGetDataRoot(desktop.Args ?? [])));
             var main = services.GetRequiredService<MainViewModel>();
             desktop.MainWindow = new MainWindow { DataContext = main };
             _ = main.Account.RestoreStoredDataAsync();

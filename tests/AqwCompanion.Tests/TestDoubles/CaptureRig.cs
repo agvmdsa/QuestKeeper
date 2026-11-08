@@ -1,6 +1,7 @@
 using AqwCompanion.App;
 using AqwCompanion.App.GameData;
 using AqwCompanion.Capture;
+using AqwCompanion.Core.Capture;
 
 namespace AqwCompanion.Tests.TestDoubles;
 
@@ -26,6 +27,18 @@ public sealed class CaptureRig
     public CaptureRig() => Session = new CaptureSession(
         () => Source, Elevation, () => Npcap, () => IsWindows, Store, Delay, TimeProvider.System, Exit,
         new AppPaths("/tmp/aqw-fictional-root"));
+
+    /// <summary>A source that hands over the segments and ends at once.</summary>
+    public static FakePacketSource Feeding(IEnumerable<TcpSegment> segments) =>
+        new((onSegment, _) =>
+        {
+            foreach (var segment in segments)
+            {
+                onSegment(segment);
+            }
+
+            return Task.CompletedTask;
+        });
 
     public GameDataViewModel CreateViewModel(Action<Action>? onUiThread = null) => new(Session, onUiThread);
 }

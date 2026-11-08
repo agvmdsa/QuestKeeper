@@ -15,7 +15,7 @@ public class HardFarmsForgettingTests
     private readonly HardFarmsViewModel _vm;
 
     public HardFarmsForgettingTests() =>
-        _vm = new HardFarmsViewModel(_store, _sync, new InventoryCardViewModel(new SidebarViewModel()), new FakeUrlLauncher());
+        _vm = new HardFarmsViewModel(_store, _sync, ActiveInventoryBuilder.Empty(), new FakeUrlLauncher());
 
     [Fact]
     public void The_name_is_Hard_Farms()

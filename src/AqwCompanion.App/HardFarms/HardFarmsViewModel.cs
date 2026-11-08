@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System.Globalization;
 using AqwCompanion.App.Infrastructure.Formatting;
 using AqwCompanion.App.Inventory;
@@ -44,7 +43,7 @@ public partial class HardFarmsViewModel : ObservableObject, IForgettable
 
     private readonly IHardFarmStore _store;
     private readonly IHardFarmSync _sync;
-    private readonly InventoryCardViewModel _inventory;
+    private readonly ActiveInventory _inventory;
     private readonly IUrlLauncher _launcher;
     private readonly Action<Action> _onUiThread;
 
@@ -73,7 +72,7 @@ public partial class HardFarmsViewModel : ObservableObject, IForgettable
     public HardFarmsViewModel(
         IHardFarmStore store,
         IHardFarmSync sync,
-        InventoryCardViewModel inventory,
+        ActiveInventory inventory,
         IUrlLauncher launcher,
         Action<Action>? onUiThread = null)
     {
@@ -85,7 +84,7 @@ public partial class HardFarmsViewModel : ObservableObject, IForgettable
         _typeFilter = AllTypes;
         _groupFilter = AllGroups;
         _ownedFilter = AllOwnership;
-        inventory.PropertyChanged += OnInventoryChanged;
+        inventory.Changed += OnInventoryChanged;
     }
 
     public IReadOnlyList<FilterOption<WikiType>> TypeOptions => TypeChoices;
@@ -399,9 +398,9 @@ public partial class HardFarmsViewModel : ObservableObject, IForgettable
 
     partial void OnSearchTextChanged(string value) => Refilter();
 
-    private void OnInventoryChanged(object? sender, PropertyChangedEventArgs e)
+    private void OnInventoryChanged(object? sender, EventArgs e)
     {
-        if (e.PropertyName == nameof(InventoryCardViewModel.Data) && _list is not null)
+        if (_list is not null)
         {
             RebuildRows();
             Refilter();
@@ -439,7 +438,7 @@ public partial class HardFarmsViewModel : ObservableObject, IForgettable
 
     private void RebuildRows()
     {
-        var inventory = _inventory.Data;
+        var inventory = _inventory.Current;
         _all = _candidates
             .Select(c => new HardFarmRow(
                 c.Slug,
@@ -474,7 +473,7 @@ public partial class HardFarmsViewModel : ObservableObject, IForgettable
 
         SummaryText = _list is null
             ? string.Empty
-            : _inventory.Data is null
+            : _inventory.Current is null
                 ? string.Create(CultureInfo.InvariantCulture, $"{scope.Count} {(scope.Count == 1 ? "entry" : "entries")} — {NoInventoryHint}")
                 : string.Create(CultureInfo.InvariantCulture, $"{ownedInScope} of {scope.Count} owned");
 

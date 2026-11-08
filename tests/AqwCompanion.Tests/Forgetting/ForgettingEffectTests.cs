@@ -119,7 +119,7 @@ public sealed class ForgettingEffectTests : IDisposable
         await File.WriteAllBytesAsync(Path.Combine(_paths.ExportDirectory, "y.zip"), [4, 5, 6]);
 
         var hardFarms = new HardFarmsViewModel(
-            hardFarmStore, new FakeHardFarmSync(), new InventoryCardViewModel(new SidebarViewModel()), new FakeUrlLauncher());
+            hardFarmStore, new FakeHardFarmSync(), ActiveInventoryBuilder.Empty(), new FakeUrlLauncher());
         var reputation = new ReputationViewModel(reputationStore, new FakeReputationFilePicker(), source, TimeProvider.System);
         var dialog = new FakeSignInDialog();
 

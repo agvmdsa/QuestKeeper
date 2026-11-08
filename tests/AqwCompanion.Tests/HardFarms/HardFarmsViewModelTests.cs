@@ -3,9 +3,12 @@ using AqwCompanion.App.Account;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure.Formatting;
 using AqwCompanion.App.Inventory;
+using AqwCompanion.Core.Capture;
+using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Inventory;
 using AqwCompanion.Core.Wiki;
 using AqwCompanion.Tests.TestDoubles;
+using static AqwCompanion.Tests.Capture.GameCaptureBuilder;
 
 namespace AqwCompanion.Tests.HardFarms;
 
@@ -17,11 +20,17 @@ public class HardFarmsViewModelTests
     private readonly HardFarmStore _store;
     private readonly FakeHardFarmSync _sync = new();
     private readonly InventoryCardViewModel _inventory = new(new SidebarViewModel());
+    private readonly CaptureRig _capture = new();
+    private readonly ActiveInventory _active;
     private readonly FakeUrlLauncher _launcher = new();
 
-    public HardFarmsViewModelTests() => _store = new HardFarmStore(_inner.Module());
+    public HardFarmsViewModelTests()
+    {
+        _store = new HardFarmStore(_inner.Module());
+        _active = new ActiveInventory(_inventory, _capture.CreateViewModel());
+    }
 
-    private HardFarmsViewModel Build() => new(_store, _sync, _inventory, _launcher);
+    private HardFarmsViewModel Build() => new(_store, _sync, _active, _launcher);
 
     private static HardFarmList List() => new(
         [new HardFarmGroup("Nation", ["blade-one", "cape-one", "void-highlord-class"]), new HardFarmGroup("Legion", ["blade-two", "cape-one", "pet-one"])],
@@ -547,7 +556,7 @@ public class HardFarmsViewModelTests
     public async Task Forget_cancels_a_running_update_and_its_late_callbacks_and_answer_do_not_bring_the_data_back()
     {
         var sync = new StubbornSync();
-        var vm = new HardFarmsViewModel(_store, sync, _inventory, _launcher);
+        var vm = new HardFarmsViewModel(_store, sync, _active, _launcher);
 
         var run = vm.UpdateCommand.ExecuteAsync(null);
         Assert.True(vm.IsUpdating);
@@ -579,7 +588,7 @@ public class HardFarmsViewModelTests
     public async Task A_cancelled_old_run_does_not_disturb_an_update_started_after_Forget()
     {
         var sync = new StubbornSync();
-        var vm = new HardFarmsViewModel(_store, sync, _inventory, _launcher);
+        var vm = new HardFarmsViewModel(_store, sync, _active, _launcher);
         var oldRun = vm.UpdateCommand.ExecuteAsync(null);
         vm.Quiesce();
         vm.Forget();
@@ -610,7 +619,7 @@ public class HardFarmsViewModelTests
     {
         _store.SaveList(List(), At);
         var gated = new GatedStore(_store);
-        var vm = new HardFarmsViewModel(gated, _sync, _inventory, _launcher);
+        var vm = new HardFarmsViewModel(gated, _sync, _active, _launcher);
 
         var restore = vm.RestoreAsync();
         await gated.Entered.Task;
@@ -629,7 +638,7 @@ public class HardFarmsViewModelTests
     {
         _store.SaveList(List(), At);
         var gated = new GatedStore(_store);
-        var vm = new HardFarmsViewModel(gated, _sync, _inventory, _launcher);
+        var vm = new HardFarmsViewModel(gated, _sync, _active, _launcher);
         var newer = new WikiTypeTable([new WikiTypeRow("blade-one", "Blade 1", WikiType.Armor)]);
         _sync.Gate = new TaskCompletionSource();
         _sync.Result = new SyncResult(SyncStatus.Partial, "Types only.", ["pets"]);
@@ -655,7 +664,7 @@ public class HardFarmsViewModelTests
         var oldList = new HardFarmList([new HardFarmGroup("Old", ["old-one"])], null);
         _store.SaveList(oldList, At.AddDays(-9));
         var gated = new GatedStore(_store);
-        var vm = new HardFarmsViewModel(gated, _sync, _inventory, _launcher);
+        var vm = new HardFarmsViewModel(gated, _sync, _active, _launcher);
         _sync.Gate = new TaskCompletionSource();
         _sync.Result = new SyncResult(SyncStatus.Updated, "Stored.", []);
 
@@ -919,7 +928,7 @@ public class HardFarmsViewModelTests
     public async Task What_the_sync_reports_goes_through_the_UI_thread_hook_and_a_late_one_after_Forget_does_nothing()
     {
         var queue = new Queue<Action>();
-        var vm = new HardFarmsViewModel(_store, _sync, _inventory, _launcher, queue.Enqueue);
+        var vm = new HardFarmsViewModel(_store, _sync, _active, _launcher, queue.Enqueue);
         _sync.Gate = new TaskCompletionSource();
         _sync.Result = new SyncResult(SyncStatus.Updated, "Done.", []);
         var run = vm.UpdateCommand.ExecuteAsync(null);
@@ -992,5 +1001,68 @@ public class HardFarmsViewModelTests
         await vm.RestoreAsync();
 
         Assert.Equal([Ownership.Unknown], vm.Rows.Select(r => r.Ownership));
+    }
+
+    // A login whose captured inventory holds the given item names (all of type Sword).
+    private IEnumerable<TcpSegment> LoginOwning(params string[] names) =>
+        Connection(
+            includeInventory: false,
+            extraServerMessages: [EncodeBlob(LoadInventoryBig([], names.Select((name, i) => (object?)Item(name, "Sword", itemId: 100 + i)).ToList()))]).Server;
+
+    private async Task Capture(params string[] names)
+    {
+        _capture.Source = CaptureRig.Feeding(LoginOwning(names));
+        await _capture.Session.StartAsync().WaitAsync(TimeSpan.FromSeconds(30));
+    }
+
+    [Fact]
+    public async Task The_captured_inventory_marks_entries_Owned_even_when_the_site_inventory_is_empty()
+    {
+        var vm = await Loaded();
+        Assert.All(vm.Rows, row => Assert.Equal(Ownership.Unknown, row.Ownership));
+
+        await Capture("Blade One", "Cape One");
+
+        Assert.Equal(Ownership.Owned, vm.Rows.Single(r => r.Slug == "blade-one").Ownership);
+        Assert.Equal(Ownership.Owned, vm.Rows.First(r => r.Slug == "cape-one").Ownership);
+        Assert.Equal(Ownership.Missing, vm.Rows.Single(r => r.Slug == "pet-one").Ownership);
+        Assert.DoesNotContain(HardFarmsViewModel.NoInventoryHint, vm.SummaryText);
+    }
+
+    [Fact]
+    public async Task Without_a_snapshot_the_site_inventory_still_decides()
+    {
+        _inventory.Data = Owns("Pet One");
+
+        var vm = await Loaded();
+
+        Assert.Equal(Ownership.Owned, vm.Rows.Single(r => r.Slug == "pet-one").Ownership);
+        Assert.Equal(Ownership.Missing, vm.Rows.Single(r => r.Slug == "blade-one").Ownership);
+    }
+
+    [Fact]
+    public async Task The_rows_are_refiltered_when_the_snapshot_arrives_and_the_captured_inventory_wins()
+    {
+        _inventory.Data = Owns("Pet One");
+        var vm = await Loaded();
+        Assert.Equal(Ownership.Owned, vm.Rows.Single(r => r.Slug == "pet-one").Ownership);
+
+        await Capture("Blade One");
+
+        Assert.Equal(Ownership.Owned, vm.Rows.Single(r => r.Slug == "blade-one").Ownership);
+        Assert.Equal(Ownership.Missing, vm.Rows.Single(r => r.Slug == "pet-one").Ownership);
+    }
+
+    [Fact]
+    public async Task Forgetting_the_capture_goes_back_to_the_site_inventory()
+    {
+        _inventory.Data = Owns("Pet One");
+        var vm = await Loaded();
+        await Capture("Blade One");
+
+        ((IForgettable)_capture.Session).Forget();
+
+        Assert.Equal(Ownership.Owned, vm.Rows.Single(r => r.Slug == "pet-one").Ownership);
+        Assert.Equal(Ownership.Missing, vm.Rows.Single(r => r.Slug == "blade-one").Ownership);
     }
 }

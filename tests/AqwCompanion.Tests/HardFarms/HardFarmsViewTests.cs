@@ -62,7 +62,7 @@ public class HardFarmsViewTests
         var sync = new FakeHardFarmSync { Pending = pending ?? [] };
         var launcher = new FakeUrlLauncher();
         var inventory = new InventoryCardViewModel(new SidebarViewModel());
-        var vm = new HardFarmsViewModel(store, sync, inventory, launcher);
+        var vm = new HardFarmsViewModel(store, sync, ActiveInventoryBuilder.For(inventory), launcher);
         await vm.RestoreAsync();
         var view = new HardFarmsView { DataContext = vm };
         var window = new Window { Width = 1100, Height = 700, Content = view };

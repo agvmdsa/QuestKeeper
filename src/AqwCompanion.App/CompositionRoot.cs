@@ -87,7 +87,7 @@ public static class CompositionRoot
         services.AddSingleton(sp => new HardFarmsViewModel(
             sp.GetRequiredService<IHardFarmStore>(),
             sp.GetRequiredService<IHardFarmSync>(),
-            sp.GetRequiredService<InventoryCardViewModel>(),
+            sp.GetRequiredService<ActiveInventory>(),
             sp.GetRequiredService<IUrlLauncher>(),
             OnUiThread));
         services.AddSingleton<IReputationStore, ReputationStore>();
@@ -107,6 +107,7 @@ public static class CompositionRoot
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<IApplicationExit>(),
             sp.GetRequiredService<AppPaths>()));
+        services.AddSingleton<ActiveInventory>();
         services.AddSingleton(sp => new GameDataViewModel(sp.GetRequiredService<CaptureSession>(), OnUiThread));
         services.AddSingleton(sp => new ForgetCoordinator(
             () => sp.GetRequiredService<IAccountDataPersistence>().Forget(),

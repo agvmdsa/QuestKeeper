@@ -3,13 +3,11 @@ using AqwCompanion.App.Diagnostics;
 using AqwCompanion.App.GameData;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure;
-using AqwCompanion.App.Infrastructure.Browser;
 using AqwCompanion.App.Infrastructure.Elevation;
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Inventory;
 using AqwCompanion.App.Reputation;
 using AqwCompanion.App.Shell;
-using AqwCompanion.App.SignIn;
 using AqwCompanion.App.Wiki;
 using AqwCompanion.Capture;
 using AqwCompanion.Core.Account;
@@ -40,7 +38,6 @@ public static class CompositionRoot
         services.AddSingleton(_ => new SnapshotRedactor());
         services.AddSingleton<DiagnosticsExporter>();
         services.AddSingleton<FailedSnapshotBuffer>();
-        services.AddSingleton<WebViewBrowserHost>();
         services.AddSingleton<IPageParser<AccountIdentity>, AccountHomeParser>();
         services.AddSingleton<LatestResultStore<AccountIdentity>>();
         services.AddSingleton<IResultStore<AccountIdentity>>(sp => sp.GetRequiredService<LatestResultStore<AccountIdentity>>());
@@ -116,7 +113,6 @@ public static class CompositionRoot
                 sp.GetRequiredService<ReputationViewModel>(),
                 sp.GetRequiredService<CaptureSession>(),
             ]));
-        services.AddSingleton<ISignInDialog, SignInDialog>();
         services.AddSingleton<WikiViewModel>();
         services.AddSingleton<DiagnosticsViewModel>();
         services.AddSingleton<MainViewModel>();

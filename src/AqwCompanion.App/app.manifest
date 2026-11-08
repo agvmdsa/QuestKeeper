@@ -4,8 +4,7 @@
 
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
     <application>
-      <!-- Windows 10 and 11. Without this, Windows runs the app in legacy compatibility mode
-           and NativeWebView fails to create its child window (InvalidOperationException). -->
+      <!-- Windows 10 and 11. Without this, Windows runs the app in legacy compatibility mode. -->
       <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
     </application>
   </compatibility>

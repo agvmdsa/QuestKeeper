@@ -2,7 +2,6 @@ using AqwCompanion.App;
 using AqwCompanion.App.Shell;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
-using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AqwCompanion.Tests.Shell;
@@ -23,6 +22,5 @@ public class MainWindowSmokeTests
         var tabs = window.FindControl<TabControl>("Tabs")!;
         Assert.Equal(5, tabs.ItemCount);
         Assert.Equal("Wiki", Assert.IsType<TabItem>(tabs.Items[0]).Header);
-        Assert.Empty(window.GetVisualDescendants().OfType<NativeWebView>());
     }
 }

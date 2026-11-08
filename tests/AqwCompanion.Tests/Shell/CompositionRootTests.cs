@@ -2,13 +2,11 @@ using AqwCompanion.App;
 using AqwCompanion.App.GameData;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure;
-using AqwCompanion.App.Infrastructure.Browser;
 using AqwCompanion.App.Infrastructure.Elevation;
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Inventory;
 using AqwCompanion.App.Shell;
 using AqwCompanion.App.Wiki;
-using AqwCompanion.App.SignIn;
 using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Ingestion;
@@ -74,38 +72,14 @@ public class CompositionRootTests
     }
 
     [Fact]
-    public void Container_no_longer_registers_a_generic_browser_host()
+    public void Container_resolves_the_wiki_view_model_and_the_delay_seam()
     {
         var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
 
         using var services = CompositionRoot.Build(paths);
 
-        Assert.Null(services.GetService<IBrowserHost>());
         Assert.NotNull(services.GetRequiredService<WikiViewModel>());
-    }
-
-    [Fact]
-    public void Container_resolves_the_account_ingestion_pipeline_without_creating_a_browser_control()
-    {
-        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
-
-        using var services = CompositionRoot.Build(paths);
-
-        Assert.NotNull(services.GetRequiredService<IngestionService<AccountIdentity>>());
-        Assert.NotNull(services.GetRequiredService<ILogger<IngestionService<AccountIdentity>>>());
-        Assert.False(services.GetRequiredService<WebViewBrowserHost>().IsAttached);
-    }
-
-    [Fact]
-    public void Container_resolves_the_sign_in_dialog_without_opening_a_window_or_a_browser()
-    {
-        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
-
-        using var services = CompositionRoot.Build(paths);
-
-        Assert.IsType<SignInDialog>(services.GetRequiredService<ISignInDialog>());
         Assert.IsType<TaskDelay>(services.GetRequiredService<IDelay>());
-        Assert.False(services.GetRequiredService<WebViewBrowserHost>().IsAttached);
     }
 
     [Fact]

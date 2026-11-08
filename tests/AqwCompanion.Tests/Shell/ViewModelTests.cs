@@ -5,7 +5,6 @@ using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Inventory;
 using AqwCompanion.App.Reputation;
 using AqwCompanion.App.Shell;
-using AqwCompanion.App.SignIn;
 using AqwCompanion.Core.Wiki;
 using AqwCompanion.App.Wiki;
 using AqwCompanion.Core.Diagnostics;

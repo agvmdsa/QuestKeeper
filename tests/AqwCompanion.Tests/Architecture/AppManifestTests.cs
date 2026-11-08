@@ -22,7 +22,7 @@ public class AppManifestTests
     }
 
     [Fact]
-    public void The_manifest_keeps_the_windows_10_support_the_embedded_browser_needs()
+    public void The_manifest_declares_windows_10_support_so_the_app_does_not_run_in_legacy_mode()
     {
         var ids = Manifest()
             .Descendants(XName.Get("supportedOS", "urn:schemas-microsoft-com:compatibility.v1"))

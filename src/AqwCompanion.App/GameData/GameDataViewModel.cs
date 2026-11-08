@@ -361,7 +361,9 @@ public partial class GameDataViewModel : ObservableObject
         CaptureState.NotSupported => NotSupportedText,
         CaptureState.NpcapMissing => NpcapMissingText,
         CaptureState.NeedsAdministrator => NeedsAdministratorText,
-        CaptureState.Listening => ListeningText,
+        CaptureState.Listening => captured > 0
+            ? string.Create(CultureInfo.InvariantCulture, $"Listening. {Format(captured)} {(captured == 1 ? "character" : "characters")} captured so far. Log in another client to add more, or press Stop capture.")
+            : ListeningText,
         CaptureState.Done => captured > 0
             ? string.Create(CultureInfo.InvariantCulture, $"{DoneText} {Format(captured)} {(captured == 1 ? "character" : "characters")} captured.")
             : DoneText,

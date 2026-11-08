@@ -160,6 +160,39 @@ public class GameDataViewModelTests
     }
 
     [Fact]
+    public async Task Listening_says_how_many_characters_were_captured_so_far()
+    {
+        var (zeroSource, zeroStarted) = Holding();
+        var zeroRig = new CaptureRig { Source = zeroSource };
+        var zero = zeroRig.CreateViewModel();
+        var zeroRun = zero.StartCommand.ExecuteAsync(null);
+        await zeroStarted.Task.WaitAsync(Wait);
+        Assert.Equal("Waiting for a login. Open the game launcher now.", zero.StateText);
+        zero.StopCommand.Execute(null);
+        await zeroRun.WaitAsync(Wait);
+
+        var (oneSource, oneStarted) = Holding(Connection().Server);
+        var oneRig = new CaptureRig { Source = oneSource };
+        var one = oneRig.CreateViewModel();
+        var oneRun = one.StartCommand.ExecuteAsync(null);
+        await oneStarted.Task.WaitAsync(Wait);
+        Assert.True(one.IsListening);
+        Assert.Equal("Listening. 1 character captured so far. Log in another client to add more, or press Stop capture.", one.StateText);
+        one.StopCommand.Execute(null);
+        await oneRun.WaitAsync(Wait);
+
+        var (twoSource, twoStarted) = Holding(
+            Connection(clientPort: 50000, name: "First Hero").Server.Concat(Connection(clientPort: 50001, name: "Second Hero").Server));
+        var twoRig = new CaptureRig { Source = twoSource };
+        var two = twoRig.CreateViewModel();
+        var twoRun = two.StartCommand.ExecuteAsync(null);
+        await twoStarted.Task.WaitAsync(Wait);
+        Assert.Equal("Listening. 2 characters captured so far. Log in another client to add more, or press Stop capture.", two.StateText);
+        two.StopCommand.Execute(null);
+        await twoRun.WaitAsync(Wait);
+    }
+
+    [Fact]
     public async Task A_finished_capture_with_characters_names_how_many()
     {
         var (_, vm) = await Captured(Connection().Server);

@@ -34,6 +34,8 @@ public sealed class CaptureEngine(TimeProvider clock)
     private int _otherCommandsRead;
     private readonly int[] _failures = new int[Enum.GetValues<DecodeFailure>().Length];
     private readonly int[] _commands = new int[CaptureDecodeDiagnostics.KnownCommands.Count + 1];
+    private readonly Dictionary<string, int> _otherNames = [];
+    private readonly List<string> _otherNameOrder = [];
     private int _initUserDataAccepted;
     private int _initUserDataIgnoredNoGold;
     private int _initUserDataIgnoredNoName;
@@ -72,7 +74,7 @@ public sealed class CaptureEngine(TimeProvider clock)
         }
     }
 
-    /// <summary>Why messages could not be read and which known commands were read; counts only, never any content or unknown name.</summary>
+    /// <summary>Why messages could not be read and which known commands were read; counts only, never any content; an unknown command name only when it passes <see cref="CaptureDecodeDiagnostics.IsListableName"/>.</summary>
     public CaptureDecodeDiagnostics Decoding
     {
         get
@@ -89,7 +91,8 @@ public sealed class CaptureEngine(TimeProvider clock)
                 commands[CaptureDecodeDiagnostics.OtherCommand] = _commands[^1];
                 var ignored = _initUserDataIgnoredNoGold + _initUserDataIgnoredNoName + _initUserDataIgnoredOther;
                 return new CaptureDecodeDiagnostics(
-                    failures, commands, _initUserDataAccepted, ignored, _initUserDataIgnoredNoGold, _initUserDataIgnoredNoName);
+                    failures, commands, _initUserDataAccepted, ignored, _initUserDataIgnoredNoGold, _initUserDataIgnoredNoName,
+                    [.. _otherNameOrder.Select(name => KeyValuePair.Create(name, _otherNames[name]))]);
             }
         }
     }
@@ -244,7 +247,8 @@ public sealed class CaptureEngine(TimeProvider clock)
         return null;
     }
 
-    // Only names from the fixed list are ever used as a key; anything else is one number under "other".
+    // Only names from the fixed list are ever used as a command key; anything else is one number under "other", plus a
+    // listing under its name when it has the restricted charset and there is room.
     private void CountCommand(GameMessage message, GameDataPart? extracted)
     {
         var index = -1;
@@ -258,6 +262,11 @@ public sealed class CaptureEngine(TimeProvider clock)
         }
 
         _commands[index < 0 ? ^1 : index]++;
+        if (index < 0)
+        {
+            CountOtherName(message.Command);
+        }
+
         if (index < 0 || message.Command != "initUserData")
         {
             return;
@@ -278,6 +287,24 @@ public sealed class CaptureEngine(TimeProvider clock)
         else
         {
             _initUserDataIgnoredOther++;
+        }
+    }
+
+    private void CountOtherName(string? name)
+    {
+        if (!CaptureDecodeDiagnostics.IsListableName(name))
+        {
+            return;
+        }
+
+        if (_otherNames.TryGetValue(name!, out var count))
+        {
+            _otherNames[name!] = count + 1;
+        }
+        else if (_otherNames.Count < CaptureDecodeDiagnostics.MaxOtherNames)
+        {
+            _otherNames[name!] = 1;
+            _otherNameOrder.Add(name!);
         }
     }
 

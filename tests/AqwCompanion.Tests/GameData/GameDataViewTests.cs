@@ -51,6 +51,8 @@ public class GameDataViewTests
         return new Host { Rig = rig, Vm = vm, View = view, Window = window };
     }
 
+    private static byte[] Named(string cmd) => PlainJson(Envelope(cmd, new Dictionary<string, object?> { ["id"] = 1 }));
+
     private static FakePacketSource Feeding(IEnumerable<TcpSegment> segments) =>
         new((onSegment, _) =>
         {
@@ -224,6 +226,23 @@ public class GameDataViewTests
         Assert.Equal("https://npcap.com/", link.Text);
         Assert.Equal(GameDataViewModel.NpcapMissingText, h.View.Named<TextBlock>("GameDataStateText").Text);
         Assert.False(h.View.Named<Button>("GameDataRestartButton").IsEffectivelyVisible);
+    }
+
+    [AvaloniaFact]
+    public void The_other_commands_line_is_hidden_until_there_are_names_and_then_shows_them()
+    {
+        var h = Build();
+        var line = h.View.Named<SelectableTextBlock>("GameDataOtherNames");
+        Assert.False(line.IsEffectivelyVisible);
+
+        var stream = new[] { Named("repGain"), Named("repGain") }.SelectMany(m => m.Append((byte)0)).ToArray();
+        h.Rig.Source = Feeding([SynAck(1000), ServerData(1001, stream)]);
+        Press(h, "GameDataStartButton");
+        SettleUntil(h.Window, () => line.IsEffectivelyVisible, "the other commands line to appear");
+
+        Assert.Equal("Other commands seen: repGain 2", line.Text);
+        Assert.Equal("Other commands seen: repGain 2", AutomationProperties.GetName(line));
+        Assert.True(line.Bounds.Bottom <= h.Window.Bounds.Height);
     }
 
     [AvaloniaFact]

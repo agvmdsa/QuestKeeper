@@ -91,7 +91,7 @@ public sealed class CaptureSession(
         }
     }
 
-    /// <summary>Why messages were unreadable and which known commands were read (counts only); all zero before the first start.</summary>
+    /// <summary>Why messages were unreadable, which known commands were read and which unknown names were seen (counts only); all zero before the first start.</summary>
     public CaptureDecodeDiagnostics Decoding
     {
         get

@@ -434,7 +434,7 @@ public class CaptureEngineTests
     [Fact]
     public void An_unknown_command_is_counted_as_other_and_its_name_never_appears()
     {
-        const string unknown = "secretCommandName";
+        const string unknown = "secret command name";
         var engine = Send(Command(unknown), Command("mtls"), Command("mtls"));
 
         var decoding = engine.Decoding;
@@ -444,6 +444,66 @@ public class CaptureEngineTests
         Assert.Equal(CaptureDecodeDiagnostics.KnownCommands.Append("other").Order(), decoding.Commands.Keys.Order());
         Assert.DoesNotContain(unknown, decoding.ToString(), StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(unknown, string.Join("|", decoding.Failures.Keys) + string.Join("|", decoding.Commands.Keys), StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(decoding.OtherNames);
+    }
+
+    [Fact]
+    public void Unknown_valid_names_are_listed_with_counts_in_the_order_first_seen()
+    {
+        var engine = Send(Command("showMe"), Command("rep+gain.v2"), Command("showMe"), Command("mtls"), Command("showMe"));
+
+        var decoding = engine.Decoding;
+        Assert.Equal([KeyValuePair.Create("showMe", 3), KeyValuePair.Create("rep+gain.v2", 1)], decoding.OtherNames);
+        Assert.Equal(4, decoding.Command("other"));
+        Assert.Equal(1, decoding.Command("mtls"));
+    }
+
+    [Fact]
+    public void Known_names_are_never_duplicated_into_the_list()
+    {
+        var engine = Send([.. CaptureDecodeDiagnostics.KnownCommands.Select(Command), Command("other"), Command("fresh")]);
+
+        Assert.Equal([KeyValuePair.Create("fresh", 1)], engine.Decoding.OtherNames);
+        Assert.Equal(2, engine.Decoding.Command("other"));
+    }
+
+    [Fact]
+    public void Only_forty_distinct_names_are_listed_and_the_rest_count_as_other_only()
+    {
+        var names = Enumerable.Range(0, 41).Select(i => "cmd" + i).ToArray();
+        var engine = Send([.. names.Select(Command), Command("cmd0"), Command("cmd40")]);
+
+        var decoding = engine.Decoding;
+        Assert.Equal(40, decoding.OtherNames.Count);
+        Assert.DoesNotContain(decoding.OtherNames, n => n.Key == "cmd40");
+        Assert.Equal(2, decoding.OtherNames.Single(n => n.Key == "cmd0").Value);
+        Assert.Equal(43, decoding.Command("other"));
+    }
+
+    [Theory]
+    [InlineData("two words")]
+    [InlineData("semi;colon")]
+    [InlineData("quote\"s")]
+    [InlineData("%xt%marker")]
+    [InlineData("SECRET-EMAIL@example.com")]
+    [InlineData("SECRET-TOKEN-0123456789/slash")]
+    [InlineData("abcdefghijklmnopqrstuvwxyz0123456789_+.-X")]
+    public void Names_outside_the_restricted_charset_or_too_long_are_counted_as_other_only(string name)
+    {
+        var engine = Send(Command(name), Command("ok-name"));
+
+        var decoding = engine.Decoding;
+        Assert.Equal([KeyValuePair.Create("ok-name", 1)], decoding.OtherNames);
+        Assert.Equal(2, decoding.Command("other"));
+        Assert.True(CaptureDecodeDiagnostics.IsListableName("abcdefghijklmnopqrstuvwxyz0123456789_+.-"));
+        AssertNoSecrets(decoding);
+    }
+
+    [Fact]
+    public void A_name_made_of_a_trailing_newline_is_not_listable()
+    {
+        Assert.False(CaptureDecodeDiagnostics.IsListableName("name\n"));
+        Assert.False(CaptureDecodeDiagnostics.IsListableName(null));
     }
 
     [Fact]

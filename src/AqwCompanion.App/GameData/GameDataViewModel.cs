@@ -89,6 +89,11 @@ public partial class GameDataViewModel : ObservableObject
 
     public bool HasCommands => CommandsText.Length > 0;
 
+    /// <summary>The names of commands the capture does not know yet, with counts; empty when there are none.</summary>
+    public string OtherNamesText { get; private set; } = string.Empty;
+
+    public bool HasOtherNames => OtherNamesText.Length > 0;
+
     /// <summary>What the packet source says about its run (numbers and exception type names only), or empty.</summary>
     public string DetailsText { get; private set; } = string.Empty;
 
@@ -175,6 +180,10 @@ public partial class GameDataViewModel : ObservableObject
         OnPropertyChanged(nameof(HasDecoding));
         OnPropertyChanged(nameof(CommandsText));
         OnPropertyChanged(nameof(HasCommands));
+        OnPropertyChanged(nameof(OtherNamesText));
+        OnPropertyChanged(nameof(HasOtherNames));
+        OnPropertyChanged(nameof(OtherNamesText));
+        OnPropertyChanged(nameof(HasOtherNames));
         OnPropertyChanged(nameof(ConnectionsText));
         OnPropertyChanged(nameof(HasConnections));
         OnPropertyChanged(nameof(SamplesText));
@@ -222,6 +231,7 @@ public partial class GameDataViewModel : ObservableObject
         var decoding = _session.Decoding;
         DecodingText = DecodingTextFor(decoding);
         CommandsText = CommandsTextFor(decoding);
+        OtherNamesText = OtherNamesTextFor(decoding);
         var connections = _session.Connections;
         ConnectionsText = ConnectionsTextFor(connections);
         SamplesText = SamplesTextFor(connections);
@@ -264,6 +274,11 @@ public partial class GameDataViewModel : ObservableObject
         var parts = reasons.Where(r => decoding.Failure(r.Reason) > 0).Select(r => $"{r.Label} {Format(decoding.Failure(r.Reason))}").ToList();
         return parts.Count == 0 ? string.Empty : "Unreadable: " + string.Join(" · ", parts);
     }
+
+    private static string OtherNamesTextFor(CaptureDecodeDiagnostics decoding) =>
+        decoding.OtherNames.Count == 0
+            ? string.Empty
+            : "Other commands seen: " + string.Join(" · ", decoding.OtherNames.Select(n => $"{n.Key} {Format(n.Value)}"));
 
     private static string CommandsTextFor(CaptureDecodeDiagnostics decoding)
     {

@@ -91,6 +91,9 @@
             <SelectableTextBlock x:Name="GameDataCommands" Text="{Binding CommandsText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
                                  TextWrapping="Wrap" IsVisible="{Binding HasCommands}"
                                  AutomationProperties.Name="{Binding CommandsText}" />
+            <SelectableTextBlock x:Name="GameDataOtherNames" Text="{Binding OtherNamesText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
+                                 TextWrapping="Wrap" IsVisible="{Binding HasOtherNames}"
+                                 AutomationProperties.Name="{Binding OtherNamesText}" />
             <SelectableTextBlock x:Name="GameDataDetails" Text="{Binding DetailsText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
                                  TextWrapping="Wrap" IsVisible="{Binding HasDetails}"
                                  AutomationProperties.Name="{Binding DetailsText}" />

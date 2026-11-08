@@ -12,6 +12,8 @@ public class GameDataViewModelTests
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(30);
 
+    private static byte[] Named(string cmd) => PlainJson(Envelope(cmd, new Dictionary<string, object?> { ["id"] = 1 }));
+
     private static FakePacketSource Feeding(IEnumerable<TcpSegment> segments) =>
         new((onSegment, _) =>
         {
@@ -616,6 +618,31 @@ public class GameDataViewModelTests
             vm.CommandsText);
         Assert.True(vm.HasCommands);
         Assert.Equal(string.Empty, vm.DecodingText);
+    }
+
+    [Fact]
+    public async Task The_other_commands_line_lists_unknown_names_with_counts_and_is_empty_otherwise()
+    {
+        Assert.Equal(string.Empty, new CaptureRig().CreateViewModel().OtherNamesText);
+        Assert.False(new CaptureRig().CreateViewModel().HasOtherNames);
+
+        var stream = new[] { Named("repGain"), Named("repGain"), Named("levelUp"), Named("two words") }
+            .SelectMany(m => m.Append((byte)0)).ToArray();
+        var held = Holding([SynAck(1000), ServerData(1001, stream)]);
+        var rig = new CaptureRig { Source = held.Source };
+        var vm = rig.CreateViewModel();
+        var raised = new List<string?>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        _ = vm.StartCommand.ExecuteAsync(null);
+        await held.Started.Task.WaitAsync(Wait);
+        vm.RefreshCommand.Execute(null);
+
+        Assert.Equal("Other commands seen: repGain 2 · levelUp 1", vm.OtherNamesText);
+        Assert.True(vm.HasOtherNames);
+        Assert.Contains(nameof(GameDataViewModel.OtherNamesText), raised);
+        Assert.DoesNotContain("two words", vm.OtherNamesText);
+        vm.StopCommand.Execute(null);
     }
 
     [Fact]

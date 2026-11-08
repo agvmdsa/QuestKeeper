@@ -34,14 +34,16 @@ Seeing what you own, your faction ranks and what is missing for the next rank me
 
 ## Install
 
-You need 64-bit Windows and [Npcap](https://npcap.com/), which you install yourself from its own site (its license does not allow other programs to bundle it). Npcap is free for personal use on up to five computers.
+You need 64-bit Windows and [Npcap](https://npcap.com/), which you install yourself from its own site: its license does not allow other programs to bundle it. Npcap is free for personal use on up to five computers.
 
-1. Download `Questkeeper-vX.Y.Z-win-x64.zip` from the [latest release](https://github.com/agvmdsa/QuestKeeper/releases/latest).
-2. Extract it anywhere and run `Questkeeper.exe`. There is no installer and no .NET to install. Windows asks for administrator rights each time, because the capture driver needs them.
+1. Download `Questkeeper-Setup-vX.Y.Z.exe` from the [latest release](https://github.com/agvmdsa/QuestKeeper/releases/latest) and run it. It has a page that tells you whether Npcap is installed and opens the official download page if it is not.
+2. Start Questkeeper from the Start menu. Windows asks for administrator rights each time, because the capture driver needs them.
 3. The builds are not code-signed yet, so SmartScreen may warn you: choose **More info**, then **Run anyway**, if you trust the file.
-4. Optional: compare the zip with `SHA256SUMS.txt` (`Get-FileHash .\Questkeeper-vX.Y.Z-win-x64.zip -Algorithm SHA256` in PowerShell).
+4. Optional: compare the download with `SHA256SUMS.txt` (`Get-FileHash .\Questkeeper-Setup-vX.Y.Z.exe -Algorithm SHA256` in PowerShell).
 
-Your data, logs and crash reports live in `%LOCALAPPDATA%\AqwCompanion`; delete that folder to remove everything the app stored.
+No installer? Download `Questkeeper-vX.Y.Z-win-x64.zip` instead, extract it anywhere and run `Questkeeper.exe`. Nothing else is needed but Npcap.
+
+Your data, logs and crash reports live in `%LOCALAPPDATA%\AqwCompanion`; delete that folder to remove everything the app stored. Uninstalling asks whether to remove it too.
 
 ## Using it
 

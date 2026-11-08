@@ -46,12 +46,12 @@ jobs:
           -p:EnableCompressionInSingleFile=true -o out/publish
 
       # --- Code signing placeholder -------------------------------------------------
-      # Sign out/publish/${{ env.BUILD_EXE }}.exe here BEFORE packaging (it is renamed to the product name while packaging) once a signing
+      # Sign out/publish/${{ env.BUILD_EXE }}.exe here BEFORE packaging (it is renamed to the product name while packaging) and the installer once a signing
       # option is chosen (Azure Trusted Signing, OV/EV certificate, or SignPath).
       # Decide the final product/publisher name first: it is embedded in the certificate.
       # -------------------------------------------------------------------------------
 
-      - name: Package
+      - name: Package the zip
         shell: pwsh
         env:
           TAG: ${{ github.ref_name }}
@@ -60,12 +60,32 @@ jobs:
           # The assembly keeps its first name (the data folder and the single-instance lock use it); the file players see is the product name.
           Rename-Item "out/publish/$($env:BUILD_EXE).exe" "$($env:APP_NAME).exe"
           New-Item -ItemType Directory -Force dist | Out-Null
-          $zip = "dist/$($env:APP_NAME)-$($env:TAG)-win-x64.zip"
-          Compress-Archive -Path out/publish/* -DestinationPath $zip
-          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-          $name = Split-Path $zip -Leaf
+          Compress-Archive -Path out/publish/* -DestinationPath "dist/$($env:APP_NAME)-$($env:TAG)-win-x64.zip"
+
+      # The installer wraps the same published files. It does not contain Npcap (its license forbids redistribution);
+      # it checks for it and links to the official download page.
+      - name: Build the installer
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          choco install innosetup --no-progress -y
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { Write-Error "ISCC.exe not found at $iscc"; exit 1 }
+          $label = $env:TAG.TrimStart('v')
+          $numeric = ($label -split '-')[0]
+          & $iscc "/DMyAppVersion=$numeric" "/DMyAppVersionLabel=$label" installer/Questkeeper.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path "dist/Questkeeper-Setup-v$label.exe")) { Write-Error "The installer was not produced"; exit 1 }
+
+      - name: Checksums
+        shell: pwsh
+        run: |
           # Write with LF endings and no BOM so `sha256sum -c` works on macOS/Linux.
-          [IO.File]::WriteAllText((Join-Path $PWD 'dist/SHA256SUMS.txt'), "$hash  $name`n")
+          $lines = Get-ChildItem dist -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object Name | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+          }
+          [IO.File]::WriteAllText((Join-Path $PWD 'dist/SHA256SUMS.txt'), (($lines -join "`n") + "`n"))
 
       - name: Create GitHub Release
         shell: pwsh

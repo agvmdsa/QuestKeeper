@@ -145,6 +145,10 @@ public class GameDataViewTests
         var h = Captured(Connection().Server);
 
         Assert.Equal("Fictional Hero · Lv 60", h.View.Named<TextBlock>("GameDataProfileHeadline").Text);
+        var captured = h.View.Named<TextBlock>("GameDataCapturedText");
+        Assert.True(captured.IsEffectivelyVisible);
+        Assert.StartsWith("Captured ", captured.Text);
+        Assert.EndsWith(" in this session.", captured.Text);
         Assert.False(h.View.Named<TextBlock>("GameDataEmptyState").IsEffectivelyVisible);
         Assert.Contains("Gold: 9,876,543,210", TextsNamed(h, "GameDataProfileLine"));
         SettleUntil(h.Window, () => TextsNamed(h, "GameDataFactionRowName").Contains("Fictional Order"), "the faction rows");

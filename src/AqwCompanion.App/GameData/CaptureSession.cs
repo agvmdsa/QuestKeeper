@@ -27,6 +27,7 @@ public sealed class CaptureSession(
     private readonly object _gate = new();
     private CaptureState _state;
     private CaptureFailure _failure;
+    private readonly HashSet<string> _capturedNames = new(StringComparer.OrdinalIgnoreCase);
     private CharacterSnapshot[] _characters = [];
     private CaptureEngine? _engine;
     private IPacketSource? _source;
@@ -155,6 +156,15 @@ public sealed class CaptureSession(
             {
                 return _characters;
             }
+        }
+    }
+
+    /// <summary>True when a Character of this name (ignoring case) was captured during this run of the app, not only restored from storage.</summary>
+    public bool IsCapturedThisSession(string name)
+    {
+        lock (_gate)
+        {
+            return _capturedNames.Contains(name);
         }
     }
 
@@ -308,6 +318,7 @@ public sealed class CaptureSession(
             cts = _current?.Cts;
             _current = null;
             _characters = [];
+            _capturedNames.Clear();
             _engine = null;
             _source = null;
             _state = CaptureState.Idle;
@@ -389,6 +400,7 @@ public sealed class CaptureSession(
             }
 
             _characters = [.. list];
+            _capturedNames.Add(snapshot.Profile.Name);
             store.Save(_characters);
         }
 

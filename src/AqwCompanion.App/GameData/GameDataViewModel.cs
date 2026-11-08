@@ -1,4 +1,5 @@
 using System.Globalization;
+using AqwCompanion.App.Infrastructure.Formatting;
 using AqwCompanion.Core.Capture;
 using AqwCompanion.Core.Reputation;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -135,6 +136,11 @@ public partial class GameDataViewModel : ObservableObject
     }
 
     public string ProfileHeadline { get; private set; } = string.Empty;
+
+    /// <summary>Says whether the selected Character was captured in this session or saved earlier; empty when there is none.</summary>
+    public string CapturedText { get; private set; } = string.Empty;
+
+    public bool HasCapturedText => CapturedText.Length > 0;
 
     public IReadOnlyList<string> ProfileLines { get; private set; } = [];
 
@@ -329,6 +335,7 @@ public partial class GameDataViewModel : ObservableObject
         _active = snapshot;
 
         ProfileHeadline = snapshot is null ? string.Empty : string.Create(CultureInfo.InvariantCulture, $"{snapshot.Profile.Name} · Lv {snapshot.Profile.Level}");
+        CapturedText = snapshot is null ? string.Empty : CapturedTextFor(snapshot);
         ProfileLines = snapshot is null ? [] : ProfileLinesFor(snapshot.Profile);
         Factions = snapshot is null
             ? []
@@ -347,6 +354,8 @@ public partial class GameDataViewModel : ObservableObject
 
         OnPropertyChanged(nameof(ActiveSnapshot));
         OnPropertyChanged(nameof(ProfileHeadline));
+        OnPropertyChanged(nameof(CapturedText));
+        OnPropertyChanged(nameof(HasCapturedText));
         OnPropertyChanged(nameof(ProfileLines));
         OnPropertyChanged(nameof(Factions));
         ApplyFilter();
@@ -355,6 +364,14 @@ public partial class GameDataViewModel : ObservableObject
         {
             ActiveSnapshotChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    private string CapturedTextFor(CharacterSnapshot snapshot)
+    {
+        var time = LocalTimeText.Format(snapshot.CapturedAtUtc);
+        return _session.IsCapturedThisSession(snapshot.Profile.Name)
+            ? $"Captured {time} in this session."
+            : $"Saved from an earlier session ({time}). Log in again to refresh it.";
     }
 
     private void ApplyFilter()

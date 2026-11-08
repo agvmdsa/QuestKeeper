@@ -356,6 +356,38 @@ public class CaptureSessionTests
     }
 
     [Fact]
+    public async Task A_restored_character_is_not_captured_this_session_until_it_is_captured_again()
+    {
+        var rig = new Rig { Source = Feeding(Connection(name: "stored hero").Server) };
+        rig.Store.Stored.Add(Stored("Stored Hero"));
+        rig.Store.Stored.Add(Stored("Other Hero"));
+        var session = rig.Create();
+        await session.RestoreAsync();
+
+        Assert.False(session.IsCapturedThisSession("Stored Hero"));
+
+        await session.StartAsync().WaitAsync(Wait);
+
+        Assert.True(session.IsCapturedThisSession("STORED HERO"));
+        Assert.False(session.IsCapturedThisSession("Other Hero"));
+        Assert.Equal(2, session.Characters.Count);
+        Assert.Equal("stored hero", session.Characters.Single(c => c.Profile.Level == 60).Profile.Name);
+    }
+
+    [Fact]
+    public async Task Forget_clears_the_characters_captured_this_session()
+    {
+        var rig = new Rig { Source = Feeding(Connection().Server) };
+        var session = rig.Create();
+        await session.StartAsync().WaitAsync(Wait);
+        Assert.True(session.IsCapturedThisSession("Fictional Hero"));
+
+        ((IForgettable)session).Forget();
+
+        Assert.False(session.IsCapturedThisSession("Fictional Hero"));
+    }
+
+    [Fact]
     public async Task Restore_does_not_overwrite_characters_that_are_already_there()
     {
         var rig = new Rig { Source = Feeding(Connection().Server) };

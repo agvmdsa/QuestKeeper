@@ -1,5 +1,6 @@
 using AqwCompanion.App;
 using AqwCompanion.App.GameData;
+using AqwCompanion.App.Infrastructure.Formatting;
 using AqwCompanion.Capture;
 using AqwCompanion.Core.Capture;
 using AqwCompanion.Core.Forgetting;
@@ -714,5 +715,68 @@ public class GameDataViewModelTests
         Assert.Contains(nameof(GameDataViewModel.SamplesText), raised);
         Assert.Contains(nameof(GameDataViewModel.ConnectionsText), raised);
         vm.StopCommand.Execute(null);
+    }
+
+    private static CharacterSnapshot Stored(string name) => new(
+        new CharacterProfile(name, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0, 0),
+        [], [], [], DateTimeOffset.UnixEpoch);
+
+    private static readonly string StoredTime = LocalTimeText.Format(DateTimeOffset.UnixEpoch);
+
+    [Fact]
+    public async Task A_restored_character_is_labelled_as_saved()
+    {
+        var rig = new CaptureRig();
+        rig.Store.Stored.Add(Stored("Stored Hero"));
+        var vm = rig.CreateViewModel();
+
+        await rig.Session.RestoreAsync();
+
+        Assert.Equal($"Saved from an earlier session ({StoredTime}). Log in again to refresh it.", vm.CapturedText);
+        Assert.True(vm.HasCapturedText);
+    }
+
+    [Fact]
+    public async Task A_capture_of_the_same_name_in_this_run_is_labelled_as_this_session()
+    {
+        var rig = new CaptureRig { Source = Feeding(Connection(name: "stored hero").Server) };
+        rig.Store.Stored.Add(Stored("Stored Hero"));
+        var vm = rig.CreateViewModel();
+        await rig.Session.RestoreAsync();
+
+        await vm.StartCommand.ExecuteAsync(null).WaitAsync(Wait);
+
+        var captured = Assert.Single(rig.Session.Characters).CapturedAtUtc;
+        Assert.Equal($"Captured {LocalTimeText.Format(captured)} in this session.", vm.CapturedText);
+    }
+
+    [Fact]
+    public async Task A_capture_of_another_name_leaves_the_restored_one_saved()
+    {
+        var rig = new CaptureRig { Source = Feeding(Connection().Server) };
+        rig.Store.Stored.Add(Stored("Stored Hero"));
+        var vm = rig.CreateViewModel();
+        await rig.Session.RestoreAsync();
+        await vm.StartCommand.ExecuteAsync(null).WaitAsync(Wait);
+
+        vm.SelectedCharacter = "Fictional Hero";
+        Assert.StartsWith("Captured ", vm.CapturedText);
+        vm.SelectedCharacter = "Stored Hero";
+
+        Assert.Equal($"Saved from an earlier session ({StoredTime}). Log in again to refresh it.", vm.CapturedText);
+    }
+
+    [Fact]
+    public async Task Forgetting_empties_the_captured_text()
+    {
+        var rig = new CaptureRig { Source = Feeding(Connection().Server) };
+        var vm = rig.CreateViewModel();
+        await vm.StartCommand.ExecuteAsync(null).WaitAsync(Wait);
+        Assert.True(vm.HasCapturedText);
+
+        ((IForgettable)rig.Session).Forget();
+
+        Assert.Equal(string.Empty, vm.CapturedText);
+        Assert.False(vm.HasCapturedText);
     }
 }

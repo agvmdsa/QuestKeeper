@@ -114,9 +114,14 @@
 
       <Border x:Name="GameDataProfileCard" Classes="card" IsVisible="{Binding HasCharacters}">
         <StackPanel>
-          <Border Classes="cardHeader">
-            <TextBlock x:Name="GameDataProfileHeadline" Text="{Binding ProfileHeadline}" Classes="columnTitle"
-                       AutomationProperties.Name="{Binding ProfileHeadline}" />
+          <Border Classes="cardHeader" Padding="16,6">
+            <StackPanel Spacing="0">
+              <TextBlock x:Name="GameDataProfileHeadline" Text="{Binding ProfileHeadline}" Classes="columnTitle"
+                         AutomationProperties.Name="{Binding ProfileHeadline}" />
+              <TextBlock x:Name="GameDataCapturedText" Text="{Binding CapturedText}" Classes="muted" FontSize="11"
+                         TextWrapping="Wrap" IsVisible="{Binding HasCapturedText}"
+                         AutomationProperties.Name="{Binding CapturedText}" />
+            </StackPanel>
           </Border>
           <ItemsControl x:Name="GameDataProfileList" ItemsSource="{Binding ProfileLines}" Margin="16,8"
                         ItemTemplate="{StaticResource GameDataLineTemplate}" AutomationProperties.Name="Profile" />

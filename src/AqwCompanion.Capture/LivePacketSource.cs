@@ -10,13 +10,19 @@ namespace AqwCompanion.Capture;
 /// the driver until <see cref="RunAsync"/>, which does nothing when Npcap is not available, and returns at once when no device
 /// could be opened so the caller can report it. The callback runs on capture threads (one at a time) and must not throw.
 /// </summary>
-public sealed class LivePacketSource : IPacketSource
+public sealed class LivePacketSource : IPacketSource, ICaptureDiagnostics
 {
+    private readonly LiveCaptureStats _stats = new();
+
+    /// <inheritdoc />
+    public string Describe() => _stats.Describe();
+
     /// <inheritdoc />
     public async Task RunAsync(Action<TcpSegment> onSegment, CancellationToken cancellationToken)
     {
         if (NpcapAvailability.Check() != NpcapStatus.Available)
         {
+            _stats.DriverUnavailable();
             return;
         }
 
@@ -24,22 +30,37 @@ public sealed class LivePacketSource : IPacketSource
         var opened = new List<ILiveDevice>();
         try
         {
-            foreach (var device in CaptureDeviceList.Instance)
+            var devices = CaptureDeviceList.Instance;
+            _stats.DevicesFound(devices.Count);
+            foreach (var device in devices)
             {
+                if (device is LibPcapLiveDevice { Loopback: true })
+                {
+                    _stats.LoopbackSkipped();
+                }
+
                 if (device is not LibPcapLiveDevice { Loopback: false } live)
                 {
                     continue;
                 }
 
+                _stats.Considered();
                 try
                 {
                     live.Open(new DeviceConfiguration { Mode = DeviceModes.None, ReadTimeout = 100 });
                     live.Filter = GameTraffic.CaptureFilter;
                     live.OnPacketArrival += (_, packet) =>
                     {
-                        if (FrameParser.TryParse((int)packet.Device.LinkType, packet.Data, out var segment)
-                            && (GameTraffic.IsGamePort(segment.SourcePort) || GameTraffic.IsGamePort(segment.DestinationPort)))
+                        _stats.PacketFromDriver();
+                        if (!FrameParser.TryParse((int)packet.Device.LinkType, packet.Data, out var segment))
                         {
+                            return;
+                        }
+
+                        _stats.PacketParsed();
+                        if (GameTraffic.IsGamePort(segment.SourcePort) || GameTraffic.IsGamePort(segment.DestinationPort))
+                        {
+                            _stats.PacketOnGamePort();
                             lock (gate)
                             {
                                 onSegment(segment);
@@ -48,9 +69,11 @@ public sealed class LivePacketSource : IPacketSource
                     };
                     live.StartCapture();
                     opened.Add(live);
+                    _stats.Opened();
                 }
                 catch (Exception ex) when (ex is PcapException or InvalidOperationException or DllNotFoundException)
                 {
+                    _stats.OpenFailed(ex);
                     TryClose(live);
                 }
             }
@@ -67,6 +90,7 @@ public sealed class LivePacketSource : IPacketSource
         }
         catch (Exception ex) when (ex is PcapException or DllNotFoundException or BadImageFormatException)
         {
+            _stats.DriverUnavailable(ex);
         }
         finally
         {

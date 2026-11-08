@@ -186,6 +186,47 @@ public class CaptureEngineTests
     }
 
     [Fact]
+    public void The_stage_counters_count_the_parts_of_a_login_and_nothing_else()
+    {
+        var (engine, _) = NewEngine();
+        Assert.Equal(default, engine.Stages);
+
+        Feed(engine, Connection().All);
+
+        Assert.Equal(new CaptureStageCounters(0, 1, 1, 0), engine.Stages);
+    }
+
+    [Fact]
+    public void A_long_message_that_cannot_be_read_is_unreadable_but_text_and_xml_are_not()
+    {
+        var (engine, _) = NewEngine();
+        var garbage = Bytes("Z" + new string('A', 60));
+        var text = Bytes("%xt%" + new string('x', 60));
+        var xml = Bytes("<msg>" + new string('x', 60) + "</msg>");
+        var shortGarbage = Bytes("ZAAAA");
+        var stream = new[] { garbage, text, xml, shortGarbage }.SelectMany(m => m.Append((byte)0)).ToArray();
+
+        engine.Accept(SynAck(1000));
+        engine.Accept(ServerData(1001, stream));
+
+        Assert.Equal(new CaptureStageCounters(1, 0, 0, 0), engine.Stages);
+        Assert.Equal(0, engine.Counters.MessagesDecoded);
+    }
+
+    [Fact]
+    public void A_readable_message_with_another_command_counts_as_other()
+    {
+        var (engine, _) = NewEngine();
+        var message = PlainJson(Envelope("mtls", new Dictionary<string, object?> { ["id"] = 1 }));
+
+        engine.Accept(SynAck(1000));
+        engine.Accept(ServerData(1001, [.. message, 0]));
+
+        Assert.Equal(new CaptureStageCounters(0, 0, 0, 1), engine.Stages);
+        Assert.Equal(1, engine.Counters.MessagesDecoded);
+    }
+
+    [Fact]
     public void Segments_between_other_ports_are_dropped()
     {
         var (engine, _) = NewEngine();

@@ -33,6 +33,7 @@ public sealed class CaptureSession(
     private CaptureFailure _failure;
     private CharacterSnapshot[] _characters = [];
     private CaptureEngine? _engine;
+    private IPacketSource? _source;
     private Run? _current;
     private bool _quiesced;
     private bool _forgotten;
@@ -76,6 +77,46 @@ public sealed class CaptureSession(
             }
 
             return engine?.Counters ?? default;
+        }
+    }
+
+    /// <summary>How far the server data got so far (counts only); zero before the first start.</summary>
+    public CaptureStageCounters Stages
+    {
+        get
+        {
+            CaptureEngine? engine;
+            lock (_gate)
+            {
+                engine = _engine;
+            }
+
+            return engine?.Stages ?? default;
+        }
+    }
+
+    /// <summary>
+    /// What the packet source of the current or last run says about itself, read on access: numbers and exception type
+    /// names only. Empty before a run, when the source has nothing to say, and after Forgetting.
+    /// </summary>
+    public string Details
+    {
+        get
+        {
+            IPacketSource? source;
+            lock (_gate)
+            {
+                source = _source;
+            }
+
+            try
+            {
+                return (source as ICaptureDiagnostics)?.Describe() ?? string.Empty;
+            }
+            catch (Exception)
+            {
+                return string.Empty;
+            }
         }
     }
 
@@ -136,7 +177,19 @@ public sealed class CaptureSession(
         }
 
         var token = run.Cts.Token;
-        var source = Task.Run(() => sourceFactory().RunAsync(run.Engine.Accept, token));
+        var source = Task.Run(() =>
+        {
+            var packetSource = sourceFactory();
+            lock (_gate)
+            {
+                if (_current == run)
+                {
+                    _source = packetSource;
+                }
+            }
+
+            return packetSource.RunAsync(run.Engine.Accept, token);
+        });
         var limit = delay.DelayAsync(TimeLimit, token);
         var finished = await Task.WhenAny(source, limit).ConfigureAwait(false);
 
@@ -240,6 +293,7 @@ public sealed class CaptureSession(
             _current = null;
             _characters = [];
             _engine = null;
+            _source = null;
             _state = CaptureState.Idle;
             _failure = CaptureFailure.None;
             _quiesced = false;
@@ -272,6 +326,7 @@ public sealed class CaptureSession(
                 run = new Run(engine);
                 engine.CharacterCaptured += snapshot => OnCaptured(run, snapshot);
                 _engine = engine;
+                _source = null;
                 _current = run;
                 _state = CaptureState.Listening;
             }

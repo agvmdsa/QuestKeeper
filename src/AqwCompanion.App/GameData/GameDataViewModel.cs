@@ -16,6 +16,7 @@ public partial class GameDataViewModel : ObservableObject
     public const string TitleText = "Game data";
     public const string StartText = "Start capture";
     public const string StopText = "Stop capture";
+    public const string RefreshText = "Refresh numbers";
     public const string RestartText = "Restart as administrator";
     public const string NpcapUrl = "https://npcap.com/";
     public const string IdleText = "Not capturing.";
@@ -47,6 +48,7 @@ public partial class GameDataViewModel : ObservableObject
         StartCommand = new AsyncRelayCommand(session.StartAsync, () => CanStart);
         StopCommand = new RelayCommand(session.Stop, () => IsListening);
         RestartAsAdministratorCommand = new RelayCommand(() => session.RelaunchAsAdministrator(), () => NeedsAdministrator);
+        RefreshCommand = new RelayCommand(RefreshNumbers);
         Refresh();
         session.Changed += (_, _) => _onUiThread(Refresh);
     }
@@ -57,12 +59,20 @@ public partial class GameDataViewModel : ObservableObject
 
     public IRelayCommand RestartAsAdministratorCommand { get; }
 
+    /// <summary>Re-reads the capture numbers once; there is no timer.</summary>
+    public IRelayCommand RefreshCommand { get; }
+
     /// <summary>Raised after the properties updated, when the selected Character's snapshot is another object than before.</summary>
     public event EventHandler? ActiveSnapshotChanged;
 
     public string StateText { get; private set; } = IdleText;
 
     public string CountersText { get; private set; } = string.Empty;
+
+    /// <summary>What the packet source says about its run (numbers and exception type names only), or empty.</summary>
+    public string DetailsText { get; private set; } = string.Empty;
+
+    public bool HasDetails => DetailsText.Length > 0;
 
     public bool IsListening { get; private set; }
 
@@ -134,16 +144,15 @@ public partial class GameDataViewModel : ObservableObject
         IsListening = state == CaptureState.Listening;
         NeedsAdministrator = state == CaptureState.NeedsAdministrator;
         NpcapMissing = state == CaptureState.NpcapMissing;
-        var counters = _session.Counters;
-        StateText = StateTextFor(state, _session.Failure, counters.CharactersCaptured);
-        CountersText = string.Create(
-            CultureInfo.InvariantCulture,
-            $"Segments seen {counters.SegmentsSeen.ToString("N0", CultureInfo.InvariantCulture)} · characters captured {counters.CharactersCaptured.ToString("N0", CultureInfo.InvariantCulture)}");
+        StateText = StateTextFor(state, _session.Failure, _session.Counters.CharactersCaptured);
+        ReadNumbers();
 
         _selectedCharacter = ChooseSelection();
 
         OnPropertyChanged(nameof(StateText));
         OnPropertyChanged(nameof(CountersText));
+        OnPropertyChanged(nameof(DetailsText));
+        OnPropertyChanged(nameof(HasDetails));
         OnPropertyChanged(nameof(IsListening));
         OnPropertyChanged(nameof(CanStart));
         OnPropertyChanged(nameof(NeedsAdministrator));
@@ -157,6 +166,24 @@ public partial class GameDataViewModel : ObservableObject
         RestartAsAdministratorCommand.NotifyCanExecuteChanged();
 
         UpdateActive();
+    }
+
+    private void RefreshNumbers()
+    {
+        ReadNumbers();
+        OnPropertyChanged(nameof(CountersText));
+        OnPropertyChanged(nameof(DetailsText));
+        OnPropertyChanged(nameof(HasDetails));
+    }
+
+    private void ReadNumbers()
+    {
+        var counters = _session.Counters;
+        var stages = _session.Stages;
+        CountersText = string.Create(
+            CultureInfo.InvariantCulture,
+            $"Segments seen {Format(counters.SegmentsSeen)} · dropped {Format(counters.SegmentsDropped)} · messages read {Format(counters.MessagesDecoded)} · characters captured {Format(counters.CharactersCaptured)} · unreadable {Format(stages.MessagesUnreadable)} · profile parts {Format(stages.ProfilePartsSeen)} · inventory parts {Format(stages.InventoryPartsSeen)}");
+        DetailsText = _session.Details;
     }
 
     // Keeps the selection while that Character exists; otherwise the most recently captured one on a first selection, else the first by name.

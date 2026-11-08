@@ -416,6 +416,36 @@ public class CaptureSessionTests
     }
 
     [Fact]
+    public async Task Details_are_empty_before_a_run_follow_the_source_and_are_cleared_by_Forget()
+    {
+        var rig = new Rig { Source = Feeding(Connection().Server) };
+        rig.Source.Text = "Packets from the driver: 5";
+        var session = rig.Create();
+        Assert.Equal(string.Empty, session.Details);
+
+        await session.StartAsync().WaitAsync(Wait);
+        Assert.Equal("Packets from the driver: 5", session.Details);
+
+        rig.Source.Text = "Packets from the driver: 6";
+        Assert.Equal("Packets from the driver: 6", session.Details);
+
+        ((IForgettable)session).Forget();
+        Assert.Equal(string.Empty, session.Details);
+        Assert.Equal(default, session.Stages);
+    }
+
+    [Fact]
+    public async Task Stages_count_the_parts_of_a_login()
+    {
+        var rig = new Rig { Source = Feeding(Connection().Server) };
+        var session = rig.Create();
+
+        await session.StartAsync().WaitAsync(Wait);
+
+        Assert.Equal(new CaptureStageCounters(0, 1, 1, 0), session.Stages);
+    }
+
+    [Fact]
     public async Task Forget_clears_everything_and_allows_starting_again()
     {
         var rig = new Rig { Source = Feeding(Connection().Server) };

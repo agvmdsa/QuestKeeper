@@ -68,6 +68,8 @@
             <Button x:Name="GameDataRestartButton" Content="{x:Static gd:GameDataViewModel.RestartText}"
                     Command="{Binding RestartAsAdministratorCommand}" IsVisible="{Binding NeedsAdministrator}"
                     AutomationProperties.Name="Restart the app as administrator" />
+            <Button x:Name="GameDataRefresh" Content="{x:Static gd:GameDataViewModel.RefreshText}"
+                    Command="{Binding RefreshCommand}" AutomationProperties.Name="Refresh the capture numbers" />
           </StackPanel>
           <TextBlock x:Name="GameDataStateText" Text="{Binding StateText}" TextWrapping="Wrap"
                      AutomationProperties.Name="{Binding StateText}" />
@@ -76,6 +78,9 @@
                                AutomationProperties.Name="Npcap download address" />
           <TextBlock x:Name="GameDataCountersText" Text="{Binding CountersText}" Classes="muted"
                      AutomationProperties.Name="{Binding CountersText}" />
+          <SelectableTextBlock x:Name="GameDataDetails" Text="{Binding DetailsText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
+                               TextWrapping="Wrap" IsVisible="{Binding HasDetails}"
+                               AutomationProperties.Name="{Binding DetailsText}" />
           <TextBlock x:Name="GameDataPrivacyText" Text="{x:Static gd:GameDataViewModel.PrivacyText}" Classes="muted"
                      TextWrapping="Wrap" />
         </StackPanel>

@@ -124,7 +124,7 @@ public class GameDataViewTests
         Assert.Equal(GameDataViewModel.EmptyText, empty.Text);
         Assert.Equal(GameDataViewModel.PrivacyText, h.View.Named<TextBlock>("GameDataPrivacyText").Text);
         Assert.Equal("Not capturing.", h.View.Named<TextBlock>("GameDataStateText").Text);
-        Assert.Equal("Segments seen 0 · characters captured 0", h.View.Named<TextBlock>("GameDataCountersText").Text);
+        Assert.Equal("Segments seen 0 · dropped 0 · messages read 0 · characters captured 0 · unreadable 0 · profile parts 0 · inventory parts 0", h.View.Named<TextBlock>("GameDataCountersText").Text);
         var start = h.View.Named<Button>("GameDataStartButton");
         Assert.Equal("Start capture", start.Content);
         Assert.True(start.IsEffectivelyEnabled);
@@ -224,6 +224,25 @@ public class GameDataViewTests
         Assert.Equal("https://npcap.com/", link.Text);
         Assert.Equal(GameDataViewModel.NpcapMissingText, h.View.Named<TextBlock>("GameDataStateText").Text);
         Assert.False(h.View.Named<Button>("GameDataRestartButton").IsEffectivelyVisible);
+    }
+
+    [AvaloniaFact]
+    public void The_refresh_button_and_the_details_line_exist_with_their_texts()
+    {
+        var h = Build();
+
+        var refresh = h.View.Named<Button>("GameDataRefresh");
+        Assert.Equal("Refresh numbers", refresh.Content);
+        Assert.Equal("Refresh the capture numbers", AutomationProperties.GetName(refresh));
+        Assert.Same(h.Vm.RefreshCommand, refresh.Command);
+        var details = h.View.Named<SelectableTextBlock>("GameDataDetails");
+        Assert.False(details.IsEffectivelyVisible);
+
+        var source = new FakePacketSource((_, _) => Task.CompletedTask) { Text = "Devices: 3 found" };
+        h.Rig.Source = source;
+        Press(h, "GameDataStartButton");
+        SettleUntil(h.Window, () => details.IsEffectivelyVisible, "the details to appear");
+        Assert.Equal("Devices: 3 found", details.Text);
     }
 
     [AvaloniaFact]

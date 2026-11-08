@@ -3,6 +3,9 @@ namespace AqwCompanion.Core.Capture;
 /// <summary>Counts of what the engine did, never any content.</summary>
 public readonly record struct CaptureCounters(int SegmentsSeen, int SegmentsDropped, int MessagesDecoded, int CharactersCaptured);
 
+/// <summary>How far the server data got, as counts only: never a command name or any content.</summary>
+public readonly record struct CaptureStageCounters(int MessagesUnreadable, int ProfilePartsSeen, int InventoryPartsSeen, int OtherCommandsRead);
+
 /// <summary>
 /// Turns the TCP segments of the game traffic into one <see cref="CharacterSnapshot"/> per connection. Only server-to-client
 /// segments (source port is a game port) enter the pipeline; everything else is dropped before any buffer. A connection that has
@@ -22,6 +25,10 @@ public sealed class CaptureEngine(TimeProvider clock)
     private int _segmentsDropped;
     private int _messagesDecoded;
     private int _charactersCaptured;
+    private int _messagesUnreadable;
+    private int _profilePartsSeen;
+    private int _inventoryPartsSeen;
+    private int _otherCommandsRead;
 
     /// <summary>Raised once per connection when its profile and inventory are both known.</summary>
     public event Action<CharacterSnapshot>? CharacterCaptured;
@@ -34,6 +41,18 @@ public sealed class CaptureEngine(TimeProvider clock)
             lock (_gate)
             {
                 return new CaptureCounters(_segmentsSeen, _segmentsDropped, _messagesDecoded, _charactersCaptured);
+            }
+        }
+    }
+
+    /// <summary>How far the server data got so far; counts only.</summary>
+    public CaptureStageCounters Stages
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return new CaptureStageCounters(_messagesUnreadable, _profilePartsSeen, _inventoryPartsSeen, _otherCommandsRead);
             }
         }
     }
@@ -110,6 +129,11 @@ public sealed class CaptureEngine(TimeProvider clock)
             using var message = MessageDecoder.Decode(raw);
             if (message is null)
             {
+                if (raw.Length >= MessageDecoder.MinEncodedBytes && raw[0] != (byte)'%' && raw[0] != (byte)'<')
+                {
+                    _messagesUnreadable++;
+                }
+
                 continue;
             }
 
@@ -117,10 +141,15 @@ public sealed class CaptureEngine(TimeProvider clock)
             switch (GameDataExtractor.Extract(message))
             {
                 case ProfilePart profile:
+                    _profilePartsSeen++;
                     connection.Profile = profile;
                     break;
                 case InventoryPart inventory:
+                    _inventoryPartsSeen++;
                     connection.Inventory = inventory;
+                    break;
+                default:
+                    _otherCommandsRead++;
                     break;
             }
 

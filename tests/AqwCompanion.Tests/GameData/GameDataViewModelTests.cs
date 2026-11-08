@@ -77,7 +77,7 @@ public class GameDataViewModelTests
         var vm = new CaptureRig().CreateViewModel();
 
         Assert.Equal("Not capturing.", vm.StateText);
-        Assert.Equal("Segments seen 0 · characters captured 0", vm.CountersText);
+        Assert.Equal("Segments seen 0 · dropped 0 · messages read 0 · characters captured 0 · unreadable 0 · profile parts 0 · inventory parts 0", vm.CountersText);
         Assert.False(vm.IsListening);
         Assert.True(vm.CanStart);
         Assert.False(vm.HasCharacters);
@@ -196,10 +196,12 @@ public class GameDataViewModelTests
     {
         var (rig, vm) = await Captured(Connection(segmentSize: 1).Server);
 
-        var seen = rig.Session.Counters.SegmentsSeen;
+        var c = rig.Session.Counters;
+        var seen = c.SegmentsSeen;
         Assert.True(seen > 999);
+        string N(int v) => v.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
         Assert.Equal(
-            "Segments seen " + seen.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " · characters captured 1",
+            $"Segments seen {N(seen)} · dropped {N(c.SegmentsDropped)} · messages read {N(c.MessagesDecoded)} · characters captured 1 · unreadable 0 · profile parts 1 · inventory parts 1",
             vm.CountersText);
         Assert.Contains(",", vm.CountersText);
     }
@@ -458,7 +460,7 @@ public class GameDataViewModelTests
 
         Assert.Equal(1, changes);
         Assert.Equal("Not capturing.", vm.StateText);
-        Assert.Equal("Segments seen 0 · characters captured 0", vm.CountersText);
+        Assert.Equal("Segments seen 0 · dropped 0 · messages read 0 · characters captured 0 · unreadable 0 · profile parts 0 · inventory parts 0", vm.CountersText);
         Assert.False(vm.HasCharacters);
         Assert.Empty(vm.CharacterNames);
         Assert.Null(vm.SelectedCharacter);
@@ -469,6 +471,72 @@ public class GameDataViewModelTests
         Assert.Empty(vm.Items);
         Assert.Equal(string.Empty, vm.ItemFilter);
         Assert.Equal("0 items", vm.ItemsSummary);
+    }
+
+    [Fact]
+    public void Refresh_text_is_the_planned_one_and_a_new_view_model_has_no_details()
+    {
+        var vm = new CaptureRig().CreateViewModel();
+
+        Assert.Equal("Refresh numbers", GameDataViewModel.RefreshText);
+        Assert.Equal(string.Empty, vm.DetailsText);
+        Assert.False(vm.HasDetails);
+    }
+
+    [Fact]
+    public async Task The_details_follow_the_source_after_a_run_and_the_refresh_command_re_reads_without_a_change_event()
+    {
+        var (source, started) = Holding();
+        source.Text = "Devices: 1 found";
+        var rig = new CaptureRig { Source = source };
+        var vm = rig.CreateViewModel();
+        var run = vm.StartCommand.ExecuteAsync(null);
+        await started.Task.WaitAsync(Wait);
+
+        var raised = new List<string?>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+        source.Text = "Devices: 2 found";
+        Assert.NotEqual("Devices: 2 found", vm.DetailsText);
+
+        vm.RefreshCommand.Execute(null);
+
+        Assert.Equal("Devices: 2 found", vm.DetailsText);
+        Assert.True(vm.HasDetails);
+        Assert.Contains(nameof(GameDataViewModel.DetailsText), raised);
+        Assert.Contains(nameof(GameDataViewModel.CountersText), raised);
+        Assert.Contains(nameof(GameDataViewModel.HasDetails), raised);
+        vm.StopCommand.Execute(null);
+        await run.WaitAsync(Wait);
+    }
+
+    [Fact]
+    public async Task The_refresh_command_re_reads_the_counters_of_a_running_capture()
+    {
+        var segments = Connection().Server;
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var rig = new CaptureRig();
+        var vm = rig.CreateViewModel(onUiThread: _ => { });
+        rig.Source = new FakePacketSource(async (onSegment, token) =>
+        {
+            foreach (var segment in segments)
+            {
+                onSegment(segment);
+            }
+
+            delivered.SetResult();
+            await gate.Task.WaitAsync(token);
+        });
+        var run = rig.Session.StartAsync();
+        await delivered.Task.WaitAsync(Wait);
+        Assert.Contains("Segments seen 0 ", vm.CountersText);
+
+        vm.RefreshCommand.Execute(null);
+
+        Assert.StartsWith("Segments seen " + rig.Session.Counters.SegmentsSeen.ToString("N0", System.Globalization.CultureInfo.InvariantCulture), vm.CountersText);
+        Assert.Contains("characters captured 1 · unreadable 0 · profile parts 1 · inventory parts 1", vm.CountersText);
+        rig.Session.Stop();
+        await run.WaitAsync(Wait);
     }
 
     [Fact]

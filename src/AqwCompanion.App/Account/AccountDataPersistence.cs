@@ -24,15 +24,15 @@ public sealed class AccountDataPersistence(IStoredDataStore store) : IAccountDat
     {
         try
         {
-            var identity = store.Load<StoredName>(IdentityKey);
+            var identity = store.Load<StoredName>(IdentityKey, 1);
             if (identity is null || string.IsNullOrWhiteSpace(identity.Value.CharacterName))
             {
                 return null;
             }
 
             var name = identity.Value.CharacterName;
-            var summary = store.Load<AccountSummary>(SummaryKey);
-            var equipment = store.Load<CharacterEquipment>(EquipmentKey);
+            var summary = store.Load<AccountSummary>(SummaryKey, 1);
+            var equipment = store.Load<CharacterEquipment>(EquipmentKey, 1);
             if (equipment is not null
                 && equipment.Value.Name is { } equipmentName
                 && !equipmentName.EqualsIgnoreCase(name))
@@ -40,8 +40,8 @@ public sealed class AccountDataPersistence(IStoredDataStore store) : IAccountDat
                 equipment = null;
             }
 
-            var badges = equipment is null ? null : store.Load<CharacterBadges>(BadgesKey);
-            var inventory = equipment is null ? null : store.Load<CharacterInventory>(InventoryKey);
+            var badges = equipment is null ? null : store.Load<CharacterBadges>(BadgesKey, 1);
+            var inventory = equipment is null ? null : store.Load<CharacterInventory>(InventoryKey, 1);
 
             return new RestoredAccount(
                 name,
@@ -65,7 +65,7 @@ public sealed class AccountDataPersistence(IStoredDataStore store) : IAccountDat
         Guard(nameof(SaveIdentity), () =>
         {
             // Compared with what is on disk, not with memory: the equipment, badges and inventory there belong to the stored character.
-            var stored = store.Load<StoredName>(IdentityKey);
+            var stored = store.Load<StoredName>(IdentityKey, 1);
             if (stored is null || !stored.Value.CharacterName.EqualsIgnoreCase(characterName))
             {
                 store.Remove(EquipmentKey);
@@ -73,25 +73,25 @@ public sealed class AccountDataPersistence(IStoredDataStore store) : IAccountDat
                 store.Remove(InventoryKey);
             }
 
-            store.Save(IdentityKey, new StoredName(characterName), readAtUtc);
+            store.Save(IdentityKey, 1, new StoredName(characterName), readAtUtc);
             if (summary is null)
             {
                 store.Remove(SummaryKey);
             }
             else
             {
-                store.Save(SummaryKey, summary, readAtUtc);
+                store.Save(SummaryKey, 1, summary, readAtUtc);
             }
         });
 
     public void SaveEquipment(CharacterEquipment equipment, DateTimeOffset readAtUtc) =>
-        Guard(nameof(SaveEquipment), () => store.Save(EquipmentKey, equipment, readAtUtc));
+        Guard(nameof(SaveEquipment), () => store.Save(EquipmentKey, 1, equipment, readAtUtc));
 
     public void SaveBadges(CharacterBadges badges, DateTimeOffset readAtUtc) =>
-        Guard(nameof(SaveBadges), () => store.Save(BadgesKey, badges, readAtUtc));
+        Guard(nameof(SaveBadges), () => store.Save(BadgesKey, 1, badges, readAtUtc));
 
     public void SaveInventory(CharacterInventory inventory, DateTimeOffset readAtUtc) =>
-        Guard(nameof(SaveInventory), () => store.Save(InventoryKey, inventory, readAtUtc));
+        Guard(nameof(SaveInventory), () => store.Save(InventoryKey, 1, inventory, readAtUtc));
 
     public void RemoveEquipment() => Guard(nameof(RemoveEquipment), () => store.Remove(EquipmentKey));
 

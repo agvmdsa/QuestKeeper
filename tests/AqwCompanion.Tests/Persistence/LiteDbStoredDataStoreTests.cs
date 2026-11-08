@@ -26,7 +26,7 @@ public sealed class LiteDbStoredDataStoreTests : IDisposable
     [Fact]
     public void Load_returns_null_when_nothing_was_saved()
     {
-        Assert.Null(Build().Load<AccountSummary>("summary"));
+        Assert.Null(Build().Load<AccountSummary>("summary", 1));
     }
 
     [Fact]
@@ -35,8 +35,8 @@ public sealed class LiteDbStoredDataStoreTests : IDisposable
         var store = Build();
         var summary = new AccountSummary(9585, "LEGEND", "Membership Expired: Tuesday, January 1, 2030", 3);
 
-        store.Save("summary", summary, ReadAt);
-        var loaded = store.Load<AccountSummary>("summary");
+        store.Save("summary", 1, summary, ReadAt);
+        var loaded = store.Load<AccountSummary>("summary", 1);
 
         Assert.NotNull(loaded);
         Assert.Equal(summary, loaded.Value);
@@ -54,13 +54,13 @@ public sealed class LiteDbStoredDataStoreTests : IDisposable
             3);
         var badges = new CharacterBadges([new Badge("First", "Did a thing", "Quests"), new Badge("Second", "", "Other")]);
 
-        store.Save("equipment", equipment, ReadAt);
-        store.Save("badges", badges, ReadAt);
+        store.Save("equipment", 1, equipment, ReadAt);
+        store.Save("badges", 1, badges, ReadAt);
 
-        Assert.Equal(equipment, store.Load<CharacterEquipment>("equipment")!.Value, new EquipmentComparer());
-        Assert.Equal(3, store.Load<CharacterEquipment>("equipment")!.Value.CharacterId);
-        Assert.Equal(2, store.Load<CharacterBadges>("badges")!.Value.Count);
-        Assert.Equal("Quests", store.Load<CharacterBadges>("badges")!.Value.Badges[0].Category);
+        Assert.Equal(equipment, store.Load<CharacterEquipment>("equipment", 1)!.Value, new EquipmentComparer());
+        Assert.Equal(3, store.Load<CharacterEquipment>("equipment", 1)!.Value.CharacterId);
+        Assert.Equal(2, store.Load<CharacterBadges>("badges", 1)!.Value.Count);
+        Assert.Equal("Quests", store.Load<CharacterBadges>("badges", 1)!.Value.Badges[0].Category);
     }
 
     [Fact]
@@ -70,9 +70,9 @@ public sealed class LiteDbStoredDataStoreTests : IDisposable
         var inventory = new CharacterInventory(
             [new InventoryItem("Test Sword", "Sword", 1, true, false), new InventoryItem("Test Ore", "Resource", 250, false, true)]);
 
-        store.Save("inventory", inventory, ReadAt);
+        store.Save("inventory", 1, inventory, ReadAt);
 
-        var loaded = store.Load<CharacterInventory>("inventory")!.Value;
+        var loaded = store.Load<CharacterInventory>("inventory", 1)!.Value;
         Assert.Equal(inventory.Items, loaded.Items);
         Assert.Equal(250, loaded.CountOf("test ore"));
         var json = System.Text.Json.JsonSerializer.Serialize(inventory, StoredJson.Options);
@@ -94,10 +94,10 @@ public sealed class LiteDbStoredDataStoreTests : IDisposable
     public void Save_again_replaces_the_value()
     {
         var store = Build();
-        store.Save("summary", new AccountSummary(1, null, null, null), ReadAt);
-        store.Save("summary", new AccountSummary(2, null, null, null), ReadAt.AddMinutes(5));
+        store.Save("summary", 1, new AccountSummary(1, null, null, null), ReadAt);
+        store.Save("summary", 1, new AccountSummary(2, null, null, null), ReadAt.AddMinutes(5));
 
-        var loaded = store.Load<AccountSummary>("summary")!;
+        var loaded = store.Load<AccountSummary>("summary", 1)!;
         Assert.Equal(2, loaded.Value.AdventureCoins);
         Assert.Equal(ReadAt.AddMinutes(5), loaded.ReadAtUtc);
     }
@@ -106,48 +106,82 @@ public sealed class LiteDbStoredDataStoreTests : IDisposable
     public void Remove_deletes_only_that_key()
     {
         var store = Build();
-        store.Save("summary", new AccountSummary(1, null, null, null), ReadAt);
-        store.Save("badges", new CharacterBadges([]), ReadAt);
+        store.Save("summary", 1, new AccountSummary(1, null, null, null), ReadAt);
+        store.Save("badges", 1, new CharacterBadges([]), ReadAt);
 
         store.Remove("summary");
 
-        Assert.Null(store.Load<AccountSummary>("summary"));
-        Assert.NotNull(store.Load<CharacterBadges>("badges"));
+        Assert.Null(store.Load<AccountSummary>("summary", 1));
+        Assert.NotNull(store.Load<CharacterBadges>("badges", 1));
     }
 
     [Fact]
     public void Clear_deletes_the_database_file_and_the_store_still_works_afterwards()
     {
         var store = Build();
-        store.Save("summary", new AccountSummary(1, null, null, null), ReadAt);
+        store.Save("summary", 1, new AccountSummary(1, null, null, null), ReadAt);
         Assert.True(File.Exists(DatabaseFile));
 
         store.Clear();
 
         Assert.False(File.Exists(DatabaseFile));
-        Assert.Null(store.Load<AccountSummary>("summary"));
-        store.Save("summary", new AccountSummary(5, null, null, null), ReadAt);
-        Assert.Equal(5, store.Load<AccountSummary>("summary")!.Value.AdventureCoins);
+        Assert.Null(store.Load<AccountSummary>("summary", 1));
+        store.Save("summary", 1, new AccountSummary(5, null, null, null), ReadAt);
+        Assert.Equal(5, store.Load<AccountSummary>("summary", 1)!.Value.AdventureCoins);
     }
 
     [Fact]
     public void Unreadable_payload_is_treated_as_absent()
     {
         var store = Build();
-        store.Save("summary", new AccountSummary(1, null, null, null), ReadAt);
+        store.Save("summary", 1, new AccountSummary(1, null, null, null), ReadAt);
 
         // The stored summary is an object; asking for a list cannot deserialize and must not throw.
-        Assert.Null(store.Load<List<int>>("summary"));
+        Assert.Null(store.Load<List<int>>("summary", 1));
     }
 
     [Fact]
     public void Unknown_schema_version_is_treated_as_absent()
     {
         var store = Build();
-        store.Save("summary", new AccountSummary(1, null, null, null), ReadAt);
+        store.Save("summary", 1, new AccountSummary(1, null, null, null), ReadAt);
         LiteDbStoredDataStoreTestHooks.SetSchemaVersion(DatabaseFile, "summary", 999);
 
-        Assert.Null(store.Load<AccountSummary>("summary"));
+        Assert.Null(store.Load<AccountSummary>("summary", 1));
+    }
+
+    [Fact]
+    public void A_record_written_with_schema_version_1_by_the_old_shape_still_loads_at_version_1()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(DatabaseFile)!);
+        using (var db = new LiteDB.LiteDatabase(new LiteDB.ConnectionString { Filename = DatabaseFile, Connection = LiteDB.ConnectionType.Shared }))
+        {
+            db.GetCollection<StoredRecord>("records").Upsert(new StoredRecord
+            {
+                Id = "summary",
+                SchemaVersion = 1,
+                ReadAtUnixMs = ReadAt.ToUnixTimeMilliseconds(),
+                Payload = System.Text.Json.JsonSerializer.Serialize(new AccountSummary(42, null, null, null), StoredJson.Options),
+            });
+        }
+
+        var loaded = Build().Load<AccountSummary>("summary", 1);
+
+        Assert.NotNull(loaded);
+        Assert.Equal(42, loaded.Value.AdventureCoins);
+        Assert.Equal(ReadAt, loaded.ReadAtUtc);
+    }
+
+    [Fact]
+    public void The_version_is_per_record_so_a_mismatch_drops_only_that_record()
+    {
+        var store = Build();
+        store.Save("summary", 1, new AccountSummary(1, null, null, null), ReadAt);
+        store.Save("badges", 1, new CharacterBadges([]), ReadAt);
+
+        Assert.Null(store.Load<AccountSummary>("summary", 2));
+        Assert.NotNull(store.Load<CharacterBadges>("badges", 1));
+        Assert.NotNull(store.Load<AccountSummary>("summary", 1));
     }
 
     [Fact]
@@ -157,11 +191,11 @@ public sealed class LiteDbStoredDataStoreTests : IDisposable
         File.WriteAllBytes(DatabaseFile, Enumerable.Range(0, 20000).Select(i => (byte)(i * 31 % 251)).ToArray());
         var store = Build();
 
-        Assert.Null(store.Load<AccountSummary>("summary"));
+        Assert.Null(store.Load<AccountSummary>("summary", 1));
         Assert.True(File.Exists(DatabaseFile + ".corrupt"));
 
-        store.Save("summary", new AccountSummary(7, null, null, null), ReadAt);
-        Assert.Equal(7, store.Load<AccountSummary>("summary")!.Value.AdventureCoins);
+        store.Save("summary", 1, new AccountSummary(7, null, null, null), ReadAt);
+        Assert.Equal(7, store.Load<AccountSummary>("summary", 1)!.Value.AdventureCoins);
     }
 
     [Fact]
@@ -172,7 +206,7 @@ public sealed class LiteDbStoredDataStoreTests : IDisposable
         var log = Path.Combine(Path.GetDirectoryName(DatabaseFile)!, "companion-log.db");
         File.WriteAllBytes(log, [1, 2, 3]);
 
-        Assert.Null(Build().Load<AccountSummary>("summary"));
+        Assert.Null(Build().Load<AccountSummary>("summary", 1));
 
         Assert.False(File.Exists(log));
     }
@@ -181,12 +215,12 @@ public sealed class LiteDbStoredDataStoreTests : IDisposable
     public void A_bad_read_time_makes_only_that_record_absent()
     {
         var store = Build();
-        store.Save("summary", new AccountSummary(1, null, null, null), ReadAt);
-        store.Save("badges", new CharacterBadges([]), ReadAt);
+        store.Save("summary", 1, new AccountSummary(1, null, null, null), ReadAt);
+        store.Save("badges", 1, new CharacterBadges([]), ReadAt);
         LiteDbStoredDataStoreTestHooks.SetReadAt(DatabaseFile, "summary", long.MaxValue);
 
-        Assert.Null(store.Load<AccountSummary>("summary"));
-        Assert.NotNull(store.Load<CharacterBadges>("badges"));
+        Assert.Null(store.Load<AccountSummary>("summary", 1));
+        Assert.NotNull(store.Load<CharacterBadges>("badges", 1));
         Assert.False(File.Exists(DatabaseFile + ".corrupt"));
     }
 
@@ -194,20 +228,20 @@ public sealed class LiteDbStoredDataStoreTests : IDisposable
     public void An_exception_from_the_operation_never_quarantines_a_healthy_file()
     {
         var store = Build();
-        store.Save("summary", new AccountSummary(1, null, null, null), ReadAt);
+        store.Save("summary", 1, new AccountSummary(1, null, null, null), ReadAt);
 
         // Serializing the value throws inside the operation, after the database has been opened.
-        Assert.ThrowsAny<ArgumentOutOfRangeException>(() => store.Save("summary", new ThrowingValue(), ReadAt));
+        Assert.ThrowsAny<ArgumentOutOfRangeException>(() => store.Save("summary", 1, new ThrowingValue(), ReadAt));
 
         Assert.False(File.Exists(DatabaseFile + ".corrupt"));
-        Assert.Equal(1, store.Load<AccountSummary>("summary")!.Value.AdventureCoins);
+        Assert.Equal(1, store.Load<AccountSummary>("summary", 1)!.Value.AdventureCoins);
     }
 
     [Fact]
     public void Clear_reports_success_and_removes_the_log_and_quarantined_files()
     {
         var store = Build();
-        store.Save("summary", new AccountSummary(1, null, null, null), ReadAt);
+        store.Save("summary", 1, new AccountSummary(1, null, null, null), ReadAt);
         var directory = Path.GetDirectoryName(DatabaseFile)!;
         var log = Path.Combine(directory, "companion-log.db");
         File.WriteAllBytes(log, [1]);
@@ -230,7 +264,7 @@ public sealed class LiteDbStoredDataStoreTests : IDisposable
     public void Clear_reports_failure_but_still_removes_the_other_files()
     {
         var store = Build();
-        store.Save("summary", new AccountSummary(1, null, null, null), ReadAt);
+        store.Save("summary", 1, new AccountSummary(1, null, null, null), ReadAt);
         var directory = Path.GetDirectoryName(DatabaseFile)!;
         var log = Path.Combine(directory, "companion-log.db");
         File.WriteAllBytes(log, [1]);

@@ -33,7 +33,7 @@ public sealed class HardFarmStore(IStoredDataStore store) : IHardFarmStore
 
     public StoredHardFarmList? LoadList() => Guard(nameof(LoadList), () =>
     {
-        var stored = store.Load<ListDto>(ListKey);
+        var stored = store.Load<ListDto>(ListKey, 1);
         if (stored?.Value is not { Groups: { } groups } dto)
         {
             return null;
@@ -60,7 +60,7 @@ public sealed class HardFarmStore(IStoredDataStore store) : IHardFarmStore
     private List<StoredIndex> ReadIndexes()
     {
         var result = new List<StoredIndex>();
-        if (store.Load<IndexesDto>(IndexesKey)?.Value is not { Indexes: { } dtos })
+        if (store.Load<IndexesDto>(IndexesKey, 1)?.Value is not { Indexes: { } dtos })
         {
             return result;
         }
@@ -98,7 +98,7 @@ public sealed class HardFarmStore(IStoredDataStore store) : IHardFarmStore
         Guard(nameof(SaveList), () =>
         {
             store.Save(
-                ListKey,
+                ListKey, 1,
                 new ListDto(list.Groups.Select(g => new GroupDto(g.Name, g.Slugs.ToList())).ToList(), list.Credit),
                 readAtUtc);
             return (object?)null;
@@ -120,7 +120,7 @@ public sealed class HardFarmStore(IStoredDataStore store) : IHardFarmStore
             }
 
             store.Save(
-                IndexesKey,
+                IndexesKey, 1,
                 new IndexesDto(all.Select(i => new IndexDto(
                     i.Index.IndexSlug,
                     i.Index.Type.ToString(),

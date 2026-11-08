@@ -69,8 +69,8 @@ public sealed class HardFarmStoreLiteDbTests : IDisposable
 
         Assert.True(new AccountDataPersistence(database).Forget());
 
-        Assert.Null(database.Load<HardFarmStore.ListDto>(HardFarmStore.ListKey));
-        Assert.Null(database.Load<HardFarmStore.IndexesDto>(HardFarmStore.IndexesKey));
+        Assert.Null(database.Load<HardFarmStore.ListDto>(HardFarmStore.ListKey, 1));
+        Assert.Null(database.Load<HardFarmStore.IndexesDto>(HardFarmStore.IndexesKey, 1));
         Assert.Null(store.LoadList());
         Assert.Null(store.LoadTypes());
     }

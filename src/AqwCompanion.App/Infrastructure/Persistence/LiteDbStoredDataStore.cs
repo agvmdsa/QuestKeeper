@@ -12,13 +12,12 @@ namespace AqwCompanion.App.Infrastructure.Persistence;
 /// </summary>
 public sealed class LiteDbStoredDataStore(string filePath) : IStoredDataStore
 {
-    public const int SchemaVersion = 1;
     private const string CollectionName = "records";
 
-    public StoredValue<T>? Load<T>(string key)
+    public StoredValue<T>? Load<T>(string key, int version)
     {
         var record = Run(db => db.GetCollection<StoredRecord>(CollectionName).FindById(key));
-        if (record is null || record.SchemaVersion != SchemaVersion)
+        if (record is null || record.SchemaVersion != version)
         {
             return null;
         }
@@ -35,11 +34,11 @@ public sealed class LiteDbStoredDataStore(string filePath) : IStoredDataStore
         }
     }
 
-    public void Save<T>(string key, T value, DateTimeOffset readAtUtc) =>
+    public void Save<T>(string key, int version, T value, DateTimeOffset readAtUtc) =>
         Run(db => db.GetCollection<StoredRecord>(CollectionName).Upsert(new StoredRecord
         {
             Id = key,
-            SchemaVersion = SchemaVersion,
+            SchemaVersion = version,
             ReadAtUnixMs = readAtUtc.ToUnixTimeMilliseconds(),
             Payload = JsonSerializer.Serialize(value, StoredJson.Options),
         }));

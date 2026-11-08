@@ -18,7 +18,7 @@ public sealed class ReputationStore(IStoredDataStore store) : IReputationStore
 
     public StoredReputation? Load() => Guard(nameof(Load), () =>
     {
-        var stored = store.Load<ReputationDto>(Key);
+        var stored = store.Load<ReputationDto>(Key, 1);
         if (stored?.Value is not { Factions: { } dtos } dto)
         {
             return null;
@@ -38,7 +38,7 @@ public sealed class ReputationStore(IStoredDataStore store) : IReputationStore
     public void Save(StoredReputation reputation) => Guard(nameof(Save), () =>
     {
         store.Save(
-            Key,
+            Key, 1,
             new ReputationDto(
                 reputation.Snapshot.Factions
                     .Select(f => new FactionDto(f.FactionId, f.Name, f.Rank, f.Rep, f.RepToRank, f.SpillRep))

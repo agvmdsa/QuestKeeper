@@ -1,3 +1,4 @@
+using AqwCompanion.App.Infrastructure;
 using AqwCompanion.App.Infrastructure.Browser;
 using AqwCompanion.Core.Account;
 using AqwCompanion.Core.Common;

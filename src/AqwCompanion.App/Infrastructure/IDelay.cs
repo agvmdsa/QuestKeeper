@@ -1,4 +1,4 @@
-namespace AqwCompanion.App.SignIn;
+namespace AqwCompanion.App.Infrastructure;
 
 /// <summary>Waiting seam so the short "Connected" pause does not slow tests down.</summary>
 public interface IDelay

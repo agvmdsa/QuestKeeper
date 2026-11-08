@@ -1,5 +1,5 @@
 using AqwCompanion.App.Infrastructure.Elevation;
-using AqwCompanion.App.SignIn;
+using AqwCompanion.App.Infrastructure;
 using AqwCompanion.Capture;
 using AqwCompanion.Core.Capture;
 using AqwCompanion.Core.Forgetting;

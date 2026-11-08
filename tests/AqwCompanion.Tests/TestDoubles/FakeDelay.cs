@@ -1,4 +1,4 @@
-using AqwCompanion.App.SignIn;
+using AqwCompanion.App.Infrastructure;
 
 namespace AqwCompanion.Tests.TestDoubles;
 

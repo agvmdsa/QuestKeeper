@@ -2,6 +2,7 @@ using AqwCompanion.App;
 using AqwCompanion.App.Account;
 using AqwCompanion.App.GameData;
 using AqwCompanion.App.HardFarms;
+using AqwCompanion.App.Infrastructure;
 using AqwCompanion.App.Infrastructure.Browser;
 using AqwCompanion.App.Infrastructure.Elevation;
 using AqwCompanion.App.Infrastructure.Persistence;

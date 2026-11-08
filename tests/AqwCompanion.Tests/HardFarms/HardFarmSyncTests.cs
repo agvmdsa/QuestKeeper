@@ -708,7 +708,7 @@ public class HardFarmSyncTests
         Assert.Equal(["syfarm", "classes"], PageRequests);
     }
 
-    private sealed class CancellingDelay(CancellationTokenSource cts, int afterCalls) : AqwCompanion.App.SignIn.IDelay
+    private sealed class CancellingDelay(CancellationTokenSource cts, int afterCalls) : AqwCompanion.App.Infrastructure.IDelay
     {
         private int _calls;
 

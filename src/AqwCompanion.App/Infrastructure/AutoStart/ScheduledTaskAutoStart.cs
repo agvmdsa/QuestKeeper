@@ -10,7 +10,7 @@ namespace AqwCompanion.App.Infrastructure.AutoStart;
 /// </summary>
 public sealed class ScheduledTaskAutoStart(IProcessRunner runner, string? exePath, string? userName, Func<bool> isWindows) : IAutoStart
 {
-    public const string TaskName = "AQW Companion";
+    public const string TaskName = "Questkeeper";
 
     private const string Schtasks = "schtasks.exe";
 

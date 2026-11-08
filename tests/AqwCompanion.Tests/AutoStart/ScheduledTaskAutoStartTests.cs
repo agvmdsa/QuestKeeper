@@ -17,7 +17,7 @@ public class ScheduledTaskAutoStartTests
         }
     }
 
-    private const string Exe = @"C:\Program Files\AQW Companion\AqwCompanion.exe";
+    private const string Exe = @"C:\Program Files\Questkeeper\AqwCompanion.exe";
 
     private static ScheduledTaskAutoStart Build(FakeRunner runner, bool windows = true, string? exe = Exe) =>
         new(runner, exe, @"PC\player", () => windows);

@@ -8,7 +8,8 @@ permissions:
   contents: write
 
 env:
-  APP_NAME: AqwCompanion
+  APP_NAME: Questkeeper
+  BUILD_EXE: AqwCompanion
   AVALONIA_TELEMETRY_OPTOUT: '1'
   DOTNET_CLI_TELEMETRY_OPTOUT: '1'
   DOTNET_NOLOGO: '1'
@@ -45,7 +46,7 @@ jobs:
           -p:EnableCompressionInSingleFile=true -o out/publish
 
       # --- Code signing placeholder -------------------------------------------------
-      # Sign out/publish/${{ env.APP_NAME }}.exe here BEFORE packaging once a signing
+      # Sign out/publish/${{ env.BUILD_EXE }}.exe here BEFORE packaging (it is renamed to the product name while packaging) once a signing
       # option is chosen (Azure Trusted Signing, OV/EV certificate, or SignPath).
       # Decide the final product/publisher name first: it is embedded in the certificate.
       # -------------------------------------------------------------------------------
@@ -56,6 +57,8 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           Remove-Item out/publish/*.pdb -ErrorAction SilentlyContinue
+          # The assembly keeps its first name (the data folder and the single-instance lock use it); the file players see is the product name.
+          Rename-Item "out/publish/$($env:BUILD_EXE).exe" "$($env:APP_NAME).exe"
           New-Item -ItemType Directory -Force dist | Out-Null
           $zip = "dist/$($env:APP_NAME)-$($env:TAG)-win-x64.zip"
           Compress-Archive -Path out/publish/* -DestinationPath $zip

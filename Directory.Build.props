@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AnalysisLevel>latest</AnalysisLevel>
-    <Product>AQW Companion</Product>
+    <Product>Questkeeper</Product>
     <ProductExeName>AqwCompanion</ProductExeName>
     <MinVerTagPrefix>v</MinVerTagPrefix>
     <MinVerDefaultPreReleaseIdentifiers>dev</MinVerDefaultPreReleaseIdentifiers>

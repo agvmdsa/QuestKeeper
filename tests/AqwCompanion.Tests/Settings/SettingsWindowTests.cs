@@ -26,7 +26,7 @@ public class SettingsWindowTests
 
         Assert.Equal(SettingsViewModel.PrivacyText, window.FindControl<TextBlock>("SettingsPrivacyText")!.Text);
         Assert.Equal(SettingsViewModel.CreditsText, window.FindControl<TextBlock>("SettingsCreditsText")!.Text);
-        Assert.Equal("AQW Companion " + vm.Version, window.FindControl<TextBlock>("SettingsVersion")!.Text);
+        Assert.Equal("Questkeeper " + vm.Version, window.FindControl<TextBlock>("SettingsVersion")!.Text);
     }
 
     [AvaloniaFact]

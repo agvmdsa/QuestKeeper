@@ -1,17 +1,17 @@
 <p align="center">
-  <img src="docs/logo.svg" width="128" height="128" alt="AQW Companion logo">
+  <img src="docs/logo.svg" width="128" height="128" alt="Questkeeper logo">
 </p>
 
-<h1 align="center">AQW Companion</h1>
+<h1 align="center">Questkeeper</h1>
 
 <p align="center">
-  A Windows desktop companion for AdventureQuest Worlds. It reads the game's own network traffic on your
+  An unofficial Windows companion for AdventureQuest Worlds players. It reads the game's own network traffic on your
   machine while you play and shows your character, reputation and inventory in one place — read-only,
   nothing sent anywhere.
 </p>
 
 <p align="center">
-  <a href="https://github.com/agvmdsa/aqw-companion/releases/latest"><img src="docs/download-windows.svg" width="368" alt="Download the latest AQW Companion for Windows"></a>
+  <a href="https://github.com/agvmdsa/aqw-companion/releases/latest"><img src="docs/download-windows.svg" width="368" alt="Download the latest Questkeeper for Windows"></a>
 </p>
 
 <p align="center">
@@ -24,9 +24,9 @@
 
 ## Why
 
-Seeing what you own, your faction ranks and what is missing for the next rank means clicking through the game and the wiki. AQW Companion listens to the data the game already sends to your own computer and keeps the latest copy on your machine, so you can look things up while you play.
+Seeing what you own, your faction ranks and what is missing for the next rank means clicking through the game and the wiki. Questkeeper listens to the data the game already sends to your own computer and keeps the latest copy on your machine, so you can look things up while you play.
 
-> **The app was re-architected.** Earlier versions were a companion where you signed in on `account.aq.com` and the app read the HTML of your account pages. That is gone: there is no sign-in, no embedded browser and no reading of the account website any more. The app now reads the game's network traffic (Windows, see [Game data capture](#game-data-capture-windows)), which is a different risk class: read the warning there before using it.
+> **Questkeeper used to be called AQW Companion**, and from v0.2.0 it is a different app. **It was re-architected.** Earlier versions were a companion where you signed in on `account.aq.com` and the app read the HTML of your account pages. That is gone: there is no sign-in, no embedded browser and no reading of the account website any more. The app now reads the game's network traffic (Windows, see [Game data capture](#game-data-capture-windows)), which is a different risk class: read the warning there before using it.
 
 - **Read-only** — the app never sends anything to the game and never acts for you.
 - **Game data** — profile numbers, faction standings with rank and what is missing for the next one, and your items, updated while you play.
@@ -36,12 +36,12 @@ Seeing what you own, your faction ranks and what is missing for the next rank me
 
 ## Install
 
-1. Click **Download for Windows** above (or open the [latest release](https://github.com/agvmdsa/aqw-companion/releases/latest)) and download `AqwCompanion-vX.Y.Z-win-x64.zip`; the file name carries the version.
-2. Extract the zip anywhere and run `AqwCompanion.exe`. There is no installer and no .NET to install, the runtime is bundled.
+1. Click **Download for Windows** above (or open the [latest release](https://github.com/agvmdsa/aqw-companion/releases/latest)) and download `Questkeeper-vX.Y.Z-win-x64.zip`; the file name carries the version.
+2. Extract the zip anywhere and run `Questkeeper.exe`. There is no installer and no .NET to install, the runtime is bundled.
 3. The first release builds are not code-signed yet, so Windows SmartScreen may warn you. Choose **More info**, then **Run anyway**, if you trust the file.
-4. Optional: check the download against `SHA256SUMS.txt` from the same release, with `Get-FileHash .\AqwCompanion-vX.Y.Z-win-x64.zip -Algorithm SHA256` in PowerShell, or `shasum -a 256 -c SHA256SUMS.txt` on macOS or Linux.
+4. Optional: check the download against `SHA256SUMS.txt` from the same release, with `Get-FileHash .\Questkeeper-vX.Y.Z-win-x64.zip -Algorithm SHA256` in PowerShell, or `shasum -a 256 -c SHA256SUMS.txt` on macOS or Linux.
 
-AQW Companion needs 64-bit Windows. Your data, logs and crash reports live under `%LOCALAPPDATA%\AqwCompanion`. Delete that folder to remove everything the app stored.
+Questkeeper needs 64-bit Windows. Your data, logs and crash reports live under `%LOCALAPPDATA%\AqwCompanion` (the folder keeps the name of the first versions, so nothing you saved is lost). The settings are in `settings.json` in the same folder. Delete that folder to remove everything the app stored.
 
 ## Basic usage
 
@@ -116,4 +116,4 @@ Limits and what is not verified:
 
 ## Not affiliated
 
-AQW Companion is an unofficial fan project. It is not made by, endorsed by or connected to Artix Entertainment. AdventureQuest Worlds and its content belong to their owners.
+Questkeeper is an unofficial fan project. It is not made by, endorsed by or connected to Artix Entertainment. AdventureQuest Worlds and its content belong to their owners.

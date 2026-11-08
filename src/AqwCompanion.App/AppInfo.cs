@@ -7,7 +7,7 @@ public static class AppInfo
     private static readonly Assembly Assembly = typeof(AppInfo).Assembly;
 
     public static string ProductName { get; } =
-        Assembly.GetCustomAttribute<AssemblyProductAttribute>()?.Product ?? "AQW Companion";
+        Assembly.GetCustomAttribute<AssemblyProductAttribute>()?.Product ?? "Questkeeper";
 
     public static string Version { get; } =
         Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0";

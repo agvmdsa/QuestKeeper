@@ -126,7 +126,7 @@ public sealed class ViewModelTests : IDisposable
             store, new FakeHardFarmSync(), new InventoryCardViewModel(new SidebarViewModel()), new FakeUrlLauncher());
         hardFarmsRef = hardFarms;
         await hardFarms.RestoreAsync();
-        var reputationStore = new ReputationStore(new InMemoryStoredDataStore());
+        var reputationStore = new ReputationStore(new InMemoryStoredDataStore().Module());
         reputationStore.Save(new StoredReputation(
             new ReputationSnapshot([new FactionStanding(1, "Good", 5, 10, 20, 0)], null), "rep.json", DateTimeOffset.UnixEpoch));
         var reputation = new ReputationViewModel(reputationStore, new FakeReputationFilePicker(), new FakeReputationAutoSource(), TimeProvider.System);
@@ -161,7 +161,7 @@ public sealed class ViewModelTests : IDisposable
         Directory.CreateDirectory(_paths.ReputationDirectory);
         File.WriteAllText(source.Path, "{}");
         var reputation = new ReputationViewModel(
-            new ReputationStore(new InMemoryStoredDataStore()), new FakeReputationFilePicker(), source, TimeProvider.System);
+            new ReputationStore(new InMemoryStoredDataStore().Module()), new FakeReputationFilePicker(), source, TimeProvider.System);
         reputationRef = reputation;
         var main = new MainViewModel(
             account, new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer()),

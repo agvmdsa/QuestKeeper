@@ -13,7 +13,7 @@ public class ReputationForgettingTests
 
     private sealed class Fixture
     {
-        public ReputationStore Store { get; } = new(new InMemoryStoredDataStore());
+        public ReputationStore Store { get; } = new(new InMemoryStoredDataStore().Module());
 
         public FakeReputationFilePicker Picker { get; } = new();
 

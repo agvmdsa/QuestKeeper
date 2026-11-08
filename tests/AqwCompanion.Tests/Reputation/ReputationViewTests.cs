@@ -36,7 +36,7 @@ public class ReputationViewTests
     {
         var picker = new FakeReputationFilePicker();
         var auto = new FakeReputationAutoSource();
-        var vm = new ReputationViewModel(new ReputationStore(new InMemoryStoredDataStore()), picker, auto, new FixedClock());
+        var vm = new ReputationViewModel(new ReputationStore(new InMemoryStoredDataStore().Module()), picker, auto, new FixedClock());
         var view = new ReputationView { DataContext = vm };
         var window = new Window { Width = 1100, Height = 700, Content = view };
         window.Show();
@@ -114,7 +114,7 @@ public class ReputationViewTests
         var picker = new FakeReputationFilePicker();
         var auto = new FakeReputationAutoSource();
         auto.Returns("""{"schema":1,"factions":[{"factionId":1,"name":"Good","rank":2,"rep":5,"repToRank":9}]}""");
-        var vm = new ReputationViewModel(new ReputationStore(new InMemoryStoredDataStore()), picker, auto, new FixedClock());
+        var vm = new ReputationViewModel(new ReputationStore(new InMemoryStoredDataStore().Module()), picker, auto, new FixedClock());
         var view = new ReputationView { DataContext = vm, IsVisible = false };
         var window = new Window { Width = 1100, Height = 700, Content = view };
         window.Show();

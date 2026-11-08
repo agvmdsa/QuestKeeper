@@ -10,6 +10,7 @@ using AqwCompanion.Core.Badges;
 using AqwCompanion.Core.Equipment;
 using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Inventory;
+using AqwCompanion.Core.Persistence;
 using AqwCompanion.Core.Reputation;
 using AqwCompanion.Core.Wiki;
 using AqwCompanion.Tests.TestDoubles;
@@ -96,7 +97,7 @@ public sealed class ForgettingEffectTests : IDisposable
         hardFarmStore.SaveList(new HardFarmList([new HardFarmGroup("Nation", ["blade-one"])], null), ReadAt);
         hardFarmStore.SaveIndex(new WikiIndex(WikiUrls.ClassesSlug, WikiType.Class, [new WikiIndexEntry("blade-one", "Blade One")]), ReadAt);
 
-        var reputationStore = new ReputationStore(store);
+        var reputationStore = new ReputationStore(new StoredData(store, StoredKeys.Obsolete));
         reputationStore.Save(new StoredReputation(
             new ReputationSnapshot([new FactionStanding(1, "Good", 5, 10, 20, 0)], null), "rep.json", ReadAt));
 

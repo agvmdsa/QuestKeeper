@@ -64,6 +64,10 @@ public static class CompositionRoot
             CreateHttpClient(System.Threading.Timeout.InfiniteTimeSpan), AppInfo.Version, sp.GetRequiredService<ILogger<WikiPageFetcher>>()));
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IStoredDataStore>(sp => new LiteDbStoredDataStore(sp.GetRequiredService<AppPaths>().DatabasePath));
+        services.AddSingleton(sp => new StoredData(
+            sp.GetRequiredService<IStoredDataStore>(),
+            StoredKeys.Obsolete,
+            (operation, exceptionTypeName) => Log.Error("Stored data {SafeOperation} failed: {ExceptionType}", operation, exceptionTypeName)));
         services.AddSingleton<IAccountDataPersistence, AccountDataPersistence>();
         services.AddSingleton<IAccountSessionData, AccountSessionData>();
         services.AddSingleton<ICharacterEquipmentLoader, CharacterEquipmentLoader>();

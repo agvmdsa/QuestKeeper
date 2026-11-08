@@ -25,7 +25,7 @@ public class ReputationViewModelTests
 
         public Fixture()
         {
-            Store = new ReputationStore(Inner);
+            Store = new ReputationStore(Inner.Module());
             Vm = new ReputationViewModel(Store, Picker, Auto, new FixedClock(At));
         }
     }

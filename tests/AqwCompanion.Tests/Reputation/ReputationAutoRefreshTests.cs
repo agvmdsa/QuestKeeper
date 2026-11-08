@@ -32,7 +32,7 @@ public class ReputationAutoRefreshTests
 
         public Fixture()
         {
-            Store = new ReputationStore(new InMemoryStoredDataStore());
+            Store = new ReputationStore(new InMemoryStoredDataStore().Module());
             Vm = new ReputationViewModel(Store, new FakeReputationFilePicker(), Auto, new FixedClock(At));
         }
     }

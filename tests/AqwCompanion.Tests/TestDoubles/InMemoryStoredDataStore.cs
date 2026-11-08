@@ -1,3 +1,4 @@
+using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.Core.Persistence;
 
 namespace AqwCompanion.Tests.TestDoubles;
@@ -13,6 +14,9 @@ public sealed class InMemoryStoredDataStore : IStoredDataStore
     public int SaveCalls { get; private set; }
     public int ClearCalls { get; private set; }
     public bool ClearResult { get; set; } = true;
+
+    /// <summary>The stored data module over this store, with the real obsolete keys and no failure report.</summary>
+    public StoredData Module(Action<string, string>? onFailure = null) => new(this, StoredKeys.Obsolete, onFailure);
 
     public StoredValue<T>? Load<T>(string key, int version)
     {

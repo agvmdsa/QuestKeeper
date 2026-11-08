@@ -1,5 +1,6 @@
 using AqwCompanion.App.Account;
 using AqwCompanion.App.Diagnostics;
+using AqwCompanion.App.GameData;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Reputation;
 using AqwCompanion.App.Wiki;
@@ -9,13 +10,14 @@ namespace AqwCompanion.App.Shell;
 public sealed class MainViewModel
 {
     public MainViewModel(AccountViewModel account, WikiViewModel wiki, DiagnosticsViewModel diagnostics, HardFarmsViewModel hardFarms,
-        ReputationViewModel reputation)
+        ReputationViewModel reputation, GameDataViewModel gameData)
     {
         Account = account;
         Wiki = wiki;
         Diagnostics = diagnostics;
         HardFarms = hardFarms;
         Reputation = reputation;
+        GameData = gameData;
     }
 
     public string Title { get; } = AppInfo.ProductName;
@@ -24,4 +26,5 @@ public sealed class MainViewModel
     public DiagnosticsViewModel Diagnostics { get; }
     public HardFarmsViewModel HardFarms { get; }
     public ReputationViewModel Reputation { get; }
+    public GameDataViewModel GameData { get; }
 }

@@ -115,7 +115,7 @@ public class HardFarmsViewTests
         var headers = tabs.Items.OfType<TabItem>().Select(t => t.Header).ToList();
         Assert.Contains("Hard Farms", headers);
         Assert.DoesNotContain("Tracker", headers);
-        Assert.Equal(5, headers.Count);
+        Assert.Equal(6, headers.Count);
         tabs.SelectedItem = tabs.Items.OfType<TabItem>().Single(t => Equals(t.Header, "Hard Farms"));
         SettleUntil(window, () => window.GetVisualDescendants().OfType<HardFarmsView>().Any(), "the Hard Farms tab to be created");
         var view = window.GetVisualDescendants().OfType<HardFarmsView>().SingleOrDefault();

@@ -134,7 +134,7 @@ public sealed class ViewModelTests : IDisposable
         await reputation.RestoreAsync();
         var main = new MainViewModel(
             account, new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer()), hardFarms,
-            reputation);
+            reputation, new CaptureRig().CreateViewModel());
         await account.SignInCommand.ExecuteAsync(null);
         Assert.Single(main.HardFarms.Rows);
         Assert.Single(main.Reputation.Items);
@@ -167,7 +167,7 @@ public sealed class ViewModelTests : IDisposable
             account, new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer()),
             new HardFarmsViewModel(
                 new HardFarmStore(new InMemoryStoredDataStore().Module()), new FakeHardFarmSync(), new InventoryCardViewModel(new SidebarViewModel()), new FakeUrlLauncher()),
-            reputation);
+            reputation, new CaptureRig().CreateViewModel());
         await account.SignInCommand.ExecuteAsync(null);
         Assert.True(File.Exists(source.Path));
         dialog.OnShow = _ => Task.FromResult(SignInResult.SignedOut());

@@ -12,29 +12,6 @@ public class GameDataViewModelTests
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(30);
 
-    private sealed class Rig
-    {
-        public FakeProcessElevation Elevation { get; } = new();
-
-        public FakeApplicationExit Exit { get; } = new();
-
-        public FakeDelay Delay { get; } = new() { Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) };
-
-        public NpcapStatus Npcap { get; set; } = NpcapStatus.Available;
-
-        public bool IsWindows { get; set; } = true;
-
-        public FakePacketSource Source { get; set; } = new((_, _) => Task.CompletedTask);
-
-        public CaptureSession Session { get; }
-
-        public Rig() => Session = new CaptureSession(
-            () => Source, Elevation, () => Npcap, () => IsWindows, new FakeGameDataStore(), Delay, TimeProvider.System, Exit,
-            new AppPaths("/tmp/aqw-fictional-root"));
-
-        public GameDataViewModel Create(Action<Action>? onUiThread = null) => new(Session, onUiThread);
-    }
-
     private static FakePacketSource Feeding(IEnumerable<TcpSegment> segments) =>
         new((onSegment, _) =>
         {
@@ -69,10 +46,10 @@ public class GameDataViewModelTests
         return (source, started);
     }
 
-    private static async Task<(Rig Rig, GameDataViewModel Vm)> Captured(params IEnumerable<TcpSegment>[] connections)
+    private static async Task<(CaptureRig Rig, GameDataViewModel Vm)> Captured(params IEnumerable<TcpSegment>[] connections)
     {
-        var rig = new Rig { Source = Feeding(connections.SelectMany(c => c)) };
-        var vm = rig.Create();
+        var rig = new CaptureRig { Source = Feeding(connections.SelectMany(c => c)) };
+        var vm = rig.CreateViewModel();
         await vm.StartCommand.ExecuteAsync(null).WaitAsync(Wait);
         return (rig, vm);
     }
@@ -97,7 +74,7 @@ public class GameDataViewModelTests
     [Fact]
     public void A_new_view_model_is_idle_and_empty()
     {
-        var vm = new Rig().Create();
+        var vm = new CaptureRig().CreateViewModel();
 
         Assert.Equal("Not capturing.", vm.StateText);
         Assert.Equal("Segments seen 0 · characters captured 0", vm.CountersText);
@@ -117,8 +94,8 @@ public class GameDataViewModelTests
     [Fact]
     public async Task A_system_that_is_not_windows_says_so()
     {
-        var rig = new Rig { IsWindows = false };
-        var vm = rig.Create();
+        var rig = new CaptureRig { IsWindows = false };
+        var vm = rig.CreateViewModel();
 
         await vm.StartCommand.ExecuteAsync(null);
 
@@ -128,8 +105,8 @@ public class GameDataViewModelTests
     [Fact]
     public async Task Missing_npcap_is_explained_and_flagged()
     {
-        var rig = new Rig { Npcap = NpcapStatus.Missing };
-        var vm = rig.Create();
+        var rig = new CaptureRig { Npcap = NpcapStatus.Missing };
+        var vm = rig.CreateViewModel();
 
         await vm.StartCommand.ExecuteAsync(null);
 
@@ -141,10 +118,10 @@ public class GameDataViewModelTests
     [Fact]
     public async Task Missing_administrator_rights_enable_the_restart_command_only_then()
     {
-        var rig = new Rig();
+        var rig = new CaptureRig();
         rig.Elevation.IsElevated = false;
         rig.Elevation.RelaunchResult = true;
-        var vm = rig.Create();
+        var vm = rig.CreateViewModel();
         Assert.False(vm.RestartAsAdministratorCommand.CanExecute(null));
 
         await vm.StartCommand.ExecuteAsync(null);
@@ -161,8 +138,8 @@ public class GameDataViewModelTests
     public async Task Listening_shows_the_waiting_text_and_swaps_start_for_stop()
     {
         var (source, started) = Holding();
-        var rig = new Rig { Source = source };
-        var vm = rig.Create();
+        var rig = new CaptureRig { Source = source };
+        var vm = rig.CreateViewModel();
         Assert.False(vm.StopCommand.CanExecute(null));
 
         var run = vm.StartCommand.ExecuteAsync(null);
@@ -203,13 +180,13 @@ public class GameDataViewModelTests
     [Fact]
     public async Task Failures_are_explained()
     {
-        var noDevice = new Rig();
-        var noDeviceVm = noDevice.Create();
+        var noDevice = new CaptureRig();
+        var noDeviceVm = noDevice.CreateViewModel();
         await noDeviceVm.StartCommand.ExecuteAsync(null);
         Assert.Equal("No network device could be opened.", noDeviceVm.StateText);
 
-        var driver = new Rig { Source = new FakePacketSource((_, _) => throw new InvalidOperationException("driver")) };
-        var driverVm = driver.Create();
+        var driver = new CaptureRig { Source = new FakePacketSource((_, _) => throw new InvalidOperationException("driver")) };
+        var driverVm = driver.CreateViewModel();
         await driverVm.StartCommand.ExecuteAsync(null);
         Assert.Equal("The capture driver reported an error.", driverVm.StateText);
     }
@@ -244,7 +221,7 @@ public class GameDataViewModelTests
     [Fact]
     public async Task Restored_characters_select_the_most_recently_captured_one()
     {
-        var rig = new Rig();
+        var rig = new CaptureRig();
         var store = new FakeGameDataStore();
         store.Stored.Add(Snapshot("Alpha Hero", new DateTimeOffset(2030, 1, 3, 0, 0, 0, TimeSpan.Zero)));
         store.Stored.Add(Snapshot("Zeta Hero", new DateTimeOffset(2030, 1, 2, 0, 0, 0, TimeSpan.Zero)));
@@ -263,8 +240,8 @@ public class GameDataViewModelTests
     [Fact]
     public async Task A_selection_that_disappears_falls_back_to_the_first_name()
     {
-        var rig = new Rig { Source = Feeding(Enumerable.Range(0, CaptureSession.MaxCharacters + 1).SelectMany(i => Connection(clientPort: 50000 + i, name: "Hero " + (char)('A' + i)).Server)) };
-        var vm = rig.Create();
+        var rig = new CaptureRig { Source = Feeding(Enumerable.Range(0, CaptureSession.MaxCharacters + 1).SelectMany(i => Connection(clientPort: 50000 + i, name: "Hero " + (char)('A' + i)).Server)) };
+        var vm = rig.CreateViewModel();
 
         await vm.StartCommand.ExecuteAsync(null).WaitAsync(Wait);
 
@@ -451,9 +428,9 @@ public class GameDataViewModelTests
     [Fact]
     public async Task The_session_changes_are_marshalled_through_onUiThread()
     {
-        var rig = new Rig { Source = Feeding(Connection().Server) };
+        var rig = new CaptureRig { Source = Feeding(Connection().Server) };
         var posted = new List<Action>();
-        var vm = rig.Create(posted.Add);
+        var vm = rig.CreateViewModel(posted.Add);
 
         await vm.StartCommand.ExecuteAsync(null).WaitAsync(Wait);
 
@@ -497,8 +474,8 @@ public class GameDataViewModelTests
     [Fact]
     public async Task Property_changes_are_announced_for_the_state_and_the_data()
     {
-        var rig = new Rig { Source = Feeding(Connection().Server) };
-        var vm = rig.Create();
+        var rig = new CaptureRig { Source = Feeding(Connection().Server) };
+        var vm = rig.CreateViewModel();
         var changed = new List<string?>();
         vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
 

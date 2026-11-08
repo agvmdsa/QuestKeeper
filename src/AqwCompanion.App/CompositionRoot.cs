@@ -89,17 +89,7 @@ public static class CompositionRoot
             sp.GetRequiredService<IHardFarmSync>(),
             sp.GetRequiredService<InventoryCardViewModel>(),
             sp.GetRequiredService<IUrlLauncher>(),
-            action =>
-            {
-                if (Dispatcher.UIThread.CheckAccess())
-                {
-                    action();
-                }
-                else
-                {
-                    Dispatcher.UIThread.Post(action);
-                }
-            }));
+            OnUiThread));
         services.AddSingleton<IReputationStore, ReputationStore>();
         services.AddSingleton<IReputationFilePicker, ReputationFilePicker>();
         services.AddSingleton<IReputationAutoSource>(sp => new ReputationFileSource(sp.GetRequiredService<AppPaths>()));
@@ -117,6 +107,7 @@ public static class CompositionRoot
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<IApplicationExit>(),
             sp.GetRequiredService<AppPaths>()));
+        services.AddSingleton(sp => new GameDataViewModel(sp.GetRequiredService<CaptureSession>(), OnUiThread));
         services.AddSingleton(sp => new ForgetCoordinator(
             () => sp.GetRequiredService<IAccountDataPersistence>().Forget(),
             () =>
@@ -142,6 +133,19 @@ public static class CompositionRoot
             ValidateOnBuild = true,
             ValidateScopes = true,
         });
+    }
+
+    // Runs the action at once on the UI thread, otherwise posts it there; for view models fed from background threads.
+    private static void OnUiThread(Action action)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            action();
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(action);
+        }
     }
 
     /// <summary>One long-lived client: no cookies, no automatic redirects (the fetcher validates each hop).</summary>

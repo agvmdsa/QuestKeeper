@@ -55,7 +55,16 @@ public class SettingsViewModelTests
         Assert.Contains("other players", SettingsViewModel.PrivacyText);
         Assert.Contains("Artix Entertainment", SettingsViewModel.CreditsText);
         Assert.Contains("CC BY-SA", SettingsViewModel.CreditsText);
-        Assert.Equal(AppInfo.Version, Build().Version);
+        Assert.Equal(SettingsViewModel.DisplayVersion(AppInfo.Version), Build().Version);
+    }
+
+    [Theory]
+    [InlineData("0.1.1-dev.92+b84475d569754d8820c0adc8f9250aaddd5ba596", "0.1.1-dev.92")]
+    [InlineData("1.2.3", "1.2.3")]
+    [InlineData("", "0.0.0")]
+    public void The_version_is_shown_without_the_build_hash(string full, string expected)
+    {
+        Assert.Equal(expected, SettingsViewModel.DisplayVersion(full));
     }
 
     [Fact]

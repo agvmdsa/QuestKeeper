@@ -23,7 +23,7 @@ public class MainWindowSmokeTests
         Assert.Equal(AppInfo.ProductName, window.Title);
         Assert.Single(window.GetVisualDescendants().OfType<DashboardView>());
         Assert.Empty(window.GetVisualDescendants().OfType<TabControl>());
-        Assert.Equal("Settings", window.FindControl<Button>("SettingsButton")!.Content);
+        Assert.IsType<Avalonia.Controls.Shapes.Path>(window.FindControl<Button>("SettingsButton")!.Content);
     }
 
     [AvaloniaFact]

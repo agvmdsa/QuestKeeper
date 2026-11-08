@@ -378,6 +378,41 @@ public class GameDataViewModelTests
     }
 
     [Fact]
+    public async Task Factions_say_what_is_missing_or_that_the_rank_is_the_highest()
+    {
+        var (_, vm) = await Captured(Connection().Server);
+
+        Assert.Equal(["900 to next", "5,000 to next", "Max rank"], vm.Factions.Select(f => f.NextText));
+    }
+
+    [Fact]
+    public async Task The_character_chip_names_the_character_with_an_initial_and_waits_when_there_is_none()
+    {
+        var empty = new CaptureRig().CreateViewModel();
+        Assert.Equal(GameDataViewModel.NoCharacterText, empty.CharacterChipText);
+        Assert.Equal("?", empty.SelectedCharacterInitial);
+
+        var (_, vm) = await Captured(Connection().Server);
+        Assert.Equal("Fictional Hero", vm.CharacterChipText);
+        Assert.Equal("F", vm.SelectedCharacterInitial);
+    }
+
+    [Fact]
+    public async Task The_chip_follows_the_selected_character()
+    {
+        var (_, vm) = await Captured(
+            Connection(clientPort: 50000, name: "Alpha Hero").Server, Connection(clientPort: 50001, name: "Beta Hero").Server);
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        vm.SelectedCharacter = vm.SelectedCharacter == "Alpha Hero" ? "Beta Hero" : "Alpha Hero";
+
+        Assert.Contains(nameof(GameDataViewModel.CharacterChipText), changed);
+        Assert.Contains(nameof(GameDataViewModel.SelectedCharacterInitial), changed);
+        Assert.Equal(vm.SelectedCharacter, vm.CharacterChipText);
+    }
+
+    [Fact]
     public async Task The_footer_says_waiting_while_listening_without_a_character_and_the_state_otherwise()
     {
         var (source, started) = Holding();
@@ -480,9 +515,9 @@ public class GameDataViewModelTests
 
         Assert.Equal(
             [
-                new GameFactionRow("Fresh Order", "Rank 1", "0", "0 / 900", "900", 0),
-                new GameFactionRow("Fictional Order", "Rank 3", "5,000", "1,400 / 6,400", "5,000", 1400d / 6400d),
-                new GameFactionRow("Other Order", "Rank 10", "302,500", "Max rank", "0", 1),
+                new GameFactionRow("Fresh Order", "Rank 1", "0", "0 / 900", "900", 0, false),
+                new GameFactionRow("Fictional Order", "Rank 3", "5,000", "1,400 / 6,400", "5,000", 1400d / 6400d, false),
+                new GameFactionRow("Other Order", "Rank 10", "302,500", "Max rank", "0", 1, true),
             ],
             vm.Factions);
     }

@@ -33,6 +33,7 @@ public partial class GameDataViewModel : ObservableObject
     public const string CaptureDetailsText = "Capture details";
     public const string LiveNotTrackedText = "Buying, quests, reputation and level-ups are not tracked yet; log in again to refresh.";
     public const string EarlierSessionHintText = "A game session that started before this app was opened is running. Its data cannot be read until you log in again, for example by switching server.";
+    public const string NoCharacterText = "No character yet";
     public const string FooterWaitingText = "Waiting for a login";
     public const string FooterCapturingText = "Capturing";
     public const string EmptyText = "The capture is already listening. Open the game launcher and log in; your data appears here when the login has been read.";
@@ -129,6 +130,12 @@ public partial class GameDataViewModel : ObservableObject
 
     public bool HasOneCharacter => CharacterNames.Count == 1;
 
+    /// <summary>The selected Character's name for the top bar chip, or a waiting text.</summary>
+    public string CharacterChipText => _selectedCharacter ?? NoCharacterText;
+
+    /// <summary>The first letter of the selected Character's name for the chip's badge, or "?".</summary>
+    public string SelectedCharacterInitial => _selectedCharacter is { Length: > 0 } name ? name[..1].ToUpperInvariant() : "?";
+
     public bool HasSeveralCharacters => CharacterNames.Count > 1;
 
     /// <summary>The selected Character's name, or null when there is none; a name that does not exist is ignored.</summary>
@@ -147,6 +154,8 @@ public partial class GameDataViewModel : ObservableObject
             {
                 _selectedCharacter = match;
                 OnPropertyChanged();
+                OnPropertyChanged(nameof(CharacterChipText));
+                OnPropertyChanged(nameof(SelectedCharacterInitial));
                 UpdateActive();
             }
         }
@@ -249,6 +258,8 @@ public partial class GameDataViewModel : ObservableObject
         OnPropertyChanged(nameof(HasCharacters));
         OnPropertyChanged(nameof(HasSeveralCharacters));
         OnPropertyChanged(nameof(SelectedCharacter));
+        OnPropertyChanged(nameof(CharacterChipText));
+        OnPropertyChanged(nameof(SelectedCharacterInitial));
         StartCommand.NotifyCanExecuteChanged();
         StopCommand.NotifyCanExecuteChanged();
         RestartAsAdministratorCommand.NotifyCanExecuteChanged();
@@ -528,7 +539,8 @@ public partial class GameDataViewModel : ObservableObject
             Format(f.Rep),
             maxed ? "Max rank" : Format(f.SpillRep) + " / " + Format(f.RepToRank),
             maxed ? Format(0) : Format(Math.Max(0, f.RepToRank - f.SpillRep)),
-            maxed ? 1 : f.RepToRank <= 0 ? 0 : Math.Clamp((double)f.SpillRep / f.RepToRank, 0, 1));
+            maxed ? 1 : f.RepToRank <= 0 ? 0 : Math.Clamp((double)f.SpillRep / f.RepToRank, 0, 1),
+            maxed);
     }
 
     private static string Format(long value) => value.ToString("N0", CultureInfo.InvariantCulture);

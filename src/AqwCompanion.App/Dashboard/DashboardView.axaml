@@ -44,6 +44,7 @@
       </StackPanel>
     </DataTemplate>
 
+    <!-- A faction still to earn shows its bar; one at the highest rank is a quiet single line. -->
     <DataTemplate x:Key="FactionTemplate" x:DataType="gd:GameFactionRow">
       <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" Margin="0,5">
         <StackPanel Orientation="Horizontal" Spacing="8">
@@ -51,9 +52,9 @@
                      Foreground="{DynamicResource AqwTextBright}" TextTrimming="CharacterEllipsis" />
           <TextBlock x:Name="DashboardFactionRank" Text="{Binding Rank}" Classes="muted" />
         </StackPanel>
-        <TextBlock x:Name="DashboardFactionToNext" Grid.Column="1" Classes="muted"
-                   Text="{Binding ToNextRank, StringFormat='{}{0} to next'}" />
+        <TextBlock x:Name="DashboardFactionToNext" Grid.Column="1" Classes="muted" Text="{Binding NextText}" />
         <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Classes="rank" Margin="0,3,0,0" Value="{Binding Fraction}"
+                     IsVisible="{Binding !IsMax}"
                      AutomationProperties.Name="{Binding Progress, StringFormat='Progress to the next rank: {0}'}" />
       </Grid>
     </DataTemplate>

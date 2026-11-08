@@ -106,7 +106,10 @@ public partial class SettingsViewModel : ObservableObject
     /// <summary>Raised when the dialog should close.</summary>
     public event EventHandler? CloseRequested;
 
-    public string Version => AppInfo.Version;
+    public string Version { get; } = DisplayVersion(AppInfo.Version);
+
+    /// <summary>The version without the build hash that follows a plus sign.</summary>
+    public static string DisplayVersion(string full) => full.Split('+')[0] is { Length: > 0 } version ? version : "0.0.0";
 
     public bool DebugMode
     {

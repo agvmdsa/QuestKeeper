@@ -12,27 +12,88 @@
     <KeyBinding Gesture="Ctrl+Shift+D" Command="{Binding ToggleDebugCommand}" />
   </Window.KeyBindings>
   <Window.Styles>
+    <!-- The dot is set by styles only (a local value would beat them): muted while idle, green while the capture listens. -->
+    <Style Selector="TextBlock#FooterDot">
+      <Setter Property="Foreground" Value="{DynamicResource AqwTextMuted}" />
+    </Style>
     <Style Selector="TextBlock#FooterDot.live">
       <Setter Property="Foreground" Value="{DynamicResource AqwSuccess}" />
     </Style>
+
+    <!-- Buttons on the plum bar: light content, a faint wash on hover, no filled box. -->
+    <Style Selector="Button.topBar">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource AqwOnTopBar}" />
+      <Setter Property="BorderBrush" Value="#59FFFDF7" />
+      <Setter Property="CornerRadius" Value="6" />
+    </Style>
+    <Style Selector="Button.topBar:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#33FFFDF7" />
+      <Setter Property="BorderBrush" Value="#99FFFDF7" />
+      <Setter Property="Foreground" Value="{DynamicResource AqwOnTopBar}" />
+    </Style>
+    <Style Selector="Button.topBar:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#4DFFFDF7" />
+      <Setter Property="Foreground" Value="{DynamicResource AqwOnTopBar}" />
+    </Style>
+    <Style Selector="Button.icon">
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="8" />
+    </Style>
+    <Style Selector="Button.chip">
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="8,4,10,4" />
+    </Style>
+    <Style Selector="Path.line">
+      <Setter Property="Stroke" Value="{Binding $parent[Button].Foreground}" />
+      <Setter Property="StrokeThickness" Value="1.8" />
+      <Setter Property="StrokeLineCap" Value="Round" />
+      <Setter Property="StrokeJoin" Value="Round" />
+      <Setter Property="Stretch" Value="Uniform" />
+    </Style>
   </Window.Styles>
   <DockPanel>
-    <!-- Plum top bar: the app name on the left, the character and the settings on the right. -->
+    <!-- Plum top bar: the app name on the left, the character chip and the settings gear on the right. -->
     <Border x:Name="TopBar" DockPanel.Dock="Top" Background="{DynamicResource AqwTopBar}"
             BorderBrush="{DynamicResource AqwBorder}" BorderThickness="0,0,0,1" Padding="16,10">
       <DockPanel LastChildFill="False">
         <TextBlock x:Name="AppNameText" DockPanel.Dock="Left" Text="{x:Static local:AppInfo.ProductName}"
                    FontSize="18" FontWeight="Bold" Foreground="{DynamicResource AqwOnTopBar}"
                    VerticalAlignment="Center" />
-        <Button x:Name="SettingsButton" DockPanel.Dock="Right" Content="Settings" Margin="12,0,0,0" Command="{Binding ShowSettingsCommand}"
-                VerticalAlignment="Center" AutomationProperties.Name="Open the settings" />
-        <ComboBox x:Name="CharacterSelector" DockPanel.Dock="Right" MinWidth="180" ItemsSource="{Binding GameData.CharacterNames}"
-                  SelectedItem="{Binding GameData.SelectedCharacter, Mode=TwoWay}" IsVisible="{Binding GameData.HasSeveralCharacters}"
-                  VerticalAlignment="Center" AutomationProperties.Name="Character" />
-        <TextBlock x:Name="CharacterSummaryText" DockPanel.Dock="Right" Text="{Binding GameData.SelectedCharacter}"
-                   IsVisible="{Binding GameData.HasOneCharacter}" Foreground="{DynamicResource AqwOnTopBar}"
-                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                   AutomationProperties.Name="Connected character" />
+        <!-- The gear sits at the far right, the character chip next to it. -->
+        <Button x:Name="SettingsButton" DockPanel.Dock="Right" Classes="topBar icon" Margin="8,0,0,0"
+                Command="{Binding ShowSettingsCommand}" VerticalAlignment="Center"
+                ToolTip.Tip="Settings" AutomationProperties.Name="Open the settings">
+          <!-- A ring with eight short teeth around a smaller ring. -->
+          <Path Classes="line" Width="20" Height="20"
+                Data="M5.5,12 A6.5,6.5 0 1 0 18.5,12 A6.5,6.5 0 1 0 5.5,12 Z M9.5,12 A2.5,2.5 0 1 0 14.5,12 A2.5,2.5 0 1 0 9.5,12 Z M12,1.5 L12,4.5 M12,19.5 L12,22.5 M1.5,12 L4.5,12 M19.5,12 L22.5,12 M4.6,4.6 L6.7,6.7 M17.3,17.3 L19.4,19.4 M4.6,19.4 L6.7,17.3 M17.3,6.7 L19.4,4.6" />
+        </Button>
+        <!-- Switches between the characters the capture has seen, for example from another launcher or client open with another player. -->
+        <Button x:Name="CharacterChip" DockPanel.Dock="Right" Classes="topBar chip" VerticalAlignment="Center"
+                ToolTip.Tip="Switch character" AutomationProperties.Name="Switch character">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Border Width="24" Height="24" CornerRadius="12" Background="{DynamicResource AqwAccent}">
+              <TextBlock x:Name="CharacterInitial" Text="{Binding GameData.SelectedCharacterInitial}"
+                         Foreground="{DynamicResource AqwAccentText}" FontWeight="Bold"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <TextBlock x:Name="CharacterChipText" Text="{Binding GameData.CharacterChipText}" VerticalAlignment="Center"
+                       MaxWidth="240" TextTrimming="CharacterEllipsis" />
+            <Path Classes="line" Width="10" Height="10" VerticalAlignment="Center" StrokeThickness="2" Data="M2,3.5 L8,9 L14,3.5" />
+          </StackPanel>
+          <Button.Flyout>
+            <Flyout Placement="BottomEdgeAlignedRight">
+              <StackPanel Width="280" Spacing="8">
+                <TextBlock Text="Characters" FontWeight="SemiBold" Foreground="{DynamicResource AqwTextBright}" />
+                <ListBox x:Name="CharacterList" ItemsSource="{Binding GameData.CharacterNames}"
+                         SelectedItem="{Binding GameData.SelectedCharacter, Mode=TwoWay}"
+                         AutomationProperties.Name="Characters" />
+                <TextBlock x:Name="CharacterListHint" TextWrapping="Wrap" Foreground="{DynamicResource AqwTextMuted}"
+                           Text="Log in with another character in the game, another launcher or Skua, and it appears here." />
+              </StackPanel>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
       </DockPanel>
     </Border>
 
@@ -41,7 +102,7 @@
             BorderBrush="{DynamicResource AqwBorder}" BorderThickness="0,1,0,0" Padding="16,6">
       <Grid ColumnDefinitions="Auto,*,Auto">
         <TextBlock x:Name="FooterDot" Text="●" Margin="0,0,8,0" VerticalAlignment="Center"
-                   Foreground="{DynamicResource AqwTextMuted}" Classes.live="{Binding GameData.IsListening}" />
+                   Classes.live="{Binding GameData.IsListening}" />
         <TextBlock x:Name="FooterText" Grid.Column="1" Text="{Binding GameData.FooterText}" TextTrimming="CharacterEllipsis"
                    Foreground="{DynamicResource AqwTextSecondary}" VerticalAlignment="Center"
                    AutomationProperties.Name="{Binding GameData.FooterText}" />

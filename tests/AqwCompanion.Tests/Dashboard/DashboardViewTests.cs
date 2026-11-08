@@ -172,25 +172,37 @@ public class DashboardViewTests
     }
 
     [AvaloniaFact]
-    public void One_character_is_named_in_the_top_bar_and_several_get_a_selector()
+    public void The_character_chip_waits_for_a_login_then_names_the_character()
     {
-        var one = Captured(Connection().Server);
-        Assert.True(one.Named<TextBlock>("CharacterSummaryText").IsEffectivelyVisible);
-        Assert.Equal("Fictional Hero", one.Named<TextBlock>("CharacterSummaryText").Text);
-        Assert.False(one.Named<ComboBox>("CharacterSelector").IsEffectivelyVisible);
+        var empty = Build();
+        Assert.Equal(GameDataViewModel.NoCharacterText, empty.Named<TextBlock>("CharacterChipText").Text);
+        Assert.Equal("?", empty.Named<TextBlock>("CharacterInitial").Text);
 
+        var one = Captured(Connection().Server);
+        SettleUntil(one.Window, () => one.Named<TextBlock>("CharacterChipText").Text == "Fictional Hero", "the chip to name the character");
+        Assert.Equal("F", one.Named<TextBlock>("CharacterInitial").Text);
+        var chip = one.Named<Button>("CharacterChip");
+        Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(chip)));
+        Assert.NotNull(chip.Flyout);
+    }
+
+    [AvaloniaFact]
+    public void Several_characters_are_listed_in_the_chip_flyout_and_picking_one_switches_the_dashboard()
+    {
         var two = Captured(Connection(clientPort: 50000, name: "First Hero").Server, Connection(clientPort: 50001, name: "Second Hero").Server);
-        var box = two.Named<ComboBox>("CharacterSelector");
-        SettleUntil(two.Window, () => box.IsEffectivelyVisible, "the selector");
-        Assert.False(two.Named<TextBlock>("CharacterSummaryText").IsEffectivelyVisible);
-        Assert.Equal(2, box.ItemCount);
-        Assert.Equal("Character", AutomationProperties.GetName(box));
+        SettleUntil(two.Window, () => two.Main.GameData.HasSeveralCharacters, "both characters");
+        var chip = two.Named<Button>("CharacterChip");
+
+        chip.Flyout!.ShowAt(chip);
+        SettleUntil(two.Window, () => chip.Flyout.IsOpen, "the flyout to open");
+        var list = Assert.IsType<ListBox>(((StackPanel)((Flyout)chip.Flyout).Content!).Children.OfType<ListBox>().Single());
+        Assert.Equal(2, list.ItemCount);
 
         var other = two.Main.GameData.SelectedCharacter == "First Hero" ? "Second Hero" : "First Hero";
         two.Main.GameData.SelectedCharacter = other;
 
         SettleUntil(two.Window, () => two.Named<TextBlock>("DashboardProfileHeadline").Text == other + " · Lv 60", "the other Character's headline");
-        Assert.Equal(other, box.SelectedItem);
+        Assert.Equal(other, two.Named<TextBlock>("CharacterChipText").Text);
     }
 
     [AvaloniaFact]
@@ -214,6 +226,7 @@ public class DashboardViewTests
 
         Assert.Same(h.Main.Settings, Assert.Single(h.Built.Dialog.Shown));
         Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(button)));
+        Assert.IsType<Avalonia.Controls.Shapes.Path>(button.Content);
     }
 
     [AvaloniaFact]

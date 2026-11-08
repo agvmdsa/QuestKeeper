@@ -5,14 +5,13 @@ using SharpPcap.LibPcap;
 namespace AqwCompanion.Capture;
 
 /// <summary>
-/// The live adapter of the packet source seam: SharpPcap over Npcap, on every device that is up and not loopback,
-/// filtered to the game ports. Nothing touches the driver until <see cref="RunAsync"/>, which does nothing when Npcap
-/// is not available. The callback runs on capture threads (one at a time) and must not throw.
+/// The live adapter of the packet source seam: SharpPcap over Npcap, on every non-loopback device that opens, filtered to the
+/// game ports. A device that is down or cannot be opened is skipped (an adapter without traffic is harmless). Nothing touches
+/// the driver until <see cref="RunAsync"/>, which does nothing when Npcap is not available, and returns at once when no device
+/// could be opened so the caller can report it. The callback runs on capture threads (one at a time) and must not throw.
 /// </summary>
 public sealed class LivePacketSource : IPacketSource
 {
-    private const uint InterfaceUp = 0x2; // PCAP_IF_UP
-
     /// <inheritdoc />
     public async Task RunAsync(Action<TcpSegment> onSegment, CancellationToken cancellationToken)
     {
@@ -27,7 +26,7 @@ public sealed class LivePacketSource : IPacketSource
         {
             foreach (var device in CaptureDeviceList.Instance)
             {
-                if (device is not LibPcapLiveDevice { Loopback: false } live || (live.Flags & InterfaceUp) == 0)
+                if (device is not LibPcapLiveDevice { Loopback: false } live)
                 {
                     continue;
                 }
@@ -54,6 +53,11 @@ public sealed class LivePacketSource : IPacketSource
                 {
                     TryClose(live);
                 }
+            }
+
+            if (opened.Count == 0)
+            {
+                return;
             }
 
             await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);

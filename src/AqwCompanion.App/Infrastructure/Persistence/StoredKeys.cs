@@ -1,4 +1,5 @@
 using AqwCompanion.App.Account;
+using AqwCompanion.App.GameData;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Reputation;
 using AqwCompanion.Core.Account;
@@ -28,10 +29,12 @@ public static class StoredKeys
 
     public static readonly StoredKey<CharacterInventory> Inventory = new("inventory", 1, "Account");
 
+    public static readonly StoredKey<GameDataStore.GameDataDto> GameData = new("gamedata.characters", 1, "Game data");
+
     /// <summary>Every key declared above.</summary>
     public static readonly IReadOnlyList<IStoredKey> All =
     [
-        Reputation, HardFarmList, HardFarmIndexes, Identity, Summary, Equipment, Badges, Inventory,
+        Reputation, HardFarmList, HardFarmIndexes, Identity, Summary, Equipment, Badges, Inventory, GameData,
     ];
 
     /// <summary>Names of records no feature uses any more; removed after the first successful save.</summary>

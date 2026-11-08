@@ -93,7 +93,7 @@ public sealed class ForgettingEffectTests : IDisposable
         persistence.SaveBadges(new CharacterBadges([new Badge("First", "Did a thing", "Quests")]), ReadAt);
         persistence.SaveInventory(new CharacterInventory([new InventoryItem("Test Sword", "Sword", 1, true, false)]), ReadAt);
 
-        var hardFarmStore = new HardFarmStore(store);
+        var hardFarmStore = new HardFarmStore(new StoredData(store, StoredKeys.Obsolete));
         hardFarmStore.SaveList(new HardFarmList([new HardFarmGroup("Nation", ["blade-one"])], null), ReadAt);
         hardFarmStore.SaveIndex(new WikiIndex(WikiUrls.ClassesSlug, WikiType.Class, [new WikiIndexEntry("blade-one", "Blade One")]), ReadAt);
 

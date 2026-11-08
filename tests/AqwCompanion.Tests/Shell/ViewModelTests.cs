@@ -120,7 +120,7 @@ public sealed class ViewModelTests : IDisposable
         ReputationViewModel? reputationRef = null;
         var account = AccountViewModelBuilder.Create(
             dialog, persistence: persistence, forgetting: new ForgetCoordinator(persistence.Forget, () => [hardFarmsRef!, reputationRef!]));
-        var store = new HardFarmStore(new InMemoryStoredDataStore());
+        var store = new HardFarmStore(new InMemoryStoredDataStore().Module());
         store.SaveList(new HardFarmList([new HardFarmGroup("Nation", ["blade-one"])], null), DateTimeOffset.UnixEpoch);
         var hardFarms = new HardFarmsViewModel(
             store, new FakeHardFarmSync(), new InventoryCardViewModel(new SidebarViewModel()), new FakeUrlLauncher());
@@ -166,7 +166,7 @@ public sealed class ViewModelTests : IDisposable
         var main = new MainViewModel(
             account, new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer()),
             new HardFarmsViewModel(
-                new HardFarmStore(new InMemoryStoredDataStore()), new FakeHardFarmSync(), new InventoryCardViewModel(new SidebarViewModel()), new FakeUrlLauncher()),
+                new HardFarmStore(new InMemoryStoredDataStore().Module()), new FakeHardFarmSync(), new InventoryCardViewModel(new SidebarViewModel()), new FakeUrlLauncher()),
             reputation);
         await account.SignInCommand.ExecuteAsync(null);
         Assert.True(File.Exists(source.Path));

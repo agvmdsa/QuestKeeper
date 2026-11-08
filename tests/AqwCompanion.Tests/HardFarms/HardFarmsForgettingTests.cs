@@ -10,7 +10,7 @@ public class HardFarmsForgettingTests
 {
     private static readonly DateTimeOffset At = new(2030, 3, 1, 9, 0, 0, TimeSpan.Zero);
 
-    private readonly HardFarmStore _store = new(new InMemoryStoredDataStore());
+    private readonly HardFarmStore _store = new(new InMemoryStoredDataStore().Module());
     private readonly FakeHardFarmSync _sync = new() { Result = new SyncResult(SyncStatus.Updated, "Stored.", []) };
     private readonly HardFarmsViewModel _vm;
 

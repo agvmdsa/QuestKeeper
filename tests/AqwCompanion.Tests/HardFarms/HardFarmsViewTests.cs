@@ -49,7 +49,7 @@ public class HardFarmsViewTests
 
     private static async Task<Host> Build(HardFarmList? list = null, WikiIndex[]? indexes = null, IReadOnlyList<string>? pending = null)
     {
-        var store = new HardFarmStore(new InMemoryStoredDataStore());
+        var store = new HardFarmStore(new InMemoryStoredDataStore().Module());
         if (list is not null)
         {
             store.SaveList(list, At);

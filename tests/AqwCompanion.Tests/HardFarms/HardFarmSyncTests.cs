@@ -21,7 +21,7 @@ public class HardFarmSyncTests
     {
         _delay = new LoggingDelay(_log);
         _fetcher = new FakeWikiFetcher { Log = _log };
-        _store = new HardFarmStore(_inner);
+        _store = new HardFarmStore(_inner.Module());
         _fetcher.Pages["syfarm"] = WikiPages.HardFarm(("Nation", WikiPages.Slugs("nat", 6)), ("Legion", WikiPages.Slugs("leg", 5)));
         foreach (var slug in WikiUrls.TypeIndexSlugs)
         {

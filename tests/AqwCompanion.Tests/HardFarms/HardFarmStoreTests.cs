@@ -10,7 +10,7 @@ public class HardFarmStoreTests
 
     private readonly InMemoryStoredDataStore _inner = new();
 
-    private HardFarmStore Build() => new(_inner);
+    private HardFarmStore Build() => new(_inner.Module());
 
     [Fact]
     public void Nothing_is_stored_at_first()
@@ -92,7 +92,7 @@ public class HardFarmStoreTests
     [Fact]
     public void The_old_single_type_table_is_ignored_on_load_and_removed_on_the_first_save()
     {
-        _inner.Items["hardfarms.types"] = (new HardFarmStore.TypesDto([new("a", "Alpha", "Class")]), At);
+        _inner.Items["hardfarms.types"] = ("legacy type table", At);
         var store = Build();
 
         Assert.Empty(store.LoadIndexes());
@@ -103,6 +103,41 @@ public class HardFarmStoreTests
 
         Assert.False(_inner.Items.ContainsKey("hardfarms.types"));
         Assert.Equal(["b"], store.LoadTypes()!.Table.Rows.Select(r => r.Slug));
+    }
+
+    [Fact]
+    public void The_old_single_type_table_is_also_removed_after_the_first_list_save()
+    {
+        _inner.Items["hardfarms.types"] = ("legacy type table", At);
+        var store = Build();
+
+        store.SaveList(new HardFarmList([new HardFarmGroup("Nation", ["a"])], null), At);
+
+        Assert.False(_inner.Items.ContainsKey("hardfarms.types"));
+        Assert.True(_inner.Items.ContainsKey("hardfarms.list"));
+    }
+
+    [Fact]
+    public void A_failed_save_leaves_the_old_single_type_table_in_place()
+    {
+        _inner.Items["hardfarms.types"] = ("legacy type table", At);
+        _inner.ThrowOnSave = true;
+
+        Build().SaveList(new HardFarmList([], null), At);
+
+        Assert.True(_inner.Items.ContainsKey("hardfarms.types"));
+    }
+
+    [Fact]
+    public void Store_failures_are_reported_by_operation_and_exception_type_only()
+    {
+        var failures = new List<(string Operation, string Type)>();
+        _inner.ThrowOnSave = true;
+        var store = new HardFarmStore(_inner.Module((operation, type) => failures.Add((operation, type))));
+
+        store.SaveList(new HardFarmList([], null), At);
+
+        Assert.Equal([("Save", "IOException")], failures);
     }
 
     [Fact]

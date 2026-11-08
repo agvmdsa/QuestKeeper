@@ -2,6 +2,7 @@ using AqwCompanion.Tests.TestDoubles;
 using AqwCompanion.App.Account;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure.Persistence;
+using AqwCompanion.Core.Persistence;
 using AqwCompanion.Core.Wiki;
 
 namespace AqwCompanion.Tests.HardFarms;
@@ -19,7 +20,7 @@ public sealed class HardFarmStoreLiteDbTests : IDisposable
         }
     }
 
-    private HardFarmStore Build() => new(new LiteDbStoredDataStore(Path.Combine(_directory, "data", "companion.db")));
+    private HardFarmStore Build() => new(new StoredData(new LiteDbStoredDataStore(Path.Combine(_directory, "data", "companion.db")), StoredKeys.Obsolete));
 
     [Fact]
     public void Nothing_is_loaded_before_anything_was_saved()
@@ -62,15 +63,15 @@ public sealed class HardFarmStoreLiteDbTests : IDisposable
     {
         var path = Path.Combine(_directory, "data", "companion.db");
         var database = new LiteDbStoredDataStore(path);
-        var store = new HardFarmStore(database);
+        var store = new HardFarmStore(new StoredData(database, StoredKeys.Obsolete));
         store.SaveList(new HardFarmList([new HardFarmGroup("Nation", ["blade-one"])], null), ReadAt);
         store.SaveIndex(new WikiIndex(WikiUrls.WeaponsSlug, WikiType.Weapon, [new WikiIndexEntry("blade-one", "Blade One")]), ReadAt);
         Assert.NotNull(store.LoadList());
 
         Assert.True(new AccountDataPersistence(database).Forget());
 
-        Assert.Null(database.Load<HardFarmStore.ListDto>(HardFarmStore.ListKey, 1));
-        Assert.Null(database.Load<HardFarmStore.IndexesDto>(HardFarmStore.IndexesKey, 1));
+        Assert.Null(database.Load<HardFarmStore.ListDto>(StoredKeys.HardFarmList.Name, 1));
+        Assert.Null(database.Load<HardFarmStore.IndexesDto>(StoredKeys.HardFarmIndexes.Name, 1));
         Assert.Null(store.LoadList());
         Assert.Null(store.LoadTypes());
     }

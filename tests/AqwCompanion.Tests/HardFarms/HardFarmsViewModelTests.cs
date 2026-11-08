@@ -19,7 +19,7 @@ public class HardFarmsViewModelTests
     private readonly InventoryCardViewModel _inventory = new(new SidebarViewModel());
     private readonly FakeUrlLauncher _launcher = new();
 
-    public HardFarmsViewModelTests() => _store = new HardFarmStore(_inner);
+    public HardFarmsViewModelTests() => _store = new HardFarmStore(_inner.Module());
 
     private HardFarmsViewModel Build() => new(_store, _sync, _inventory, _launcher);
 

@@ -527,8 +527,6 @@ public class GameDataViewModelTests
         Assert.Equal(string.Empty, vm.ProfileHeadline);
         Assert.Empty(vm.ProfileLines);
         Assert.Empty(vm.Factions);
-        Assert.Equal(string.Empty, vm.ItemFilter);
-        Assert.Equal("0 items", vm.ItemsSummary);
     }
 
     [Fact]

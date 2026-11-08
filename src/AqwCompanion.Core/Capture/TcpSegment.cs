@@ -1,6 +1,6 @@
 namespace AqwCompanion.Core.Capture;
 
-/// <summary>One TCP segment of the game connection, copied out of the frame it came in.</summary>
+/// <summary>One TCP segment of the game connection, copied out of the frame it came in. <paramref name="IsFin"/> and <paramref name="IsRst"/> say the sender closes the connection.</summary>
 public sealed record TcpSegment(
     byte[] SourceAddress,
     int SourcePort,
@@ -8,4 +8,6 @@ public sealed record TcpSegment(
     int DestinationPort,
     uint Sequence,
     bool IsSyn,
-    byte[] Payload);
+    byte[] Payload,
+    bool IsFin = false,
+    bool IsRst = false);

@@ -27,7 +27,9 @@ internal static class PcapBuilder
         byte[]? dstAddress = null,
         byte protocol = 6,
         int fragmentOffset = 0,
-        int ethernetPadding = 0)
+        int ethernetPadding = 0,
+        bool fin = false,
+        bool rst = false)
     {
         payload ??= [];
         var ipHeaderLength = 20 + ipOptionBytes;
@@ -69,7 +71,7 @@ internal static class PcapBuilder
         BinaryPrimitives.WriteUInt16BigEndian(tcp.AsSpan(2), (ushort)dstPort);
         BinaryPrimitives.WriteUInt32BigEndian(tcp.AsSpan(4), sequence);
         tcp[12] = (byte)((tcpHeaderLength / 4) << 4);
-        tcp[13] = (byte)(syn ? 0x02 : 0x18);
+        tcp[13] = (byte)((syn ? 0x02 : 0x18) | (fin ? 0x01 : 0) | (rst ? 0x04 : 0));
         BinaryPrimitives.WriteUInt16BigEndian(tcp.AsSpan(14), 65535);
         for (var i = 20; i < tcpHeaderLength; i++)
         {

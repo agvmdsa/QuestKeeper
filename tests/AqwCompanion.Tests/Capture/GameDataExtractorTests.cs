@@ -36,14 +36,14 @@ public class GameDataExtractorTests
 
         Assert.Equal(3, part.Items.Count);
         var blade = part.Items[0];
-        Assert.Equal(new OwnedItem("Fictional Blade", "Sword", 2, 5, 30, ItemFlags.Coins | ItemFlags.Upgrade | ItemFlags.Equipped, 11, null), blade);
+        Assert.Equal(new OwnedItem("Fictional Blade", "Sword", 2, 5, 30, ItemFlags.Coins | ItemFlags.Upgrade | ItemFlags.Equipped, 11, null, 5511), blade);
         Assert.Equal(
-            new OwnedItem("Fictional Class", "Class", 1, 1, 1, ItemFlags.Worn | ItemFlags.Quest | ItemFlags.Bank | ItemFlags.Temp, 12, 99),
+            new OwnedItem("Fictional Class", "Class", 1, 1, 1, ItemFlags.Worn | ItemFlags.Quest | ItemFlags.Bank | ItemFlags.Temp, 12, 99, 5512),
             part.Items[1]);
         Assert.Equal(ItemFlags.None, part.Items[2].Flags);
 
         var chair = Assert.Single(part.HouseItems);
-        Assert.Equal(new OwnedItem("Fictional Chair", "House Item", 1, 1, 1, ItemFlags.House, 13, null), chair);
+        Assert.Equal(new OwnedItem("Fictional Chair", "House Item", 1, 1, 1, ItemFlags.House, 13, null, 5513), chair);
     }
 
     private static (int, string, int, int, int, int) Tuple(AqwCompanion.Core.Reputation.FactionStanding f) =>
@@ -251,5 +251,21 @@ public class GameDataExtractorTests
         Assert.DoesNotContain("tPurchase", json);
         Assert.DoesNotContain("metaValues", json);
         Assert.DoesNotContain("CharItemID", json);
+    }
+
+    [Fact]
+    public void The_char_item_id_is_read_from_the_item_and_missing_or_bad_ones_are_zero()
+    {
+        var withoutId = Item("No id", itemId: 21);
+        withoutId.Remove("CharItemID");
+        var badId = Item("Bad id", itemId: 22);
+        badId["CharItemID"] = "not a number " + SecretToken;
+        var negativeId = Item("Negative id", itemId: 23);
+        negativeId["CharItemID"] = -5;
+
+        var part = Inventory(LoadInventoryBig(items: [Item("Has id", itemId: 20), withoutId, badId, negativeId]));
+
+        Assert.Equal([5520, 0, 0, 0], part.Items.Select(i => i.CharItemId));
+        AssertNoSecrets(part);
     }
 }

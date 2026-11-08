@@ -50,7 +50,8 @@ public sealed class GameDataStore(StoredData data) : IGameDataStore
 
     public sealed record FactionDto(int FactionId, string Name, int Rank, int Rep, int RepToRank, int SpillRep);
 
-    public sealed record ItemDto(string Name, string Type, int Quantity, int Stack, int Level, int Flags, int ItemId, int? ClassId);
+    /// <summary>An owned item; <paramref name="CharItemId"/> is 0 in data stored before it existed.</summary>
+    public sealed record ItemDto(string Name, string Type, int Quantity, int Stack, int Level, int Flags, int ItemId, int? ClassId, int CharItemId = 0);
 
     public IReadOnlyList<CharacterSnapshot> Load()
     {
@@ -106,7 +107,7 @@ public sealed class GameDataStore(StoredData data) : IGameDataStore
     }
 
     private static ItemDto ToDto(OwnedItem i) =>
-        new(i.Name, i.Type, i.Quantity, i.Stack, i.Level, (int)i.Flags, i.ItemId, i.ClassId);
+        new(i.Name, i.Type, i.Quantity, i.Stack, i.Level, (int)i.Flags, i.ItemId, i.ClassId, i.CharItemId);
 
     private static CharacterSnapshot? ToSnapshot(CharacterDto? dto)
     {
@@ -133,8 +134,8 @@ public sealed class GameDataStore(StoredData data) : IGameDataStore
     private static List<OwnedItem> ToItems(List<ItemDto>? dtos) =>
         (dtos ?? [])
             .Where(i => i is not null && !string.IsNullOrWhiteSpace(i.Name)
-                && i.Quantity >= 0 && i.Stack >= 0 && i.Level >= 0 && i.ItemId >= 0 && i.ClassId is null or >= 0)
+                && i.Quantity >= 0 && i.Stack >= 0 && i.Level >= 0 && i.ItemId >= 0 && i.CharItemId >= 0 && i.ClassId is null or >= 0)
             .Take(MaxItems)
-            .Select(i => new OwnedItem(i.Name, i.Type ?? string.Empty, i.Quantity, i.Stack, i.Level, (ItemFlags)(i.Flags & KnownFlags), i.ItemId, i.ClassId))
+            .Select(i => new OwnedItem(i.Name, i.Type ?? string.Empty, i.Quantity, i.Stack, i.Level, (ItemFlags)(i.Flags & KnownFlags), i.ItemId, i.ClassId, i.CharItemId))
             .ToList();
 }

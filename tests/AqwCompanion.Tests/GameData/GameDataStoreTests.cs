@@ -20,8 +20,8 @@ public class GameDataStoreTests
             [new FactionStanding(5, "Fictional Order", 3, 5000, 6400, 1400), new FactionStanding(6, "Other Order", 10, 302500, 0, 0)],
             [
                 new OwnedItem("Fictional Blade", "Sword", 1, 1, 50, ItemFlags.Coins | ItemFlags.Upgrade | ItemFlags.Equipped | ItemFlags.Worn
-                    | ItemFlags.Quest | ItemFlags.Bank | ItemFlags.House | ItemFlags.Temp, 11, null),
-                new OwnedItem("Fictional Class", "Class", 1, 1, 1, ItemFlags.None, 12, 9),
+                    | ItemFlags.Quest | ItemFlags.Bank | ItemFlags.House | ItemFlags.Temp, 11, null, 5511),
+                new OwnedItem("Fictional Class", "Class", 1, 1, 1, ItemFlags.None, 12, 9, 5512),
                 .. Enumerable.Range(0, Math.Max(0, items - 2)).Select(i => new OwnedItem("Filler " + i, "Item", 1, 1, 1, ItemFlags.None, 100 + i, null)),
             ],
             [new OwnedItem("Fictional Chair", "House Item", 2, 5, 0, ItemFlags.House, 13, null)],
@@ -63,6 +63,31 @@ public class GameDataStoreTests
         Assert.Equal(At, loaded.CapturedAtUtc);
         Assert.Equal(ItemFlags.Coins | ItemFlags.Upgrade | ItemFlags.Equipped | ItemFlags.Worn | ItemFlags.Quest | ItemFlags.Bank | ItemFlags.House | ItemFlags.Temp, loaded.Items[0].Flags);
         Assert.Equal(9, loaded.Items[1].ClassId);
+        Assert.Equal([5511, 5512], loaded.Items.Take(2).Select(i => i.CharItemId));
+    }
+
+    [Fact]
+    public void Old_stored_items_without_a_char_item_id_load_with_zero()
+    {
+        var json = """{"name":"Old Blade","type":"Sword","quantity":1,"stack":1,"level":5,"flags":0,"itemId":11,"classId":null}""";
+
+        var dto = System.Text.Json.JsonSerializer.Deserialize<GameDataStore.ItemDto>(
+            json, AqwCompanion.App.Infrastructure.Persistence.StoredJson.Options)!;
+        var (store, _) = WithDto(CharacterDto(items: [dto]));
+
+        Assert.Equal(0, dto.CharItemId);
+        Assert.Equal(0, Assert.Single(Assert.Single(store.Load()).Items).CharItemId);
+    }
+
+    [Fact]
+    public void A_negative_char_item_id_drops_the_item()
+    {
+        var items = new List<GameDataStore.ItemDto> { new("Bad", "Item", 1, 1, 1, 0, 1, null, -3), new("Good", "Item", 1, 1, 1, 0, 2, null, 77) };
+        var (store, _) = WithDto(CharacterDto(items: items));
+
+        var item = Assert.Single(Assert.Single(store.Load()).Items);
+
+        Assert.Equal(("Good", 77), (item.Name, item.CharItemId));
     }
 
     [Fact]

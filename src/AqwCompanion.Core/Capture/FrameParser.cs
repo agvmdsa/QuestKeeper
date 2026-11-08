@@ -105,7 +105,9 @@ public static class FrameParser
             BinaryPrimitives.ReadUInt16BigEndian(tcp[2..]),
             BinaryPrimitives.ReadUInt32BigEndian(tcp[4..]),
             (tcp[13] & 0x02) != 0,
-            tcp[tcpHeaderLength..].ToArray());
+            tcp[tcpHeaderLength..].ToArray(),
+            (tcp[13] & 0x01) != 0,
+            (tcp[13] & 0x04) != 0);
         return true;
     }
 }

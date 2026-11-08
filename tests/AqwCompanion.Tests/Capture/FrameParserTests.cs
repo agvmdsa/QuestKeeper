@@ -33,6 +33,22 @@ public class FrameParserTests
     }
 
     [Fact]
+    public void Fin_and_rst_flags_are_reported_from_real_frames()
+    {
+        Assert.True(FrameParser.TryParse(PcapBuilder.Ethernet, PcapBuilder.TcpFrame(fin: true), out var fin));
+        Assert.True(FrameParser.TryParse(PcapBuilder.Ethernet, PcapBuilder.TcpFrame(rst: true), out var rst));
+        Assert.True(FrameParser.TryParse(PcapBuilder.Ethernet, PcapBuilder.TcpFrame(payload: Payload), out var plain));
+        Assert.True(FrameParser.TryParse(PcapBuilder.Ethernet, PcapBuilder.TcpFrame(syn: true), out var syn));
+
+        Assert.True(fin.IsFin);
+        Assert.False(fin.IsRst);
+        Assert.True(rst.IsRst);
+        Assert.False(rst.IsFin);
+        Assert.False(plain.IsFin || plain.IsRst);
+        Assert.False(syn.IsFin || syn.IsRst);
+    }
+
+    [Fact]
     public void Ip_header_options_are_skipped()
     {
         var frame = PcapBuilder.TcpFrame(payload: Payload, ipOptionBytes: 4);

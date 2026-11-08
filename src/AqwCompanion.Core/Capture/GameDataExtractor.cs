@@ -147,29 +147,39 @@ public static class GameDataExtractor
                 break;
             }
 
-            if (entry.ValueKind != JsonValueKind.Object)
+            if (ReadItem(entry, always) is { } item)
             {
-                continue;
+                result.Add(item);
             }
-
-            var name = entry.ReadCleanText("sName", MaxNameLength);
-            if (name is null)
-            {
-                continue;
-            }
-
-            var classId = entry.ReadLong("ClassID");
-            result.Add(new OwnedItem(
-                name,
-                entry.ReadCleanText("sType", MaxTypeLength) ?? string.Empty,
-                Int(entry, "iQty"),
-                Int(entry, "iStk"),
-                Int(entry, "iLvl"),
-                always | ReadFlags(entry),
-                Int(entry, "ItemID"),
-                classId is > 0 and <= int.MaxValue ? (int)classId.Value : null));
         }
         return result;
+    }
+
+    /// <summary>One item entry with its Allow-listed fields; null when it is not an object or has no name.</summary>
+    internal static OwnedItem? ReadItem(JsonElement entry, ItemFlags always)
+    {
+        if (entry.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var name = entry.ReadCleanText("sName", MaxNameLength);
+        if (name is null)
+        {
+            return null;
+        }
+
+        var classId = entry.ReadLong("ClassID");
+        return new OwnedItem(
+            name,
+            entry.ReadCleanText("sType", MaxTypeLength) ?? string.Empty,
+            Int(entry, "iQty"),
+            Int(entry, "iStk"),
+            Int(entry, "iLvl"),
+            always | ReadFlags(entry),
+            Int(entry, "ItemID"),
+            classId is > 0 and <= int.MaxValue ? (int)classId.Value : null,
+            Int(entry, "CharItemID"));
     }
 
     private static ItemFlags ReadFlags(JsonElement entry)

@@ -80,7 +80,7 @@
           <TextBlock x:Name="GameDataHint" Text="{Binding HintText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
                      TextWrapping="Wrap" IsVisible="{Binding HasHint}" AutomationProperties.Name="{Binding HintText}" />
           <SelectableTextBlock x:Name="GameDataNpcapLink" Text="{x:Static gd:GameDataViewModel.NpcapUrl}"
-                               IsVisible="{Binding NpcapMissing}" Foreground="{DynamicResource AqwAccent}"
+                               IsVisible="{Binding NpcapMissing}" Foreground="{DynamicResource AqwLink}"
                                AutomationProperties.Name="Npcap download address" />
           <Expander x:Name="GameDataCaptureDetails" Header="{x:Static gd:GameDataViewModel.CaptureDetailsText}" IsExpanded="False"
                     HorizontalAlignment="Stretch" AutomationProperties.Name="Capture details">
@@ -153,7 +153,7 @@
                          TextWrapping="Wrap" IsVisible="{Binding HasLiveText}"
                          AutomationProperties.Name="{Binding LiveText}" />
               <TextBlock x:Name="GameDataLastGain" Text="{Binding LastGainText}" FontSize="12"
-                         Foreground="{DynamicResource AqwAccent}" TextWrapping="Wrap" IsVisible="{Binding HasLastGain}"
+                         Foreground="{DynamicResource AqwSuccess}" TextWrapping="Wrap" IsVisible="{Binding HasLastGain}"
                          AutomationProperties.Name="{Binding LastGainText}" />
             </StackPanel>
           </Border>

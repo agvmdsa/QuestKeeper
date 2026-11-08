@@ -1,27 +1,32 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <!--
-    AQW-flavoured dark palette, adapted from the colors of the AQW account site (parchment, plum, dark brown, gold).
-    Contrast on the surfaces (WCAG): AqwText on AqwSurface 14.4:1, on AqwWindowBackground 16.1:1, on AqwHeader 14.5:1;
-    AqwTextMuted on AqwSurface 8.9:1; AqwAccent (gold) on AqwSurface 7.4:1; AqwAccentText (dark) on AqwAccent 8.3:1;
-    AqwDangerText on AqwSurface 6.4:1; AqwSuccessText on AqwSurface 13.4:1.
+    AQW parchment palette, sampled from the papyrus of the AQW website: the page is the parchment, cards are the lighter paper,
+    card headers and secondary surfaces the darker band, borders the gold edge. Text is near black; links are the site's dark red.
+    The top bar keeps the plum of the AQW account site with light text.
+    Contrast (WCAG), kept by AqwThemeTests: AqwText 16.0:1 on AqwWindowBackground, 17.0:1 on AqwSurface, 14.0:1 on AqwSurfaceRaised;
+    AqwTextMuted 7.5:1 / 8.0:1 / 6.6:1; AqwLink 9.6:1 / 10.2:1 / 8.4:1; AqwDangerText 7.2:1 / 7.6:1 / 6.3:1;
+    AqwAccentText on AqwAccent 8.0:1; AqwSuccessText on AqwSuccess 4.9:1; AqwOnTopBar on AqwTopBar 16.1:1.
   -->
-  <Color x:Key="AqwWindowBackgroundColor">#24100D</Color>
-  <Color x:Key="AqwSurfaceColor">#381612</Color>
-  <Color x:Key="AqwSurfaceRaisedColor">#4A201A</Color>
-  <Color x:Key="AqwBorderColor">#5A2D24</Color>
-  <Color x:Key="AqwTextColor">#FEF1C5</Color>
-  <Color x:Key="AqwTextBrightColor">#FFFDF7</Color>
-  <Color x:Key="AqwTextMutedColor">#CDBF96</Color>
-  <Color x:Key="AqwTextSecondaryColor">#D1C49E</Color>
-  <Color x:Key="AqwHeaderColor">#3B0C30</Color>
-  <Color x:Key="AqwHeaderHoverColor">#320A29</Color>
+  <Color x:Key="AqwWindowBackgroundColor">#FEF0C2</Color>
+  <Color x:Key="AqwSurfaceColor">#FEF7E1</Color>
+  <Color x:Key="AqwSurfaceRaisedColor">#F3E1AB</Color>
+  <Color x:Key="AqwBorderColor">#B88E15</Color>
+  <Color x:Key="AqwTextColor">#16151A</Color>
+  <Color x:Key="AqwTextBrightColor">#0D0F19</Color>
+  <Color x:Key="AqwTextMutedColor">#5C4A1F</Color>
+  <Color x:Key="AqwTextSecondaryColor">#4F4120</Color>
+  <Color x:Key="AqwHeaderColor">#F3E1AB</Color>
+  <Color x:Key="AqwHeaderHoverColor">#EBD694</Color>
+  <Color x:Key="AqwTopBarColor">#3B0C30</Color>
+  <Color x:Key="AqwOnTopBarColor">#FFFDF7</Color>
   <Color x:Key="AqwMagentaColor">#7B1964</Color>
   <Color x:Key="AqwAccentColor">#F69A07</Color>
   <Color x:Key="AqwAccentHoverColor">#FAB84F</Color>
-  <Color x:Key="AqwAccentTextColor">#24100D</Color>
+  <Color x:Key="AqwAccentTextColor">#2A1208</Color>
+  <Color x:Key="AqwLinkColor">#800000</Color>
   <Color x:Key="AqwDangerColor">#B80F0A</Color>
-  <Color x:Key="AqwDangerTextColor">#FF7A70</Color>
+  <Color x:Key="AqwDangerTextColor">#9B1C14</Color>
   <Color x:Key="AqwSuccessColor">#197419</Color>
   <Color x:Key="AqwSuccessTextColor">#C7F6B6</Color>
   <Color x:Key="AqwScrimColor">#99000000</Color>
@@ -36,10 +41,13 @@
   <SolidColorBrush x:Key="AqwTextSecondary" Color="{StaticResource AqwTextSecondaryColor}" />
   <SolidColorBrush x:Key="AqwHeader" Color="{StaticResource AqwHeaderColor}" />
   <SolidColorBrush x:Key="AqwHeaderHover" Color="{StaticResource AqwHeaderHoverColor}" />
+  <SolidColorBrush x:Key="AqwTopBar" Color="{StaticResource AqwTopBarColor}" />
+  <SolidColorBrush x:Key="AqwOnTopBar" Color="{StaticResource AqwOnTopBarColor}" />
   <SolidColorBrush x:Key="AqwMagenta" Color="{StaticResource AqwMagentaColor}" />
   <SolidColorBrush x:Key="AqwAccent" Color="{StaticResource AqwAccentColor}" />
   <SolidColorBrush x:Key="AqwAccentHover" Color="{StaticResource AqwAccentHoverColor}" />
   <SolidColorBrush x:Key="AqwAccentText" Color="{StaticResource AqwAccentTextColor}" />
+  <SolidColorBrush x:Key="AqwLink" Color="{StaticResource AqwLinkColor}" />
   <SolidColorBrush x:Key="AqwDanger" Color="{StaticResource AqwDangerColor}" />
   <SolidColorBrush x:Key="AqwDangerText" Color="{StaticResource AqwDangerTextColor}" />
   <SolidColorBrush x:Key="AqwSuccess" Color="{StaticResource AqwSuccessColor}" />

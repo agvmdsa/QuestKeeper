@@ -1,15 +1,15 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="AqwCompanion.App.CompanionApp"
-             RequestedThemeVariant="Dark">
+             RequestedThemeVariant="Light">
   <Application.Resources>
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
         <ResourceInclude Source="/Themes/AqwTheme.axaml" />
       </ResourceDictionary.MergedDictionaries>
-      <!-- Keyboard focus ring: gold outside, dark inside, readable on every dark surface. -->
-      <SolidColorBrush x:Key="SystemControlFocusVisualPrimaryBrush" Color="#F69A07" />
-      <SolidColorBrush x:Key="SystemControlFocusVisualSecondaryBrush" Color="#24100D" />
+      <!-- Keyboard focus ring: dark brown outside, gold inside, readable on the parchment and on the lighter paper. -->
+      <SolidColorBrush x:Key="SystemControlFocusVisualPrimaryBrush" Color="#2A1208" />
+      <SolidColorBrush x:Key="SystemControlFocusVisualSecondaryBrush" Color="#F69A07" />
     </ResourceDictionary>
   </Application.Resources>
 
@@ -17,34 +17,34 @@
     <FluentTheme>
       <FluentTheme.Palettes>
         <!-- Re-colors every standard control: Base* is the text/foreground ramp, Alt* the opposite ramp, Region the page. -->
-        <ColorPaletteResources x:Key="Dark"
+        <ColorPaletteResources x:Key="Light"
                                Accent="#F69A07"
-                               RegionColor="#24100D"
-                               ErrorText="#FF7A70"
-                               AltHigh="#24100D"
-                               AltMediumHigh="#CC24100D"
-                               AltMedium="#9924100D"
-                               AltMediumLow="#6624100D"
-                               AltLow="#3324100D"
-                               BaseHigh="#FEF1C5"
-                               BaseMediumHigh="#E6FEF1C5"
-                               BaseMedium="#CCFEF1C5"
-                               BaseMediumLow="#80FEF1C5"
-                               BaseLow="#33FEF1C5"
-                               ChromeHigh="#9A8A62"
-                               ChromeMediumLow="#4A201A"
-                               ChromeMedium="#381612"
-                               ChromeLow="#2E130F"
-                               ChromeAltLow="#D1C49E"
+                               RegionColor="#FEF0C2"
+                               ErrorText="#9B1C14"
+                               AltHigh="#FEF0C2"
+                               AltMediumHigh="#CCFEF0C2"
+                               AltMedium="#99FEF0C2"
+                               AltMediumLow="#66FEF0C2"
+                               AltLow="#33FEF0C2"
+                               BaseHigh="#16151A"
+                               BaseMediumHigh="#E616151A"
+                               BaseMedium="#CC16151A"
+                               BaseMediumLow="#8016151A"
+                               BaseLow="#3316151A"
+                               ChromeHigh="#B88E15"
+                               ChromeMediumLow="#F3E1AB"
+                               ChromeMedium="#F6E8BC"
+                               ChromeLow="#FEF7E1"
+                               ChromeAltLow="#4F4120"
                                ChromeBlackLow="#33000000"
                                ChromeBlackMediumLow="#66000000"
                                ChromeBlackMedium="#99000000"
                                ChromeBlackHigh="#CC000000"
-                               ChromeDisabledLow="#8A7C5C"
-                               ChromeDisabledHigh="#4A3A30"
-                               ChromeGray="#CDBF96"
-                               ListLow="#4A201A"
-                               ListMedium="#5A2D24" />
+                               ChromeDisabledLow="#8F8460"
+                               ChromeDisabledHigh="#D9C99A"
+                               ChromeGray="#5C4A1F"
+                               ListLow="#F6E8BC"
+                               ListMedium="#F3E1AB" />
       </FluentTheme.Palettes>
     </FluentTheme>
 
@@ -52,13 +52,13 @@
       <Setter Property="Background" Value="{DynamicResource AqwWindowBackground}" />
     </Style>
 
-    <!-- Selected tab: gold underline. Unselected tabs use the secondary text color. -->
+    <!-- Selected tab: gold underline. Unselected tabs use the secondary text color; hovering turns them the link red. -->
     <Style Selector="TabItem">
       <Setter Property="FontSize" Value="16" />
       <Setter Property="Foreground" Value="{DynamicResource AqwTextSecondary}" />
     </Style>
     <Style Selector="TabItem:pointerover">
-      <Setter Property="Foreground" Value="{DynamicResource AqwAccentHover}" />
+      <Setter Property="Foreground" Value="{DynamicResource AqwLink}" />
     </Style>
     <Style Selector="TabItem:selected">
       <Setter Property="Foreground" Value="{DynamicResource AqwTextBright}" />

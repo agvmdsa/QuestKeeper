@@ -74,8 +74,9 @@ public sealed class CaptureEngine(TimeProvider clock)
     {
         _segmentsSeen++;
 
-        // Client-to-server segments (where the login travels) end here, before any buffer or decoder.
-        if (!GameTraffic.IsGamePort(segment.SourcePort))
+        // Client-to-server segments (where the login travels) end here, before any buffer or decoder. A segment whose destination is
+        // also a game port is ambiguous (a client whose own port falls in the game range): it is dropped as well.
+        if (!GameTraffic.IsGamePort(segment.SourcePort) || GameTraffic.IsGamePort(segment.DestinationPort))
         {
             _segmentsDropped++;
             return null;

@@ -196,6 +196,19 @@ public class CaptureEngineTests
     }
 
     [Fact]
+    public void A_segment_between_two_game_ports_is_ambiguous_and_dropped()
+    {
+        var (engine, _) = NewEngine();
+
+        // A client whose own port falls in the game range: its segments to the server must still never enter the pipeline.
+        engine.Accept(new TcpSegment(
+            PcapBuilder.ClientAddress, 5590, PcapBuilder.ServerAddress, GameCaptureBuilder.GamePort, 1, false,
+            GameCaptureBuilder.Terminated("{\"b\":{\"o\":{\"cmd\":\"initUserData\"}}}")));
+
+        Assert.Equal(new CaptureCounters(1, 1, 0, 0), engine.Counters);
+    }
+
+    [Fact]
     public void The_seventeenth_connection_is_ignored()
     {
         var (engine, captured) = NewEngine();

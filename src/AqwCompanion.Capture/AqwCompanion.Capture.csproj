@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>AqwCompanion.Capture</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AqwCompanion.Core\AqwCompanion.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="SharpPcap" />
+  </ItemGroup>
+</Project>

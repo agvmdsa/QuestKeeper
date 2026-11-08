@@ -69,6 +69,16 @@ public partial class GameDataViewModel : ObservableObject
 
     public string CountersText { get; private set; } = string.Empty;
 
+    /// <summary>Why messages were unreadable, as numbers only; empty when there is nothing to say.</summary>
+    public string DecodingText { get; private set; } = string.Empty;
+
+    public bool HasDecoding => DecodingText.Length > 0;
+
+    /// <summary>How many messages of each known command were read, as numbers only; empty when there is nothing to say.</summary>
+    public string CommandsText { get; private set; } = string.Empty;
+
+    public bool HasCommands => CommandsText.Length > 0;
+
     /// <summary>What the packet source says about its run (numbers and exception type names only), or empty.</summary>
     public string DetailsText { get; private set; } = string.Empty;
 
@@ -151,6 +161,10 @@ public partial class GameDataViewModel : ObservableObject
 
         OnPropertyChanged(nameof(StateText));
         OnPropertyChanged(nameof(CountersText));
+        OnPropertyChanged(nameof(DecodingText));
+        OnPropertyChanged(nameof(HasDecoding));
+        OnPropertyChanged(nameof(CommandsText));
+        OnPropertyChanged(nameof(HasCommands));
         OnPropertyChanged(nameof(DetailsText));
         OnPropertyChanged(nameof(HasDetails));
         OnPropertyChanged(nameof(IsListening));
@@ -172,6 +186,10 @@ public partial class GameDataViewModel : ObservableObject
     {
         ReadNumbers();
         OnPropertyChanged(nameof(CountersText));
+        OnPropertyChanged(nameof(DecodingText));
+        OnPropertyChanged(nameof(HasDecoding));
+        OnPropertyChanged(nameof(CommandsText));
+        OnPropertyChanged(nameof(HasCommands));
         OnPropertyChanged(nameof(DetailsText));
         OnPropertyChanged(nameof(HasDetails));
     }
@@ -183,7 +201,46 @@ public partial class GameDataViewModel : ObservableObject
         CountersText = string.Create(
             CultureInfo.InvariantCulture,
             $"Segments seen {Format(counters.SegmentsSeen)} · dropped {Format(counters.SegmentsDropped)} · messages read {Format(counters.MessagesDecoded)} · characters captured {Format(counters.CharactersCaptured)} · unreadable {Format(stages.MessagesUnreadable)} · profile parts {Format(stages.ProfilePartsSeen)} · inventory parts {Format(stages.InventoryPartsSeen)}");
+        var decoding = _session.Decoding;
+        DecodingText = DecodingTextFor(decoding);
+        CommandsText = CommandsTextFor(decoding);
         DetailsText = _session.Details;
+    }
+
+    private static string DecodingTextFor(CaptureDecodeDiagnostics decoding)
+    {
+        (string Label, DecodeFailure Reason)[] reasons =
+        [
+            ("not base64", DecodeFailure.NotBase64),
+            ("no compression header", DecodeFailure.NoCompressionHeader),
+            ("inflate failed", DecodeFailure.InflateFailed),
+            ("too big", DecodeFailure.TooBigWhenInflated),
+            ("not JSON", DecodeFailure.InflatedNotJson),
+            ("invalid JSON", DecodeFailure.InvalidJson),
+            ("no command", DecodeFailure.NoCommand),
+            ("too large", DecodeFailure.TooLarge),
+        ];
+        var parts = reasons.Where(r => decoding.Failure(r.Reason) > 0).Select(r => $"{r.Label} {Format(decoding.Failure(r.Reason))}").ToList();
+        return parts.Count == 0 ? string.Empty : "Unreadable: " + string.Join(" · ", parts);
+    }
+
+    private static string CommandsTextFor(CaptureDecodeDiagnostics decoding)
+    {
+        var parts = new List<string>();
+        foreach (var name in CaptureDecodeDiagnostics.KnownCommands.Append(CaptureDecodeDiagnostics.OtherCommand))
+        {
+            var count = decoding.Command(name);
+            if (count == 0)
+            {
+                continue;
+            }
+
+            parts.Add(name == "initUserData"
+                ? $"initUserData {Format(count)} (own profile {Format(decoding.InitUserDataAccepted)}, ignored {Format(decoding.InitUserDataIgnored)}: no gold {Format(decoding.InitUserDataIgnoredNoGold)}, no name {Format(decoding.InitUserDataIgnoredNoName)})"
+                : $"{name} {Format(count)}");
+        }
+
+        return parts.Count == 0 ? string.Empty : "Commands read: " + string.Join(" · ", parts);
     }
 
     // Keeps the selection while that Character exists; otherwise the most recently captured one on a first selection, else the first by name.

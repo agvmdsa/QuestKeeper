@@ -183,4 +183,91 @@ public class MessageDecoderTests
 
         Assert.Throws<ObjectDisposedException>(() => document.RootElement.ValueKind);
     }
+
+    private static DecodeFailure FailureOf(byte[] message)
+    {
+        using var decoded = MessageDecoder.TryDecode(message, out var failure);
+        Assert.Null(decoded);
+        return failure;
+    }
+
+    [Fact]
+    public void A_decoded_message_has_no_failure()
+    {
+        using var plain = MessageDecoder.TryDecode(PlainJson(Envelope("ct")), out var plainFailure);
+        using var blob = MessageDecoder.TryDecode(EncodeBlob(Envelope("ct", Body())), out var blobFailure);
+
+        Assert.NotNull(plain);
+        Assert.NotNull(blob);
+        Assert.Equal(DecodeFailure.None, plainFailure);
+        Assert.Equal(DecodeFailure.None, blobFailure);
+    }
+
+    [Theory]
+    [InlineData("%xt%zm%something%1%2%3%4%5%6%7%8%9%10%11%12%13%")]
+    [InlineData("<msg t='sys'><body action='joinOK' r='1'><vars/></body></msg>")]
+    [InlineData("ZAAAA")]
+    [InlineData("")]
+    public void Text_xml_and_short_messages_are_not_blobs(string text)
+    {
+        Assert.Equal(DecodeFailure.NotBlob, FailureOf(Bytes(text)));
+    }
+
+    [Fact]
+    public void A_message_over_the_size_cap_is_too_large()
+    {
+        Assert.Equal(DecodeFailure.TooLarge, FailureOf(Bytes(new string('A', MessageDecoder.MaxEncodedBytes + 1))));
+        Assert.Equal(DecodeFailure.TooLarge, FailureOf(Bytes("{" + new string(' ', MessageDecoder.MaxEncodedBytes))));
+    }
+
+    [Fact]
+    public void Text_that_is_no_base64_under_any_reading_is_not_base64()
+    {
+        Assert.Equal(DecodeFailure.NotBase64, FailureOf(Bytes("Z" + new string('!', 70))));
+    }
+
+    [Fact]
+    public void Valid_base64_without_a_compression_header_is_reported_as_such()
+    {
+        Assert.Equal(DecodeFailure.NoCompressionHeader, FailureOf(Bytes("Z" + Convert.ToBase64String(Enumerable.Repeat((byte)0x41, 60).ToArray()))));
+    }
+
+    [Fact]
+    public void A_compression_header_followed_by_garbage_is_an_inflate_failure()
+    {
+        var blob = new byte[] { 0x78, 0x9C }.Concat(Enumerable.Repeat((byte)0xFF, 60)).ToArray();
+
+        Assert.Equal(DecodeFailure.InflateFailed, FailureOf(Bytes("Z" + Convert.ToBase64String(blob))));
+    }
+
+    [Fact]
+    public void A_stream_that_inflates_past_the_cap_is_too_big()
+    {
+        var blob = EncodeBlobText(new byte[MessageDecoder.MaxInflatedBytes + 1]);
+
+        Assert.True(blob.Length < MessageDecoder.MaxEncodedBytes);
+        Assert.Equal(DecodeFailure.TooBigWhenInflated, FailureOf(blob));
+    }
+
+    [Fact]
+    public void Content_that_does_not_start_with_a_brace_is_not_json()
+    {
+        Assert.Equal(DecodeFailure.InflatedNotJson, FailureOf(EncodeBlobText(Bytes("this is not json at all, it is just a long sentence"))));
+    }
+
+    [Fact]
+    public void Broken_or_too_deep_json_is_invalid_json()
+    {
+        Assert.Equal(DecodeFailure.InvalidJson, FailureOf(Bytes("{\"b\":{\"o\":{\"cmd\":\"ct\"")));
+        Assert.Equal(DecodeFailure.InvalidJson, FailureOf(EncodeBlobText(Bytes("{\"broken\": [1, 2, and a long tail of text here"))));
+        var deep = string.Concat(Enumerable.Repeat("{\"a\":", MessageDecoder.MaxJsonDepth + 1)) + "1" + new string('}', MessageDecoder.MaxJsonDepth + 1);
+        Assert.Equal(DecodeFailure.InvalidJson, FailureOf(Bytes(deep)));
+    }
+
+    [Fact]
+    public void Valid_json_without_a_command_has_no_command()
+    {
+        Assert.Equal(DecodeFailure.NoCommand, FailureOf(Bytes("{\"a\":1}")));
+        Assert.Equal(DecodeFailure.NoCommand, FailureOf(EncodeBlob(new Dictionary<string, object?> { ["b"] = new Dictionary<string, object?> { ["o"] = new Dictionary<string, object?> { ["note"] = new string('a', 60) } } })));
+    }
 }

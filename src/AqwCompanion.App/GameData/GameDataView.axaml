@@ -78,6 +78,12 @@
                                AutomationProperties.Name="Npcap download address" />
           <TextBlock x:Name="GameDataCountersText" Text="{Binding CountersText}" Classes="muted"
                      AutomationProperties.Name="{Binding CountersText}" />
+          <SelectableTextBlock x:Name="GameDataDecoding" Text="{Binding DecodingText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
+                               TextWrapping="Wrap" IsVisible="{Binding HasDecoding}"
+                               AutomationProperties.Name="{Binding DecodingText}" />
+          <SelectableTextBlock x:Name="GameDataCommands" Text="{Binding CommandsText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
+                               TextWrapping="Wrap" IsVisible="{Binding HasCommands}"
+                               AutomationProperties.Name="{Binding CommandsText}" />
           <SelectableTextBlock x:Name="GameDataDetails" Text="{Binding DetailsText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
                                TextWrapping="Wrap" IsVisible="{Binding HasDetails}"
                                AutomationProperties.Name="{Binding DetailsText}" />

@@ -95,6 +95,21 @@ public sealed class CaptureSession(
         }
     }
 
+    /// <summary>Why messages were unreadable and which known commands were read (counts only); all zero before the first start.</summary>
+    public CaptureDecodeDiagnostics Decoding
+    {
+        get
+        {
+            CaptureEngine? engine;
+            lock (_gate)
+            {
+                engine = _engine;
+            }
+
+            return engine?.Decoding ?? CaptureDecodeDiagnostics.Empty;
+        }
+    }
+
     /// <summary>
     /// What the packet source of the current or last run says about itself, read on access: numbers and exception type
     /// names only. Empty before a run, when the source has nothing to say, and after Forgetting.

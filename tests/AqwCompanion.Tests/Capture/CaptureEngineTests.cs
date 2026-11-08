@@ -371,4 +371,136 @@ public class CaptureEngineTests
 
         AssertNoSecrets(Assert.Single(captured));
     }
+
+    private static CaptureEngine Send(params byte[][] messages)
+    {
+        var (engine, _) = NewEngine();
+        var stream = messages.SelectMany(m => m.Append((byte)0)).ToArray();
+        engine.Accept(SynAck(1000));
+        engine.Accept(ServerData(1001, stream));
+        return engine;
+    }
+
+    private static byte[] Command(string cmd) => PlainJson(Envelope(cmd, new Dictionary<string, object?> { ["id"] = 1 }));
+
+    [Fact]
+    public void The_decoding_diagnostics_start_at_zero()
+    {
+        var (engine, _) = NewEngine();
+
+        Assert.Equal(0, engine.Decoding.Failures.Values.Sum());
+        Assert.Equal(0, engine.Decoding.Commands.Values.Sum());
+        Assert.Equal(0, engine.Decoding.InitUserDataAccepted + engine.Decoding.InitUserDataIgnored);
+    }
+
+    [Fact]
+    public void An_own_profile_is_counted_as_accepted()
+    {
+        var engine = Send(EncodeBlob(InitUserData()));
+
+        var decoding = engine.Decoding;
+        Assert.Equal(1, decoding.Command("initUserData"));
+        Assert.Equal(1, decoding.InitUserDataAccepted);
+        Assert.Equal(0, decoding.InitUserDataIgnored);
+        Assert.Equal(1, engine.Stages.ProfilePartsSeen);
+    }
+
+    [Fact]
+    public void Another_players_profile_without_gold_is_ignored_for_no_gold()
+    {
+        var engine = Send(EncodeBlob(InitUserData(ProfileData(own: false))));
+
+        var decoding = engine.Decoding;
+        Assert.Equal(0, decoding.InitUserDataAccepted);
+        Assert.Equal(1, decoding.InitUserDataIgnored);
+        Assert.Equal(1, decoding.InitUserDataIgnoredNoGold);
+        Assert.Equal(0, decoding.InitUserDataIgnoredNoName);
+    }
+
+    [Fact]
+    public void A_profile_with_gold_but_no_name_is_ignored_for_no_name()
+    {
+        var data = ProfileData();
+        data.Remove("strUsername");
+
+        var engine = Send(EncodeBlob(InitUserData(data)));
+
+        var decoding = engine.Decoding;
+        Assert.Equal(1, decoding.InitUserDataIgnored);
+        Assert.Equal(0, decoding.InitUserDataIgnoredNoGold);
+        Assert.Equal(1, decoding.InitUserDataIgnoredNoName);
+    }
+
+    [Fact]
+    public void An_unknown_command_is_counted_as_other_and_its_name_never_appears()
+    {
+        const string unknown = "secretCommandName";
+        var engine = Send(Command(unknown), Command("mtls"), Command("mtls"));
+
+        var decoding = engine.Decoding;
+        Assert.Equal(1, decoding.Command("other"));
+        Assert.Equal(2, decoding.Command("mtls"));
+        Assert.DoesNotContain(decoding.Commands.Keys, key => key.Contains(unknown, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(CaptureDecodeDiagnostics.KnownCommands.Append("other").Order(), decoding.Commands.Keys.Order());
+        Assert.DoesNotContain(unknown, decoding.ToString(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(unknown, string.Join("|", decoding.Failures.Keys) + string.Join("|", decoding.Commands.Keys), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Every_known_command_has_its_own_counter()
+    {
+        var engine = Send([.. CaptureDecodeDiagnostics.KnownCommands.Select(Command)]);
+
+        Assert.All(CaptureDecodeDiagnostics.KnownCommands, name => Assert.Equal(1, engine.Decoding.Command(name)));
+        Assert.Equal(0, engine.Decoding.Command("other"));
+    }
+
+    [Fact]
+    public void Each_unreadable_reason_reaches_the_counters_and_text_and_xml_do_not()
+    {
+        var blobNoHeader = Bytes("Z" + Convert.ToBase64String(Enumerable.Repeat((byte)0x41, 60).ToArray()));
+        var blobInflateFails = Bytes("Z" + Convert.ToBase64String(new byte[] { 0x78, 0x9C }.Concat(Enumerable.Repeat((byte)0xFF, 60)).ToArray()));
+        var engine = Send(
+            Bytes("Z" + new string('!', 70)),
+            blobNoHeader,
+            blobInflateFails,
+            EncodeBlobText(new byte[MessageDecoder.MaxInflatedBytes + 1]),
+            EncodeBlobText(Bytes("this is not json at all, it is just a long sentence")),
+            Bytes("{\"broken\":"),
+            Bytes("{\"a\":1}"),
+            Bytes("%xt%" + new string('x', 60)),
+            Bytes("<msg>" + new string('x', 60) + "</msg>"),
+            Bytes("ZAAAA"));
+
+        var decoding = engine.Decoding;
+        Assert.Equal(1, decoding.Failure(DecodeFailure.NotBase64));
+        Assert.Equal(1, decoding.Failure(DecodeFailure.NoCompressionHeader));
+        Assert.Equal(1, decoding.Failure(DecodeFailure.InflateFailed));
+        Assert.Equal(1, decoding.Failure(DecodeFailure.TooBigWhenInflated));
+        Assert.Equal(1, decoding.Failure(DecodeFailure.InflatedNotJson));
+        Assert.Equal(1, decoding.Failure(DecodeFailure.InvalidJson));
+        Assert.Equal(1, decoding.Failure(DecodeFailure.NoCommand));
+        Assert.Equal(1, decoding.Failure(DecodeFailure.NotBlob));
+        Assert.Equal(0, decoding.Failure(DecodeFailure.TooLarge));
+        Assert.Equal(0, engine.Counters.MessagesDecoded);
+    }
+
+    [Fact]
+    public void The_totals_stay_consistent_with_the_messages_decoded()
+    {
+        var engine = Send(
+            EncodeBlob(InitUserData()),
+            EncodeBlob(InitUserData(ProfileData(own: false))),
+            Command("mtls"),
+            Command("somethingElse"),
+            Bytes("{\"a\":1}"),
+            Bytes("%xt%" + new string('x', 60)));
+
+        var decoding = engine.Decoding;
+        Assert.Equal(engine.Counters.MessagesDecoded, decoding.Commands.Values.Sum());
+        Assert.Equal(4, engine.Counters.MessagesDecoded);
+        Assert.Equal(decoding.Commands["initUserData"], decoding.InitUserDataAccepted + decoding.InitUserDataIgnored);
+        Assert.Equal(decoding.InitUserDataIgnored, decoding.InitUserDataIgnoredNoGold + decoding.InitUserDataIgnoredNoName);
+        Assert.Equal(1, decoding.Failures.Values.Sum());
+    }
 }

@@ -560,4 +560,50 @@ public class GameDataViewModelTests
             Assert.Contains(name, changed);
         }
     }
+
+    [Fact]
+    public void The_decoding_and_commands_lines_are_empty_when_everything_is_zero()
+    {
+        var vm = new CaptureRig().CreateViewModel();
+
+        Assert.Equal(string.Empty, vm.DecodingText);
+        Assert.Equal(string.Empty, vm.CommandsText);
+        Assert.False(vm.HasDecoding);
+        Assert.False(vm.HasCommands);
+    }
+
+    [Fact]
+    public async Task The_commands_line_lists_the_known_commands_and_the_profile_split()
+    {
+        // The standard traffic already carries another player's profile and an initUserDatas; one more profile without gold joins them.
+        var (_, vm) = await Captured(Connection(includeProfile: false, extraServerMessages: [EncodeBlob(InitUserData(ProfileData(own: false)))]).Server);
+
+        Assert.Equal(
+            "Commands read: initUserData 2 (own profile 0, ignored 2: no gold 2, no name 0) · initUserDatas 1 · loadInventoryBig 1 · mtls 1",
+            vm.CommandsText);
+        Assert.True(vm.HasCommands);
+        Assert.Equal(string.Empty, vm.DecodingText);
+    }
+
+    [Fact]
+    public async Task The_decoding_line_lists_only_the_reasons_that_happened_and_refresh_updates_it()
+    {
+        var garbage = new[] { Bytes("Z" + new string('!', 70)), Bytes("{\"a\":1}"), Bytes("{\"a\":2}") };
+        var stream = garbage.SelectMany(m => m.Append((byte)0)).ToArray();
+        var held = Holding([SynAck(1000), ServerData(1001, stream)]);
+        var rig = new CaptureRig { Source = held.Source };
+        var vm = rig.CreateViewModel();
+        var raised = new List<string?>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        _ = vm.StartCommand.ExecuteAsync(null);
+        await held.Started.Task.WaitAsync(Wait);
+        vm.RefreshCommand.Execute(null);
+
+        Assert.Equal("Unreadable: not base64 1 · no command 2", vm.DecodingText);
+        Assert.True(vm.HasDecoding);
+        Assert.Contains(nameof(GameDataViewModel.DecodingText), raised);
+        Assert.Contains(nameof(GameDataViewModel.CommandsText), raised);
+        vm.StopCommand.Execute(null);
+    }
 }

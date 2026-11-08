@@ -446,6 +446,20 @@ public class CaptureSessionTests
     }
 
     [Fact]
+    public async Task Decoding_is_zero_before_a_start_and_counts_the_commands_of_a_login()
+    {
+        var rig = new Rig { Source = Feeding(Connection().Server) };
+        var session = rig.Create();
+        Assert.Equal(0, session.Decoding.Commands.Values.Sum());
+
+        await session.StartAsync().WaitAsync(Wait);
+
+        Assert.Equal(1, session.Decoding.Command("initUserData"));
+        Assert.Equal(1, session.Decoding.InitUserDataAccepted);
+        Assert.Equal(1, session.Decoding.Command("loadInventoryBig"));
+    }
+
+    [Fact]
     public async Task Forget_clears_everything_and_allows_starting_again()
     {
         var rig = new Rig { Source = Feeding(Connection().Server) };

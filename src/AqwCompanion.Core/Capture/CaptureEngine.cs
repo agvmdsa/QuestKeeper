@@ -1,3 +1,6 @@
+using System.Text.Json;
+using AqwCompanion.Core.Common;
+
 namespace AqwCompanion.Core.Capture;
 
 /// <summary>Counts of what the engine did, never any content.</summary>
@@ -29,6 +32,12 @@ public sealed class CaptureEngine(TimeProvider clock)
     private int _profilePartsSeen;
     private int _inventoryPartsSeen;
     private int _otherCommandsRead;
+    private readonly int[] _failures = new int[Enum.GetValues<DecodeFailure>().Length];
+    private readonly int[] _commands = new int[CaptureDecodeDiagnostics.KnownCommands.Count + 1];
+    private int _initUserDataAccepted;
+    private int _initUserDataIgnoredNoGold;
+    private int _initUserDataIgnoredNoName;
+    private int _initUserDataIgnoredOther;
 
     /// <summary>Raised once per connection when its profile and inventory are both known.</summary>
     public event Action<CharacterSnapshot>? CharacterCaptured;
@@ -53,6 +62,28 @@ public sealed class CaptureEngine(TimeProvider clock)
             lock (_gate)
             {
                 return new CaptureStageCounters(_messagesUnreadable, _profilePartsSeen, _inventoryPartsSeen, _otherCommandsRead);
+            }
+        }
+    }
+
+    /// <summary>Why messages could not be read and which known commands were read; counts only, never any content or unknown name.</summary>
+    public CaptureDecodeDiagnostics Decoding
+    {
+        get
+        {
+            lock (_gate)
+            {
+                var failures = Enum.GetValues<DecodeFailure>().ToDictionary(f => f, f => _failures[(int)f]);
+                var commands = new Dictionary<string, int>();
+                for (var i = 0; i < CaptureDecodeDiagnostics.KnownCommands.Count; i++)
+                {
+                    commands[CaptureDecodeDiagnostics.KnownCommands[i]] = _commands[i];
+                }
+
+                commands[CaptureDecodeDiagnostics.OtherCommand] = _commands[^1];
+                var ignored = _initUserDataIgnoredNoGold + _initUserDataIgnoredNoName + _initUserDataIgnoredOther;
+                return new CaptureDecodeDiagnostics(
+                    failures, commands, _initUserDataAccepted, ignored, _initUserDataIgnoredNoGold, _initUserDataIgnoredNoName);
             }
         }
     }
@@ -126,9 +157,14 @@ public sealed class CaptureEngine(TimeProvider clock)
 
         foreach (var raw in connection.Reassembler.Feed(segment))
         {
-            using var message = MessageDecoder.Decode(raw);
+            using var message = MessageDecoder.TryDecode(raw, out var failure);
             if (message is null)
             {
+                if (raw.Length > 0 && raw[0] != (byte)'%' && raw[0] != (byte)'<')
+                {
+                    _failures[(int)failure]++;
+                }
+
                 if (raw.Length >= MessageDecoder.MinEncodedBytes && raw[0] != (byte)'%' && raw[0] != (byte)'<')
                 {
                     _messagesUnreadable++;
@@ -138,7 +174,9 @@ public sealed class CaptureEngine(TimeProvider clock)
             }
 
             _messagesDecoded++;
-            switch (GameDataExtractor.Extract(message))
+            var extracted = GameDataExtractor.Extract(message);
+            CountCommand(message, extracted);
+            switch (extracted)
             {
                 case ProfilePart profile:
                     _profilePartsSeen++;
@@ -162,6 +200,55 @@ public sealed class CaptureEngine(TimeProvider clock)
         }
         return null;
     }
+
+    // Only names from the fixed list are ever used as a key; anything else is one number under "other".
+    private void CountCommand(GameMessage message, GameDataPart? extracted)
+    {
+        var index = -1;
+        for (var i = 0; i < CaptureDecodeDiagnostics.KnownCommands.Count; i++)
+        {
+            if (string.Equals(CaptureDecodeDiagnostics.KnownCommands[i], message.Command, StringComparison.Ordinal))
+            {
+                index = i;
+                break;
+            }
+        }
+
+        _commands[index < 0 ? ^1 : index]++;
+        if (index < 0 || message.Command != "initUserData")
+        {
+            return;
+        }
+
+        if (extracted is ProfilePart)
+        {
+            _initUserDataAccepted++;
+        }
+        else if (!HasProfileGold(message))
+        {
+            _initUserDataIgnoredNoGold++;
+        }
+        else if (!HasProfileName(message))
+        {
+            _initUserDataIgnoredNoName++;
+        }
+        else
+        {
+            _initUserDataIgnoredOther++;
+        }
+    }
+
+    private static JsonElement? ProfileData(GameMessage message) =>
+        message.Document.RootElement.TryGetProperty("b", out var b) && b.ValueKind == JsonValueKind.Object
+        && b.TryGetProperty("o", out var o) && o.ValueKind == JsonValueKind.Object
+        && o.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object
+            ? data
+            : null;
+
+    private static bool HasProfileGold(GameMessage message) => ProfileData(message)?.ReadLong("intGold") is not null;
+
+    private static bool HasProfileName(GameMessage message) =>
+        ProfileData(message)?.ReadCleanText("strUsername", GameDataExtractor.MaxCharacterNameLength) is not null;
 
     private void Finish(ConnectionKey key)
     {

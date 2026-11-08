@@ -1,6 +1,5 @@
 using System.IO.Compression;
 using AqwCompanion.Core.Diagnostics;
-using AqwCompanion.Core.Ingestion;
 
 namespace AqwCompanion.Tests.Diagnostics;
 
@@ -19,9 +18,6 @@ public sealed class DiagnosticsExporterTests : IDisposable
 
     public void Dispose() => Directory.Delete(_root, recursive: true);
 
-    private static PageSnapshot Snapshot() => PageSnapshot.Create(
-        "https://account.aq.com/AQW/Inventory", "<p>owner@example.com</p>", "1.0.0", DateTimeOffset.UnixEpoch);
-
     private static string ReadEntry(ZipArchive zip, string name)
     {
         var entry = zip.GetEntry(name) ?? throw new InvalidOperationException($"missing {name}");
@@ -30,12 +26,12 @@ public sealed class DiagnosticsExporterTests : IDisposable
     }
 
     [Fact]
-    public void Export_contains_info_and_redacted_logs_but_no_snapshot_by_default()
+    public void Export_contains_info_and_redacted_logs_and_never_a_snapshot()
     {
         File.WriteAllText(Path.Combine(_logs, "log-20261104.txt"), "user a@b.com logged in");
         var exporter = new DiagnosticsExporter(new SnapshotRedactor());
 
-        exporter.Export(new DiagnosticsRequest(_logs, "9.9.9", _output, Snapshot(), IncludeSnapshot: false));
+        exporter.Export(new DiagnosticsRequest(_logs, "9.9.9", _output));
 
         using var zip = ZipFile.OpenRead(_output);
         Assert.Contains("9.9.9", ReadEntry(zip, "info.txt"));
@@ -57,37 +53,13 @@ public sealed class DiagnosticsExporterTests : IDisposable
         File.WriteAllText(Path.Combine(_logs, "wiki.db"), "fake wiki content");
         var exporter = new DiagnosticsExporter(new SnapshotRedactor());
 
-        exporter.Export(new DiagnosticsRequest(_logs, "1.0.0", _output, Snapshot(), IncludeSnapshot: true));
+        exporter.Export(new DiagnosticsRequest(_logs, "1.0.0", _output));
 
         using var zip = ZipFile.OpenRead(_output);
         Assert.DoesNotContain(zip.Entries, e => e.FullName.Contains("companion.db", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(zip.Entries, e => e.FullName.EndsWith(".db", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain("fake stored content", string.Concat(zip.Entries.Select(e => ReadEntry(zip, e.FullName))));
         Assert.DoesNotContain("fake wiki content", string.Concat(zip.Entries.Select(e => ReadEntry(zip, e.FullName))));
-    }
-
-    [Fact]
-    public void Export_includes_redacted_snapshot_only_with_opt_in()
-    {
-        var exporter = new DiagnosticsExporter(new SnapshotRedactor());
-
-        exporter.Export(new DiagnosticsRequest(_logs, "1.0.0", _output, Snapshot(), IncludeSnapshot: true));
-
-        using var zip = ZipFile.OpenRead(_output);
-        var snapshot = ReadEntry(zip, "snapshot.txt");
-        Assert.DoesNotContain("owner@example.com", snapshot);
-        Assert.Contains(SnapshotRedactor.Mask, snapshot);
-    }
-
-    [Fact]
-    public void Export_with_opt_in_but_no_snapshot_does_not_create_snapshot_entry()
-    {
-        var exporter = new DiagnosticsExporter(new SnapshotRedactor());
-
-        exporter.Export(new DiagnosticsRequest(_logs, "1.0.0", _output, null, IncludeSnapshot: true));
-
-        using var zip = ZipFile.OpenRead(_output);
-        Assert.Null(zip.GetEntry("snapshot.txt"));
     }
 
     [Fact]
@@ -101,7 +73,7 @@ public sealed class DiagnosticsExporterTests : IDisposable
         }
         var exporter = new DiagnosticsExporter(new SnapshotRedactor());
 
-        exporter.Export(new DiagnosticsRequest(_logs, "1.0.0", _output, null, IncludeSnapshot: false));
+        exporter.Export(new DiagnosticsRequest(_logs, "1.0.0", _output));
 
         using var zip = ZipFile.OpenRead(_output);
         var logEntries = zip.Entries.Where(e => e.FullName.StartsWith("logs/")).Select(e => e.FullName).Order().ToList();
@@ -113,7 +85,7 @@ public sealed class DiagnosticsExporterTests : IDisposable
     {
         var exporter = new DiagnosticsExporter(new SnapshotRedactor());
 
-        exporter.Export(new DiagnosticsRequest(Path.Combine(_root, "nope"), "1.0.0", _output, null, IncludeSnapshot: false));
+        exporter.Export(new DiagnosticsRequest(Path.Combine(_root, "nope"), "1.0.0", _output));
 
         using var zip = ZipFile.OpenRead(_output);
         Assert.NotNull(zip.GetEntry("info.txt"));
@@ -128,7 +100,7 @@ public sealed class DiagnosticsExporterTests : IDisposable
         writer.Flush();
         var exporter = new DiagnosticsExporter(new SnapshotRedactor());
 
-        exporter.Export(new DiagnosticsRequest(_logs, "1.0.0", _output, null, IncludeSnapshot: false));
+        exporter.Export(new DiagnosticsRequest(_logs, "1.0.0", _output));
 
         using var zip = ZipFile.OpenRead(_output);
         Assert.Equal("still writing", ReadEntry(zip, "logs/log-open.txt"));
@@ -140,7 +112,7 @@ public sealed class DiagnosticsExporterTests : IDisposable
         File.WriteAllText(Path.Combine(_logs, "log-1.txt"), "entry");
         var exporter = new DiagnosticsExporter(new SnapshotRedactor());
 
-        exporter.Export(new DiagnosticsRequest(_logs, "1.0.0", _output, null, IncludeSnapshot: false));
+        exporter.Export(new DiagnosticsRequest(_logs, "1.0.0", _output));
 
         Assert.True(File.Exists(_output));
         Assert.False(File.Exists(_output + ".tmp"));
@@ -158,7 +130,7 @@ public sealed class DiagnosticsExporterTests : IDisposable
         var exporter = new DiagnosticsExporter(new SnapshotRedactor());
 
         Assert.ThrowsAny<Exception>(() =>
-            exporter.Export(new DiagnosticsRequest(_logs, "1.0.0", _output, null, IncludeSnapshot: false)));
+            exporter.Export(new DiagnosticsRequest(_logs, "1.0.0", _output)));
 
         Assert.False(File.Exists(_output + ".tmp"));
         Assert.Equal(previous, File.ReadAllBytes(_output));
@@ -172,7 +144,7 @@ public sealed class DiagnosticsExporterTests : IDisposable
         var exporter = new DiagnosticsExporter(new SnapshotRedactor());
 
         Assert.Throws<ArgumentException>(() =>
-            exporter.Export(new DiagnosticsRequest(_logs, "1.0.0", log, null, IncludeSnapshot: false)));
+            exporter.Export(new DiagnosticsRequest(_logs, "1.0.0", log)));
 
         Assert.Equal("precious log", File.ReadAllText(log));
     }

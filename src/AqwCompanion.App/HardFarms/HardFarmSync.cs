@@ -82,6 +82,10 @@ public sealed class HardFarmSync : IHardFarmSync
     private const string NotAnsweringWell = "The Wiki is not answering well; try again later.";
     private const string ListName = "the Hard Farming list";
 
+    // A list far shorter than the stored one is not trusted (the Wiki page may be half loaded or vandalised).
+    private const double DropThreshold = 0.5;
+    private const int DropMinPrevious = 10;
+
     private readonly IWikiPageFetcher _fetcher;
     private readonly IHardFarmStore _store;
     private readonly IDelay _delay;
@@ -410,10 +414,9 @@ public sealed class HardFarmSync : IHardFarmSync
             switch (parsed?.Outcome)
             {
                 case ParseOutcome.Ok when parsed.Data is { } list:
-                    // The same drop guard the account pages go through: a list far shorter than the stored one is not trusted.
-                    var previous = await Task.Run(() => owner._store.LoadList()?.List.Count, CancellationToken.None);
-                    if (previous is >= IngestionService<HardFarmList>.DropMinPrevious
-                        && list.Count < previous.Value * IngestionService<HardFarmList>.DropThreshold)
+                                        var previous = await Task.Run(() => owner._store.LoadList()?.List.Count, CancellationToken.None);
+                    if (previous is >= DropMinPrevious
+                        && list.Count < previous.Value * DropThreshold)
                     {
                         _warnings.Add(
                             $"The Hard Farming list shrank from {previous.Value} to {list.Count} entries (the page may have been damaged), so the previous list was kept.");

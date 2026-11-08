@@ -113,7 +113,7 @@ public sealed class LoggingContractTests : IDisposable
         var zipPath = Path.Combine(_paths.ExportDirectory, "contract.zip");
 
         new DiagnosticsExporter(new SnapshotRedactor()).Export(
-            new DiagnosticsRequest(_paths.LogDirectory, "9.9.9-contract", zipPath, null, false));
+            new DiagnosticsRequest(_paths.LogDirectory, "9.9.9-contract", zipPath));
 
         using var archive = ZipFile.OpenRead(zipPath);
         Assert.NotEmpty(archive.Entries);

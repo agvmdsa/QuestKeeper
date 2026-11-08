@@ -37,9 +37,3 @@ public sealed record PageFetchResult(PageSnapshot? Snapshot, string? Error, Page
     public static PageFetchResult Failure(string error, PageFailureKind kind, int? httpStatus = null) =>
         new(null, error, kind, httpStatus);
 }
-
-/// <summary>Reads one public page with a single GET. Implementations must not throw for network or HTTP failures.</summary>
-public interface IPageFetcher
-{
-    Task<PageFetchResult> FetchAsync(string url, CancellationToken ct = default);
-}

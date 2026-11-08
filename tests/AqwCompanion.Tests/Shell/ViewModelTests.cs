@@ -37,7 +37,7 @@ public sealed class ViewModelTests : IDisposable
     [Fact]
     public void Diagnostics_export_writes_a_zip_into_the_export_directory()
     {
-        var vm = new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer());
+        var vm = new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()));
 
         vm.ExportCommand.Execute(null);
 
@@ -49,26 +49,10 @@ public sealed class ViewModelTests : IDisposable
     }
 
     [Fact]
-    public void Diagnostics_export_includes_snapshot_only_when_opted_in()
-    {
-        var failures = new FailedSnapshotBuffer();
-        failures.Record(PageSnapshot.Create("https://account.aq.com/AQW/Inventory", "<p>page</p>", "1.0.0", DateTimeOffset.UnixEpoch));
-        var vm = new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), failures);
-
-        Assert.False(vm.IncludeSnapshot);
-        vm.IncludeSnapshot = true;
-        vm.ExportCommand.Execute(null);
-
-        var zip = Assert.Single(Directory.GetFiles(_paths.ExportDirectory, "diagnostics-*.zip"));
-        using var archive = ZipFile.OpenRead(zip);
-        Assert.NotNull(archive.GetEntry("snapshot.txt"));
-    }
-
-    [Fact]
     public void Diagnostics_export_reports_a_non_io_failure_instead_of_throwing()
     {
         var vm = new DiagnosticsViewModel(
-            new AppPaths("bad\0root"), new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer());
+            new AppPaths("bad\0root"), new DiagnosticsExporter(new SnapshotRedactor()));
 
         var ex = Record.Exception(() => vm.ExportCommand.Execute(null));
 
@@ -82,7 +66,7 @@ public sealed class ViewModelTests : IDisposable
     {
         Directory.CreateDirectory(_paths.Root);
         File.WriteAllText(_paths.ExportDirectory, "not a directory");
-        var vm = new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer());
+        var vm = new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()));
 
         var ex = Record.Exception(() => vm.ExportCommand.Execute(null));
 
@@ -94,7 +78,7 @@ public sealed class ViewModelTests : IDisposable
     [Fact]
     public void Diagnostics_exposes_the_log_directory()
     {
-        var vm = new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer());
+        var vm = new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()));
 
         Assert.Equal(_paths.LogDirectory, vm.LogDirectory);
     }
@@ -128,7 +112,7 @@ public sealed class ViewModelTests : IDisposable
         reputationRef = reputation;
         await reputation.RestoreAsync();
         var main = new MainViewModel(
-            new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer()), hardFarms,
+            new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor())), hardFarms,
             reputation, new CaptureRig().CreateViewModel(forgetting: coordinator));
         Assert.Single(main.HardFarms.Rows);
         Assert.Single(main.Reputation.Items);
@@ -154,7 +138,7 @@ public sealed class ViewModelTests : IDisposable
             new ReputationStore(new InMemoryStoredDataStore().Module()), new FakeReputationFilePicker(), source, TimeProvider.System);
         reputationRef = reputation;
         var main = new MainViewModel(
-            new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor()), new FailedSnapshotBuffer()),
+            new WikiViewModel(), new DiagnosticsViewModel(_paths, new DiagnosticsExporter(new SnapshotRedactor())),
             new HardFarmsViewModel(
                 new HardFarmStore(new InMemoryStoredDataStore().Module()), new FakeHardFarmSync(), ActiveInventoryBuilder.Empty(), new FakeUrlLauncher()),
             reputation, new CaptureRig().CreateViewModel(forgetting: coordinator));

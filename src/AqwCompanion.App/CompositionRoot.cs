@@ -10,16 +10,10 @@ using AqwCompanion.App.Reputation;
 using AqwCompanion.App.Shell;
 using AqwCompanion.App.Wiki;
 using AqwCompanion.Capture;
-using AqwCompanion.Core.Account;
-using AqwCompanion.Core.Badges;
 using AqwCompanion.Core.Diagnostics;
-using AqwCompanion.Core.Equipment;
 using AqwCompanion.Core.Forgetting;
-using AqwCompanion.Core.Ingestion;
-using AqwCompanion.Core.Inventory;
 using AqwCompanion.Core.Persistence;
 using AqwCompanion.Core.Wiki;
-using AqwCompanion.Core.Site;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -37,25 +31,6 @@ public static class CompositionRoot
         services.AddSingleton(paths);
         services.AddSingleton(_ => new SnapshotRedactor());
         services.AddSingleton<DiagnosticsExporter>();
-        services.AddSingleton<FailedSnapshotBuffer>();
-        services.AddSingleton<IPageParser<AccountIdentity>, AccountHomeParser>();
-        services.AddSingleton<LatestResultStore<AccountIdentity>>();
-        services.AddSingleton<IResultStore<AccountIdentity>>(sp => sp.GetRequiredService<LatestResultStore<AccountIdentity>>());
-        services.AddSingleton<IngestionService<AccountIdentity>>();
-        services.AddSingleton<IPageParser<CharacterEquipment>, CharacterEquipmentParser>();
-        services.AddSingleton<LatestResultStore<CharacterEquipment>>();
-        services.AddSingleton<IResultStore<CharacterEquipment>>(sp => sp.GetRequiredService<LatestResultStore<CharacterEquipment>>());
-        services.AddSingleton<IngestionService<CharacterEquipment>>();
-        services.AddSingleton<IPageParser<CharacterBadges>, BadgesParser>();
-        services.AddSingleton<LatestResultStore<CharacterBadges>>();
-        services.AddSingleton<IResultStore<CharacterBadges>>(sp => sp.GetRequiredService<LatestResultStore<CharacterBadges>>());
-        services.AddSingleton<IngestionService<CharacterBadges>>();
-        services.AddSingleton<IPageParser<CharacterInventory>, InventoryParser>();
-        services.AddSingleton<LatestResultStore<CharacterInventory>>();
-        services.AddSingleton<IResultStore<CharacterInventory>>(sp => sp.GetRequiredService<LatestResultStore<CharacterInventory>>());
-        services.AddSingleton<IngestionService<CharacterInventory>>();
-        services.AddSingleton<IPageFetcher>(sp => new AccountPageFetcher(
-            CreateHttpClient(AccountPageFetcher.Timeout), AppInfo.Version, sp.GetRequiredService<ILogger<AccountPageFetcher>>()));
         // The wiki fetcher applies its own deadline per call, so the client has none.
         services.AddSingleton<IWikiPageFetcher>(sp => new WikiPageFetcher(
             CreateHttpClient(System.Threading.Timeout.InfiniteTimeSpan), AppInfo.Version, sp.GetRequiredService<ILogger<WikiPageFetcher>>()));

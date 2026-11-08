@@ -1,16 +1,13 @@
 using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Text;
-using AqwCompanion.Core.Ingestion;
 
 namespace AqwCompanion.Core.Diagnostics;
 
 public sealed record DiagnosticsRequest(
     string LogDirectory,
     string AppVersion,
-    string OutputPath,
-    PageSnapshot? FailingSnapshot,
-    bool IncludeSnapshot);
+    string OutputPath);
 
 public sealed class DiagnosticsExporter(SnapshotRedactor redactor)
 {
@@ -30,18 +27,11 @@ public sealed class DiagnosticsExporter(SnapshotRedactor redactor)
             using (var file = new FileStream(tempPath, FileMode.Create, FileAccess.Write))
             using (var zip = new ZipArchive(file, ZipArchiveMode.Create))
             {
-                var snapshot = request.IncludeSnapshot ? request.FailingSnapshot : null;
-
-                WriteText(zip, "info.txt", BuildInfo(request, snapshot));
+                WriteText(zip, "info.txt", BuildInfo(request));
 
                 foreach (var logFile in logs)
                 {
                     WriteText(zip, $"logs/{Path.GetFileName(logFile)}", redactor.Redact(ReadShared(logFile)));
-                }
-
-                if (snapshot is not null)
-                {
-                    WriteText(zip, "snapshot.txt", redactor.Redact(snapshot.Payload));
                 }
             }
 
@@ -85,19 +75,13 @@ public sealed class DiagnosticsExporter(SnapshotRedactor redactor)
         }
     }
 
-    private static string BuildInfo(DiagnosticsRequest request, PageSnapshot? snapshot)
+    private static string BuildInfo(DiagnosticsRequest request)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"AppVersion: {request.AppVersion}");
         sb.AppendLine($"GeneratedAt: {DateTimeOffset.UtcNow:O}");
         sb.AppendLine($"OS: {RuntimeInformation.OSDescription}");
         sb.AppendLine($"Runtime: {RuntimeInformation.FrameworkDescription}");
-        sb.AppendLine($"SnapshotIncluded: {(snapshot is null ? "no" : "yes")}");
-        if (snapshot is not null)
-        {
-            sb.AppendLine($"SnapshotUrl: {snapshot.Url}");
-            sb.AppendLine($"SnapshotCapturedAt: {snapshot.CapturedAt:O}");
-        }
         return sb.ToString();
     }
 

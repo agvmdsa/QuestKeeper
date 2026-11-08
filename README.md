@@ -147,6 +147,8 @@ What the app reads and keeps on this machine: from the server's login messages o
 
 What is never kept: your e-mail address, IP address, user and character ids, password, the account creation date, and anything about other players.
 
+If you open the app while you are already logged in to the game: the data saved from your last session is shown, labelled as saved from an earlier session. The app cannot read a login that was sent before it started listening, and it says so when it sees a game connection whose start it missed. Switching server or logging in again sends the login again and fixes it. Live updates while you play are a later step and do not exist yet.
+
 **Sign out** on the Account tab removes the captured data too, together with everything else the app saved.
 
 Limits and what is not verified:

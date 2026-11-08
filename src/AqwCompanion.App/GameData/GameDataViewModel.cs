@@ -29,6 +29,7 @@ public partial class GameDataViewModel : ObservableObject
     public const string NoDeviceText = "No network device could be opened.";
     public const string DriverErrorText = "The capture driver reported an error.";
     public const string PrivacyText = "It starts by itself when the app opens and listens until you press Stop capture. It reads only the login data shown here, never your e-mail, IP address or password.";
+    public const string EarlierSessionHintText = "A game session that started before this app was opened is running. Its data cannot be read until you log in again, for example by switching server.";
     public const string EmptyText = "The capture is already listening. Open the game launcher and log in; your data appears here when the login has been read.";
 
     private const int MaxRank = 10;
@@ -79,6 +80,11 @@ public partial class GameDataViewModel : ObservableObject
     public string ConnectionsText { get; private set; } = string.Empty;
 
     public bool HasConnections => ConnectionsText.Length > 0;
+
+    /// <summary>Warns that a game session started before the capture and cannot be read; empty when it does not apply.</summary>
+    public string HintText { get; private set; } = string.Empty;
+
+    public bool HasHint => HintText.Length > 0;
 
     /// <summary>The shapes of the first unreadable messages, as sizes and classes only; empty when there are none.</summary>
     public string SamplesText { get; private set; } = string.Empty;
@@ -190,6 +196,8 @@ public partial class GameDataViewModel : ObservableObject
         OnPropertyChanged(nameof(HasOtherNames));
         OnPropertyChanged(nameof(OtherNamesText));
         OnPropertyChanged(nameof(HasOtherNames));
+        OnPropertyChanged(nameof(HintText));
+        OnPropertyChanged(nameof(HasHint));
         OnPropertyChanged(nameof(ConnectionsText));
         OnPropertyChanged(nameof(HasConnections));
         OnPropertyChanged(nameof(SamplesText));
@@ -219,6 +227,8 @@ public partial class GameDataViewModel : ObservableObject
         OnPropertyChanged(nameof(HasDecoding));
         OnPropertyChanged(nameof(CommandsText));
         OnPropertyChanged(nameof(HasCommands));
+        OnPropertyChanged(nameof(HintText));
+        OnPropertyChanged(nameof(HasHint));
         OnPropertyChanged(nameof(ConnectionsText));
         OnPropertyChanged(nameof(HasConnections));
         OnPropertyChanged(nameof(SamplesText));
@@ -242,6 +252,9 @@ public partial class GameDataViewModel : ObservableObject
         ConnectionsText = ConnectionsTextFor(connections);
         SamplesText = SamplesTextFor(connections);
         DetailsText = _session.Details;
+        var startedEarlier = connections.ConnectionsSeen - connections.ConnectionsWithSyn > 0;
+        var capturedNow = counters.CharactersCaptured > 0 || _session.Characters.Any(c => _session.IsCapturedThisSession(c.Profile.Name));
+        HintText = startedEarlier && !capturedNow ? EarlierSessionHintText : string.Empty;
     }
 
     private static string ConnectionsTextFor(CaptureConnectionDiagnostics connections) =>

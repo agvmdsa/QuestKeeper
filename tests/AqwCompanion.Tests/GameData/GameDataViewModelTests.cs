@@ -779,4 +779,47 @@ public class GameDataViewModelTests
         Assert.Equal(string.Empty, vm.CapturedText);
         Assert.False(vm.HasCapturedText);
     }
+
+    private static IEnumerable<TcpSegment> WithoutSynAck(int clientPort = 50001) =>
+        [ServerData(5000, [.. Named("repGain"), 0], clientPort)];
+
+    [Fact]
+    public void The_hint_text_is_the_planned_one()
+    {
+        Assert.Equal(
+            "A game session that started before this app was opened is running. Its data cannot be read until you log in again, for example by switching server.",
+            GameDataViewModel.EarlierSessionHintText);
+    }
+
+    [Fact]
+    public async Task A_stream_without_a_start_that_carries_server_messages_shows_the_hint()
+    {
+        var (_, vm) = await Captured(WithoutSynAck());
+
+        Assert.True(vm.HasHint);
+        Assert.Equal(GameDataViewModel.EarlierSessionHintText, vm.HintText);
+    }
+
+    [Fact]
+    public async Task A_login_on_another_connection_hides_the_hint()
+    {
+        var (_, vm) = await Captured(WithoutSynAck(), Connection().Server);
+
+        Assert.Equal(string.Empty, vm.HintText);
+        Assert.False(vm.HasHint);
+    }
+
+    [Fact]
+    public async Task A_normal_login_only_never_shows_the_hint()
+    {
+        var (_, vm) = await Captured(Connection().Server);
+
+        Assert.False(vm.HasHint);
+    }
+
+    [Fact]
+    public void Before_any_traffic_there_is_no_hint()
+    {
+        Assert.False(new CaptureRig().CreateViewModel().HasHint);
+    }
 }

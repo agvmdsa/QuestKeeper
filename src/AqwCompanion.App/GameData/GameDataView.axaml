@@ -73,6 +73,8 @@
           </StackPanel>
           <TextBlock x:Name="GameDataStateText" Text="{Binding StateText}" TextWrapping="Wrap"
                      AutomationProperties.Name="{Binding StateText}" />
+          <TextBlock x:Name="GameDataHint" Text="{Binding HintText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
+                     TextWrapping="Wrap" IsVisible="{Binding HasHint}" AutomationProperties.Name="{Binding HintText}" />
           <SelectableTextBlock x:Name="GameDataNpcapLink" Text="{x:Static gd:GameDataViewModel.NpcapUrl}"
                                IsVisible="{Binding NpcapMissing}" Foreground="{DynamicResource AqwAccent}"
                                AutomationProperties.Name="Npcap download address" />

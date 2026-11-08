@@ -250,6 +250,22 @@ public class GameDataViewTests
     }
 
     [AvaloniaFact]
+    public void The_hint_line_appears_for_a_stream_without_a_start_and_stays_inside_the_window()
+    {
+        var h = Build();
+        var hint = h.View.Named<TextBlock>("GameDataHint");
+        Assert.False(hint.IsEffectivelyVisible);
+
+        h.Rig.Source = Feeding([ServerData(5000, [.. Named("repGain"), 0])]);
+        Press(h, "GameDataStartButton");
+        SettleUntil(h.Window, () => hint.IsEffectivelyVisible, "the hint");
+
+        Assert.Equal(GameDataViewModel.EarlierSessionHintText, hint.Text);
+        Assert.Equal(GameDataViewModel.EarlierSessionHintText, AutomationProperties.GetName(hint));
+        Assert.True(hint.Bounds.Bottom <= h.Window.Bounds.Height);
+    }
+
+    [AvaloniaFact]
     public void The_refresh_button_and_the_details_line_exist_with_their_texts()
     {
         var h = Build();

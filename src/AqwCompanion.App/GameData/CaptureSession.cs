@@ -7,8 +7,8 @@ using AqwCompanion.Core.Forgetting;
 namespace AqwCompanion.App.GameData;
 
 /// <summary>
-/// One Capture session at a time: checks the system, Npcap and administrator rights, listens through a packet source for at
-/// most <see cref="TimeLimit"/>, keeps one snapshot per Character (newest wins) and stores them. It logs nothing that comes
+/// One Capture session at a time: checks the system, Npcap and administrator rights, listens through a packet source until it is
+/// stopped or the source ends, keeps one snapshot per Character (newest wins) and stores them. It logs nothing that comes
 /// from the traffic. State is guarded by a lock; <see cref="Changed"/> is raised outside of it and may come from capture threads.
 /// </summary>
 public sealed class CaptureSession(
@@ -17,14 +17,10 @@ public sealed class CaptureSession(
     Func<NpcapStatus> npcap,
     Func<bool> isWindows,
     IGameDataStore store,
-    IDelay delay,
     TimeProvider clock,
     IApplicationExit exit,
     AppPaths paths) : IForgettable
 {
-    /// <summary>How long a session listens before it ends by itself.</summary>
-    public static readonly TimeSpan TimeLimit = TimeSpan.FromMinutes(10);
-
     /// <summary>The most Characters kept; the oldest is dropped first.</summary>
     public const int MaxCharacters = GameDataStore.MaxCharacters;
 
@@ -197,7 +193,7 @@ public sealed class CaptureSession(
         }
     }
 
-    /// <summary>Runs one session and returns when it ends (stop, time limit, end of the source or failure). No-op when already listening or quiesced.</summary>
+    /// <summary>Runs one session and returns when it ends (stop, end of the source or failure). No-op when already listening or quiesced.</summary>
     public async Task StartAsync()
     {
         var run = Begin();
@@ -220,30 +216,20 @@ public sealed class CaptureSession(
 
             return packetSource.RunAsync(run.Engine.Accept, token);
         });
-        var limit = delay.DelayAsync(TimeLimit, token);
-        var finished = await Task.WhenAny(source, limit).ConfigureAwait(false);
+        await Settle(source).ConfigureAwait(false);
 
         var state = CaptureState.Done;
         var failure = CaptureFailure.None;
-        if (finished == source)
+        if (source.IsFaulted)
         {
-            if (source.IsFaulted)
-            {
-                state = CaptureState.Failed;
-                failure = CaptureFailure.DriverError;
-            }
-            else if (!token.IsCancellationRequested
-                && run.Engine.Counters is { SegmentsSeen: 0, CharactersCaptured: 0 })
-            {
-                state = CaptureState.Failed;
-                failure = CaptureFailure.NoDevice;
-            }
+            state = CaptureState.Failed;
+            failure = CaptureFailure.DriverError;
         }
-        else
+        else if (!token.IsCancellationRequested
+            && run.Engine.Counters is { SegmentsSeen: 0, CharactersCaptured: 0 })
         {
-            // The limit passed (or the delay ended some other way): ask the source to end and wait for it.
-            Cancel(run.Cts);
-            await Settle(source).ConfigureAwait(false);
+            state = CaptureState.Failed;
+            failure = CaptureFailure.NoDevice;
         }
 
         var raise = false;

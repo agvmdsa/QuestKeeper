@@ -136,10 +136,10 @@ What you need:
 
 Steps:
 
-1. Open the app and the **Game data** tab, then press **Start capture**.
-2. If the tab says it needs administrator rights, press **Restart as administrator** and accept the Windows prompt. The app restarts with the same data folder. If it says Npcap is missing, install it and press **Start capture** again.
-3. Press **Start capture** again, and only then open the game launcher and log in. The capture has to be running before the login, because the data is sent once, during the login.
-4. Wait until the tab shows your character. Press **Stop capture** when you are done (it also ends by itself after 10 minutes). If you log in with several characters while it runs, each one appears and a **Character** selector lets you switch between them.
+1. Open the app already as administrator (right-click, **Run as administrator**). The capture starts by itself when the app opens, so there is no need to press **Start capture**, and it keeps listening until you press **Stop capture**. It still reads only the login data; live game events are a later step.
+2. Open the **Game data** tab. If it says it needs administrator rights, press **Restart as administrator** and accept the Windows prompt; the app restarts with the same data folder and starts listening again. If it says Npcap is missing, install it and press **Start capture**. No administrator prompt appears by itself.
+3. Open the game launcher and log in. The capture has to be listening before the login, because the data is sent once, during the login.
+4. Wait until the tab shows your character. Press **Stop capture** when you are done; **Start capture** starts it again. If you log in with several characters while it runs, each one appears and a **Character** selector lets you switch between them.
 
 The capture card shows numbers only, and **Refresh numbers** re-reads them on demand (nothing updates by itself): segments seen and dropped, messages read, characters captured, how many messages were unreadable, how many profile and inventory parts were seen, and, when there is something to say, one line about the capture driver (devices found and opened, packets received, with error type names but never a device name, address or packet content). Read them like this: 0 segments seen means nothing arrived from the driver; segments but no characters means the login was not read, usually because the capture started after the login; unreadable above 0 with no parts means the real message format differs from what was measured; messages read above 0 with 0 profile and inventory parts means the data did not pass during this capture, usually because the login happened before Start. A second line, "Unreadable: ...", appears when messages could not be read and says at which step each one failed (for example not base64, or no compression header), and a third, "Commands read: ...", counts the messages of each known game command, including how many initUserData messages were the own profile and how many were ignored for lacking gold or a name. Two more lines show how the connections went (how many were seen, how many with the start of their stream, how many gave a profile, an inventory or both) and, for the first unreadable messages, only their size, the reading that decoded them, the class of their first bytes (zlib header, gzip header, printable text, binary or empty) and an entropy figure, never any byte or text. All of these show numbers and fixed command names only; any other command is counted as "other" without its name.
 
@@ -151,7 +151,7 @@ What is never kept: your e-mail address, IP address, user and character ids, pas
 
 Limits and what is not verified:
 
-- A capture session lasts at most 10 minutes. At most 16 characters are kept; the oldest is dropped first.
+- At most 16 characters are kept; the oldest is dropped first.
 - The bank, quests and achievements are not read as data of their own. Whether the game sends your bank items in the login data is not verified, so do not rely on them. Class points of owned classes are not captured, so Hard Farms matches classes by name only.
 - The Reputation tab and its Skua flow above are unchanged and separate from this.
 - **The capture adapter (the part that talks to Npcap) has not been run on a real Windows machine yet.** It is tested here only with generated traffic on fake network sources. Expect that the first real run can fail, for example with "No network device could be opened." Nothing in this section is a promise that it works on your machine.

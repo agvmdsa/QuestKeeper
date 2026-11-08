@@ -17,8 +17,6 @@ public class CaptureSessionTests
 
         public FakeGameDataStore Store { get; } = new();
 
-        public FakeDelay Delay { get; } = new() { Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) };
-
         public FakeApplicationExit Exit { get; } = new();
 
         public AppPaths Paths { get; } = new("/tmp/aqw-fictional-root");
@@ -41,7 +39,7 @@ public class CaptureSessionTests
                     FactoryCalls++;
                     return Source;
                 },
-                Elevation, () => Npcap, () => IsWindows, Store, Delay, TimeProvider.System, Exit, Paths);
+                Elevation, () => Npcap, () => IsWindows, Store, TimeProvider.System, Exit, Paths);
             session.Changed += (_, _) =>
             {
                 lock (Events)
@@ -236,7 +234,7 @@ public class CaptureSessionTests
     }
 
     [Fact]
-    public async Task The_time_limit_cancels_the_source_and_ends_the_session_as_done()
+    public async Task A_session_that_is_never_stopped_keeps_listening_after_a_character()
     {
         var (source, started, token) = Holding(Connection().Server);
         var rig = new Rig { Source = source };
@@ -244,16 +242,16 @@ public class CaptureSessionTests
 
         var run = session.StartAsync();
         await started.Task.WaitAsync(Wait);
-        Assert.Equal(CaptureState.Listening, session.State);
-        rig.Delay.Gate!.SetResult();
-        await run.WaitAsync(Wait);
+        await Task.Delay(200);
 
-        Assert.Equal(CaptureState.Done, session.State);
-        Assert.Equal(CaptureFailure.None, session.Failure);
-        Assert.True(token().IsCancellationRequested);
-        Assert.Equal([CaptureSession.TimeLimit], rig.Delay.Delays);
-        Assert.Equal(TimeSpan.FromMinutes(10), CaptureSession.TimeLimit);
+        Assert.Equal(CaptureState.Listening, session.State);
+        Assert.False(run.IsCompleted);
+        Assert.False(token().IsCancellationRequested);
         Assert.Single(session.Characters);
+
+        session.Stop();
+        await run.WaitAsync(Wait);
+        Assert.Equal(CaptureState.Done, session.State);
     }
 
     [Fact]
@@ -298,7 +296,7 @@ public class CaptureSessionTests
     {
         var session = new CaptureSession(
             () => throw new InvalidOperationException("driver"), new FakeProcessElevation(), () => NpcapStatus.Available,
-            () => true, new FakeGameDataStore(), new FakeDelay { Gate = new TaskCompletionSource() }, TimeProvider.System,
+            () => true, new FakeGameDataStore(), TimeProvider.System,
             new FakeApplicationExit(), new AppPaths("/tmp/x"));
 
         await session.StartAsync().WaitAsync(Wait);

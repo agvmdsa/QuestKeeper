@@ -22,7 +22,9 @@ public partial class CompanionApp : Application
             _ = main.Account.RestoreStoredDataAsync();
             _ = main.HardFarms.RestoreAsync();
             _ = main.Reputation.RestoreAsync();
-            _ = services.GetRequiredService<CaptureSession>().RestoreAsync();
+            var capture = services.GetRequiredService<CaptureSession>();
+            _ = capture.RestoreAsync();
+            _ = capture.StartAsync();
             desktop.Exit += (_, _) => services.Dispose();
         }
 

@@ -103,7 +103,6 @@ public static class CompositionRoot
             NpcapAvailability.Check,
             OperatingSystem.IsWindows,
             sp.GetRequiredService<IGameDataStore>(),
-            sp.GetRequiredService<IDelay>(),
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<IApplicationExit>(),
             sp.GetRequiredService<AppPaths>()));

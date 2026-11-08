@@ -14,8 +14,6 @@ public sealed class CaptureRig
 
     public FakeGameDataStore Store { get; } = new();
 
-    public FakeDelay Delay { get; } = new() { Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) };
-
     public NpcapStatus Npcap { get; set; } = NpcapStatus.Available;
 
     public bool IsWindows { get; set; } = true;
@@ -25,7 +23,7 @@ public sealed class CaptureRig
     public CaptureSession Session { get; }
 
     public CaptureRig() => Session = new CaptureSession(
-        () => Source, Elevation, () => Npcap, () => IsWindows, Store, Delay, TimeProvider.System, Exit,
+        () => Source, Elevation, () => Npcap, () => IsWindows, Store, TimeProvider.System, Exit,
         new AppPaths("/tmp/aqw-fictional-root"));
 
     /// <summary>A source that hands over the segments and ends at once.</summary>

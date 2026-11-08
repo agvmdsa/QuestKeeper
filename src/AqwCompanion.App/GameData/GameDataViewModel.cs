@@ -27,8 +27,8 @@ public partial class GameDataViewModel : ObservableObject
     public const string DoneText = "Capture finished.";
     public const string NoDeviceText = "No network device could be opened.";
     public const string DriverErrorText = "The capture driver reported an error.";
-    public const string PrivacyText = "The app reads only the login data shown here. It never keeps your e-mail address, IP address or password.";
-    public const string EmptyText = "Press Start capture, then open the game launcher and log in. Your data appears here when the login has been read.";
+    public const string PrivacyText = "It starts by itself when the app opens and listens until you press Stop capture. It reads only the login data shown here, never your e-mail, IP address or password.";
+    public const string EmptyText = "The capture is already listening. Open the game launcher and log in; your data appears here when the login has been read.";
 
     private const int MaxRank = 10;
 

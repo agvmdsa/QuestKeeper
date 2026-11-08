@@ -506,4 +506,20 @@ public class CaptureSessionTests
         Assert.Empty(rig.Store.Saved);
         Assert.Equal(CaptureState.Idle, session.State);
     }
+
+    [Fact]
+    public async Task Connections_are_empty_before_a_start_and_count_the_login_after_it()
+    {
+        var rig = new Rig { Source = Feeding(Connection().Server) };
+        var session = rig.Create();
+        Assert.Equal(CaptureConnectionDiagnostics.Empty, session.Connections);
+
+        await session.StartAsync().WaitAsync(Wait);
+
+        var connections = session.Connections;
+        Assert.Equal((1, 1, 1, 1, 1), (connections.ConnectionsSeen, connections.ConnectionsWithSyn, connections.ConnectionsWithProfile, connections.ConnectionsWithInventory, connections.ConnectionsCompleted));
+
+        ((IForgettable)session).Forget();
+        Assert.Equal(CaptureConnectionDiagnostics.Empty, session.Connections);
+    }
 }

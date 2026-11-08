@@ -257,4 +257,28 @@ public class GameDataViewTests
 
         Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(h.View.Named<TextBox>("GameDataFilterBox"))));
     }
+
+    [AvaloniaFact]
+    public void The_connections_and_samples_lines_are_selectable_and_shown_only_with_content()
+    {
+        var h = Build();
+        var connections = h.View.Named<SelectableTextBlock>("GameDataConnections");
+        var samples = h.View.Named<SelectableTextBlock>("GameDataSamples");
+        Assert.False(connections.IsEffectivelyVisible);
+        Assert.False(samples.IsEffectivelyVisible);
+
+        var garbage = Bytes("Z" + new string('!', 70));
+        h.Rig.Source = new FakePacketSource((sink, _) =>
+        {
+            sink(SynAck(1000));
+            sink(ServerData(1001, [.. garbage, 0]));
+            return Task.CompletedTask;
+        });
+        Press(h, "GameDataStartButton");
+        SettleUntil(h.Window, () => connections.IsEffectivelyVisible && samples.IsEffectivelyVisible, "the connection lines");
+
+        Assert.StartsWith("Connections: 1 seen", connections.Text);
+        Assert.StartsWith("Unreadable messages: #1", samples.Text);
+        Assert.Equal(samples.Text, AutomationProperties.GetName(samples));
+    }
 }

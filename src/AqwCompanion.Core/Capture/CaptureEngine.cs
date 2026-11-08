@@ -38,6 +38,12 @@ public sealed class CaptureEngine(TimeProvider clock)
     private int _initUserDataIgnoredNoGold;
     private int _initUserDataIgnoredNoName;
     private int _initUserDataIgnoredOther;
+    private int _connectionsSeen;
+    private int _connectionsWithSyn;
+    private int _connectionsWithProfile;
+    private int _connectionsWithInventory;
+    private int _connectionsCompleted;
+    private readonly List<UnreadableSample> _samples = [];
 
     /// <summary>Raised once per connection when its profile and inventory are both known.</summary>
     public event Action<CharacterSnapshot>? CharacterCaptured;
@@ -84,6 +90,19 @@ public sealed class CaptureEngine(TimeProvider clock)
                 var ignored = _initUserDataIgnoredNoGold + _initUserDataIgnoredNoName + _initUserDataIgnoredOther;
                 return new CaptureDecodeDiagnostics(
                     failures, commands, _initUserDataAccepted, ignored, _initUserDataIgnoredNoGold, _initUserDataIgnoredNoName);
+            }
+        }
+    }
+
+    /// <summary>How the connections went and the shapes of the first unreadable messages; counts and classes only, never any content.</summary>
+    public CaptureConnectionDiagnostics Connections
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return new CaptureConnectionDiagnostics(
+                    _connectionsSeen, _connectionsWithSyn, _connectionsWithProfile, _connectionsWithInventory, _connectionsCompleted, [.. _samples]);
             }
         }
     }
@@ -153,6 +172,13 @@ public sealed class CaptureEngine(TimeProvider clock)
             }
             connection = new Connection();
             _connections[key] = connection;
+            _connectionsSeen++;
+        }
+
+        if (segment.IsSyn && !connection.SawSyn)
+        {
+            connection.SawSyn = true;
+            _connectionsWithSyn++;
         }
 
         foreach (var raw in connection.Reassembler.Feed(segment))
@@ -163,6 +189,12 @@ public sealed class CaptureEngine(TimeProvider clock)
                 if (raw.Length > 0 && raw[0] != (byte)'%' && raw[0] != (byte)'<')
                 {
                     _failures[(int)failure]++;
+                    if (failure is DecodeFailure.NoCompressionHeader or DecodeFailure.InflateFailed or DecodeFailure.NotBase64
+                        && _samples.Count < CaptureConnectionDiagnostics.MaxSamples)
+                    {
+                        var shape = MessageDecoder.Describe(raw);
+                        _samples.Add(new UnreadableSample(raw.Length, shape.Reading, shape.DecodedLength, shape.FirstBytes, shape.EntropyBits));
+                    }
                 }
 
                 if (raw.Length >= MessageDecoder.MinEncodedBytes && raw[0] != (byte)'%' && raw[0] != (byte)'<')
@@ -180,10 +212,20 @@ public sealed class CaptureEngine(TimeProvider clock)
             {
                 case ProfilePart profile:
                     _profilePartsSeen++;
+                    if (connection.Profile is null)
+                    {
+                        _connectionsWithProfile++;
+                    }
+
                     connection.Profile = profile;
                     break;
                 case InventoryPart inventory:
                     _inventoryPartsSeen++;
+                    if (connection.Inventory is null)
+                    {
+                        _connectionsWithInventory++;
+                    }
+
                     connection.Inventory = inventory;
                     break;
                 default:
@@ -194,6 +236,7 @@ public sealed class CaptureEngine(TimeProvider clock)
             if (connection.Profile is { } p && connection.Inventory is { } i)
             {
                 Finish(key);
+                _connectionsCompleted++;
                 _charactersCaptured++;
                 return new CharacterSnapshot(p.Profile, i.Factions, i.Items, i.HouseItems, clock.GetUtcNow());
             }
@@ -266,6 +309,8 @@ public sealed class CaptureEngine(TimeProvider clock)
     private sealed class Connection
     {
         public StreamReassembler Reassembler { get; } = new();
+
+        public bool SawSyn { get; set; }
 
         public ProfilePart? Profile { get; set; }
 

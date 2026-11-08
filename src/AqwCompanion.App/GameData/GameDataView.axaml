@@ -58,7 +58,7 @@
   <ScrollViewer x:Name="GameDataScroll" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Margin="16" Spacing="12">
       <Border x:Name="GameDataCaptureCard" Classes="card">
-        <StackPanel Margin="16" Spacing="8">
+        <StackPanel Margin="16,12" Spacing="8">
           <TextBlock x:Name="GameDataTitle" Text="{x:Static gd:GameDataViewModel.TitleText}" FontSize="16" Classes="columnTitle" />
           <StackPanel Orientation="Horizontal" Spacing="8">
             <Button x:Name="GameDataStartButton" Classes="primary" Content="{x:Static gd:GameDataViewModel.StartText}"
@@ -78,15 +78,23 @@
                                AutomationProperties.Name="Npcap download address" />
           <TextBlock x:Name="GameDataCountersText" Text="{Binding CountersText}" Classes="muted"
                      AutomationProperties.Name="{Binding CountersText}" />
-          <SelectableTextBlock x:Name="GameDataDecoding" Text="{Binding DecodingText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
-                               TextWrapping="Wrap" IsVisible="{Binding HasDecoding}"
-                               AutomationProperties.Name="{Binding DecodingText}" />
-          <SelectableTextBlock x:Name="GameDataCommands" Text="{Binding CommandsText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
-                               TextWrapping="Wrap" IsVisible="{Binding HasCommands}"
-                               AutomationProperties.Name="{Binding CommandsText}" />
-          <SelectableTextBlock x:Name="GameDataDetails" Text="{Binding DetailsText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
-                               TextWrapping="Wrap" IsVisible="{Binding HasDetails}"
-                               AutomationProperties.Name="{Binding DetailsText}" />
+          <StackPanel Spacing="0">
+            <SelectableTextBlock x:Name="GameDataDecoding" Text="{Binding DecodingText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
+                                 TextWrapping="Wrap" IsVisible="{Binding HasDecoding}"
+                                 AutomationProperties.Name="{Binding DecodingText}" />
+            <SelectableTextBlock x:Name="GameDataConnections" Text="{Binding ConnectionsText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
+                                 TextWrapping="Wrap" IsVisible="{Binding HasConnections}"
+                                 AutomationProperties.Name="{Binding ConnectionsText}" />
+            <SelectableTextBlock x:Name="GameDataSamples" Text="{Binding SamplesText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
+                                 TextWrapping="Wrap" IsVisible="{Binding HasSamples}"
+                                 AutomationProperties.Name="{Binding SamplesText}" />
+            <SelectableTextBlock x:Name="GameDataCommands" Text="{Binding CommandsText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
+                                 TextWrapping="Wrap" IsVisible="{Binding HasCommands}"
+                                 AutomationProperties.Name="{Binding CommandsText}" />
+            <SelectableTextBlock x:Name="GameDataDetails" Text="{Binding DetailsText}" Foreground="{DynamicResource AqwTextMuted}" FontSize="12"
+                                 TextWrapping="Wrap" IsVisible="{Binding HasDetails}"
+                                 AutomationProperties.Name="{Binding DetailsText}" />
+          </StackPanel>
           <TextBlock x:Name="GameDataPrivacyText" Text="{x:Static gd:GameDataViewModel.PrivacyText}" Classes="muted"
                      TextWrapping="Wrap" />
         </StackPanel>

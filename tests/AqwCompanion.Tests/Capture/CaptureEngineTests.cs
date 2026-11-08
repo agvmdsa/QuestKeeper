@@ -503,4 +503,96 @@ public class CaptureEngineTests
         Assert.Equal(decoding.InitUserDataIgnored, decoding.InitUserDataIgnoredNoGold + decoding.InitUserDataIgnoredNoName);
         Assert.Equal(1, decoding.Failures.Values.Sum());
     }
+
+    [Fact]
+    public void A_normal_login_is_one_connection_with_syn_profile_inventory_and_completion()
+    {
+        var (engine, _) = NewEngine();
+        Assert.Equal(CaptureConnectionDiagnostics.Empty.ConnectionsSeen, engine.Connections.ConnectionsSeen);
+
+        Feed(engine, Connection().All);
+
+        var connections = engine.Connections;
+        Assert.Equal((1, 1, 1, 1, 1), (connections.ConnectionsSeen, connections.ConnectionsWithSyn, connections.ConnectionsWithProfile, connections.ConnectionsWithInventory, connections.ConnectionsCompleted));
+        Assert.Empty(connections.UnreadableSamples);
+    }
+
+    [Fact]
+    public void A_stream_without_the_syn_ack_is_not_counted_as_having_its_start()
+    {
+        var (engine, captured) = NewEngine();
+
+        Feed(engine, Connection().Server.Skip(1));
+
+        var connections = engine.Connections;
+        Assert.Equal((1, 0, 1, 1, 1), (connections.ConnectionsSeen, connections.ConnectionsWithSyn, connections.ConnectionsWithProfile, connections.ConnectionsWithInventory, connections.ConnectionsCompleted));
+        Assert.Single(captured);
+    }
+
+    [Fact]
+    public void Profile_and_inventory_on_two_different_connections_are_each_counted_and_none_completes()
+    {
+        var (engine, captured) = NewEngine();
+
+        Feed(engine, Connection(clientPort: 50000, includeInventory: false).Server);
+        Feed(engine, Connection(clientPort: 50001, includeProfile: false, isn: 7000).Server);
+
+        var connections = engine.Connections;
+        Assert.Equal((2, 2, 1, 1, 0), (connections.ConnectionsSeen, connections.ConnectionsWithSyn, connections.ConnectionsWithProfile, connections.ConnectionsWithInventory, connections.ConnectionsCompleted));
+        Assert.Empty(captured);
+    }
+
+    private static byte[] BinaryBlob()
+    {
+        var binary = new byte[300];
+        new Random(5).NextBytes(binary);
+        binary[0] = 0x01;
+        return Bytes("Z" + Convert.ToBase64String(binary));
+    }
+
+    private static byte[] FailingGzipBlob() =>
+        Bytes("Z" + Convert.ToBase64String([0x1F, 0x8B, .. Enumerable.Repeat((byte)0xFF, 60)]));
+
+    [Fact]
+    public void Unreadable_messages_are_described_by_class_and_numbers_only()
+    {
+        var text = Bytes("Z" + Convert.ToBase64String(Bytes("plain words that carry " + SecretToken + " and " + SecretPassword + " in text form")));
+        var notBase64 = Bytes("Z" + new string('!', 70));
+
+        var engine = Send(BinaryBlob(), FailingGzipBlob(), notBase64, text);
+
+        var samples = engine.Connections.UnreadableSamples;
+        Assert.Equal(4, samples.Count);
+        Assert.Equal(("drop-first-1", 300, "binary", 401), (samples[0].Reading, samples[0].DecodedLength, samples[0].FirstBytes, samples[0].EncodedLength));
+        Assert.InRange(samples[0].EntropyBits, 7.0, 8.0);
+        Assert.Equal(Math.Round(samples[0].EntropyBits, 1), samples[0].EntropyBits);
+        Assert.Equal(("drop-first-1", 62, "gzip header"), (samples[1].Reading, samples[1].DecodedLength, samples[1].FirstBytes));
+        Assert.InRange(samples[1].EntropyBits, 0.1, 1.0);
+        Assert.Equal(new UnreadableSample(71, "none", 0, "empty", 0), samples[2]);
+        Assert.Equal("drop-first-1", samples[3].Reading);
+        Assert.Equal("printable text", samples[3].FirstBytes);
+        Assert.Equal((2, 1, 1), (engine.Decoding.Failure(DecodeFailure.NoCompressionHeader), engine.Decoding.Failure(DecodeFailure.InflateFailed), engine.Decoding.Failure(DecodeFailure.NotBase64)));
+        AssertNoSecrets(engine.Connections);
+        AssertNoSecrets(engine.Decoding);
+    }
+
+    [Fact]
+    public void Only_the_first_six_samples_of_the_session_are_kept()
+    {
+        var messages = Enumerable.Range(0, 9).Select(i => Bytes("Z" + new string('!', 70 + i))).ToArray();
+
+        var engine = Send(messages);
+
+        Assert.Equal(CaptureConnectionDiagnostics.MaxSamples, engine.Connections.UnreadableSamples.Count);
+        Assert.Equal([71, 72, 73, 74, 75, 76], engine.Connections.UnreadableSamples.Select(s => s.EncodedLength));
+        Assert.Equal(9, engine.Decoding.Failure(DecodeFailure.NotBase64));
+    }
+
+    [Fact]
+    public void Messages_that_failed_later_or_are_not_blobs_give_no_sample()
+    {
+        var engine = Send(Bytes("{\"a\":1}"), Bytes("%xt%" + new string('x', 60)), EncodeBlobText(Bytes("this is not json at all, it is just a long sentence")));
+
+        Assert.Empty(engine.Connections.UnreadableSamples);
+    }
 }

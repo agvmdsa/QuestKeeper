@@ -606,4 +606,53 @@ public class GameDataViewModelTests
         Assert.Contains(nameof(GameDataViewModel.CommandsText), raised);
         vm.StopCommand.Execute(null);
     }
+
+    [Fact]
+    public void The_connections_and_samples_lines_are_empty_before_anything_is_seen()
+    {
+        var vm = new CaptureRig().CreateViewModel();
+
+        Assert.Equal(string.Empty, vm.ConnectionsText);
+        Assert.Equal(string.Empty, vm.SamplesText);
+        Assert.False(vm.HasConnections);
+        Assert.False(vm.HasSamples);
+    }
+
+    [Fact]
+    public async Task The_connections_line_counts_the_login()
+    {
+        var (_, vm) = await Captured(Connection().Server);
+
+        Assert.Equal(
+            "Connections: 1 seen, 1 with the start of the stream, 1 with a profile, 1 with an inventory, 1 completed",
+            vm.ConnectionsText);
+        Assert.True(vm.HasConnections);
+        Assert.Equal(string.Empty, vm.SamplesText);
+    }
+
+    [Fact]
+    public async Task The_samples_line_describes_unreadable_messages_by_class_and_refresh_updates_it()
+    {
+        var gzip = Bytes("Z" + Convert.ToBase64String([0x1F, 0x8B, .. Enumerable.Repeat((byte)0xFF, 60)]));
+        var notBase64 = Bytes("Z" + new string('!', 70));
+        var stream = new[] { gzip, notBase64 }.SelectMany(m => m.Append((byte)0)).ToArray();
+        var held = Holding([SynAck(1000), ServerData(1001, stream)]);
+        var rig = new CaptureRig { Source = held.Source };
+        var vm = rig.CreateViewModel();
+        var raised = new List<string?>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        _ = vm.StartCommand.ExecuteAsync(null);
+        await held.Started.Task.WaitAsync(Wait);
+        vm.RefreshCommand.Execute(null);
+
+        Assert.Matches(
+            @"^Unreadable messages: #1 85 B \(drop-first-1\) -> 62 B gzip header, entropy 0\.\d · #2 71 B \(none\) -> 0 B empty, entropy 0\.0$",
+            vm.SamplesText);
+        Assert.Equal("Connections: 1 seen, 1 with the start of the stream, 0 with a profile, 0 with an inventory, 0 completed", vm.ConnectionsText);
+        Assert.True(vm.HasSamples);
+        Assert.Contains(nameof(GameDataViewModel.SamplesText), raised);
+        Assert.Contains(nameof(GameDataViewModel.ConnectionsText), raised);
+        vm.StopCommand.Execute(null);
+    }
 }

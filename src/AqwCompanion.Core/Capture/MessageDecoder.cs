@@ -229,6 +229,99 @@ public static class MessageDecoder
         return strictlyMore ? ratio > share : printable >= share * data.Length;
     }
 
+    /// <summary>
+    /// Describes the shape of an unreadable message as classes and numbers only: which marker reading gave valid base64 (the
+    /// first with a zlib or gzip header, else the first valid one), the decoded size, the class of its first bytes and its entropy.
+    /// Never throws and exposes no content.
+    /// </summary>
+    public static BlobShape Describe(ReadOnlySpan<byte> raw)
+    {
+        try
+        {
+            if (raw.Length > MaxEncodedBytes)
+            {
+                return BlobShape.NotDecoded;
+            }
+
+            (byte[] Blob, int DropFirst)? first = null;
+            (byte[] Blob, int DropFirst)? headed = null;
+            for (var dropLast = 0; dropLast <= MaxDroppedSuffixChars && headed is null; dropLast++)
+            {
+                for (var dropFirst = 0; dropFirst <= MaxMarkerChars && headed is null; dropFirst++)
+                {
+                    var length = raw.Length - dropFirst - dropLast;
+                    var blob = length < MinBase64Chars ? null : DecodeBase64(raw.Slice(dropFirst, length));
+                    if (blob is null)
+                    {
+                        continue;
+                    }
+
+                    first ??= (blob, dropFirst);
+                    if (HeaderClass(blob) is "zlib header" or "gzip header")
+                    {
+                        headed = (blob, dropFirst);
+                    }
+                }
+            }
+
+            if ((headed ?? first) is not { } chosen)
+            {
+                return BlobShape.NotDecoded;
+            }
+
+            return new BlobShape(
+                $"drop-first-{chosen.DropFirst}",
+                chosen.Blob.Length,
+                chosen.Blob.Length == 0 ? "empty" : HeaderClass(chosen.Blob),
+                Math.Round(Entropy(chosen.Blob), 1));
+        }
+        catch (Exception)
+        {
+            return BlobShape.NotDecoded;
+        }
+    }
+
+    private static string HeaderClass(byte[] blob)
+    {
+        if (blob.Length >= 2 && blob[0] == 0x78 && blob[1] is 0x01 or 0x5E or 0x9C or 0xDA)
+        {
+            return "zlib header";
+        }
+
+        if (blob.Length >= 2 && blob[0] == 0x1F && blob[1] == 0x8B)
+        {
+            return "gzip header";
+        }
+
+        return MostlyPrintable(blob.AsSpan(0, Math.Min(blob.Length, PrintableProbeBytes)), 0.95) ? "printable text" : "binary";
+    }
+
+    private static double Entropy(byte[] data)
+    {
+        if (data.Length == 0)
+        {
+            return 0;
+        }
+
+        var counts = new int[256];
+        foreach (var b in data)
+        {
+            counts[b]++;
+        }
+
+        var entropy = 0.0;
+        foreach (var count in counts)
+        {
+            if (count > 0)
+            {
+                var p = count / (double)data.Length;
+                entropy -= p * Math.Log2(p);
+            }
+        }
+
+        return entropy;
+    }
+
     // The enum lists the stages in the order a message passes through them.
     private static DecodeFailure Advance(DecodeFailure current, DecodeFailure reached) => reached > current ? reached : current;
 
@@ -324,6 +417,16 @@ public static class MessageDecoder
             }
         }
     }
+}
+
+/// <summary>
+/// The shape of an unreadable message, never its content: <see cref="Reading"/> is <c>none</c> or <c>drop-first-N</c>,
+/// <see cref="FirstBytes"/> one of <c>zlib header</c>, <c>gzip header</c>, <c>printable text</c>, <c>binary</c>, <c>empty</c>.
+/// </summary>
+public readonly record struct BlobShape(string Reading, int DecodedLength, string FirstBytes, double EntropyBits)
+{
+    /// <summary>No marker and padding reading gave valid base64.</summary>
+    public static BlobShape NotDecoded { get; } = new("none", 0, "empty", 0);
 }
 
 /// <summary>Why <see cref="MessageDecoder.TryDecode"/> gave nothing: the most advanced stage reached, in the order of the stages.</summary>

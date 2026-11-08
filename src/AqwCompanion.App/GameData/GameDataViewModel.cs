@@ -74,6 +74,16 @@ public partial class GameDataViewModel : ObservableObject
 
     public bool HasDecoding => DecodingText.Length > 0;
 
+    /// <summary>How the connections went, as numbers only; empty before anything was seen.</summary>
+    public string ConnectionsText { get; private set; } = string.Empty;
+
+    public bool HasConnections => ConnectionsText.Length > 0;
+
+    /// <summary>The shapes of the first unreadable messages, as sizes and classes only; empty when there are none.</summary>
+    public string SamplesText { get; private set; } = string.Empty;
+
+    public bool HasSamples => SamplesText.Length > 0;
+
     /// <summary>How many messages of each known command were read, as numbers only; empty when there is nothing to say.</summary>
     public string CommandsText { get; private set; } = string.Empty;
 
@@ -165,6 +175,10 @@ public partial class GameDataViewModel : ObservableObject
         OnPropertyChanged(nameof(HasDecoding));
         OnPropertyChanged(nameof(CommandsText));
         OnPropertyChanged(nameof(HasCommands));
+        OnPropertyChanged(nameof(ConnectionsText));
+        OnPropertyChanged(nameof(HasConnections));
+        OnPropertyChanged(nameof(SamplesText));
+        OnPropertyChanged(nameof(HasSamples));
         OnPropertyChanged(nameof(DetailsText));
         OnPropertyChanged(nameof(HasDetails));
         OnPropertyChanged(nameof(IsListening));
@@ -190,6 +204,10 @@ public partial class GameDataViewModel : ObservableObject
         OnPropertyChanged(nameof(HasDecoding));
         OnPropertyChanged(nameof(CommandsText));
         OnPropertyChanged(nameof(HasCommands));
+        OnPropertyChanged(nameof(ConnectionsText));
+        OnPropertyChanged(nameof(HasConnections));
+        OnPropertyChanged(nameof(SamplesText));
+        OnPropertyChanged(nameof(HasSamples));
         OnPropertyChanged(nameof(DetailsText));
         OnPropertyChanged(nameof(HasDetails));
     }
@@ -204,7 +222,30 @@ public partial class GameDataViewModel : ObservableObject
         var decoding = _session.Decoding;
         DecodingText = DecodingTextFor(decoding);
         CommandsText = CommandsTextFor(decoding);
+        var connections = _session.Connections;
+        ConnectionsText = ConnectionsTextFor(connections);
+        SamplesText = SamplesTextFor(connections);
         DetailsText = _session.Details;
+    }
+
+    private static string ConnectionsTextFor(CaptureConnectionDiagnostics connections) =>
+        connections.ConnectionsSeen == 0
+            ? string.Empty
+            : string.Create(
+                CultureInfo.InvariantCulture,
+                $"Connections: {Format(connections.ConnectionsSeen)} seen, {Format(connections.ConnectionsWithSyn)} with the start of the stream, {Format(connections.ConnectionsWithProfile)} with a profile, {Format(connections.ConnectionsWithInventory)} with an inventory, {Format(connections.ConnectionsCompleted)} completed");
+
+    private static string SamplesTextFor(CaptureConnectionDiagnostics connections)
+    {
+        if (connections.UnreadableSamples.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var parts = connections.UnreadableSamples.Select((s, index) => string.Create(
+            CultureInfo.InvariantCulture,
+            $"#{index + 1} {Format(s.EncodedLength)} B ({s.Reading}) -> {Format(s.DecodedLength)} B {s.FirstBytes}, entropy {s.EntropyBits:0.0}"));
+        return "Unreadable messages: " + string.Join(" · ", parts);
     }
 
     private static string DecodingTextFor(CaptureDecodeDiagnostics decoding)

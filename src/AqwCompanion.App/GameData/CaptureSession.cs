@@ -110,6 +110,21 @@ public sealed class CaptureSession(
         }
     }
 
+    /// <summary>How the connections went and the shapes of the first unreadable messages (counts and classes only); zero before the first start.</summary>
+    public CaptureConnectionDiagnostics Connections
+    {
+        get
+        {
+            CaptureEngine? engine;
+            lock (_gate)
+            {
+                engine = _engine;
+            }
+
+            return engine?.Connections ?? CaptureConnectionDiagnostics.Empty;
+        }
+    }
+
     /// <summary>
     /// What the packet source of the current or last run says about itself, read on access: numbers and exception type
     /// names only. Empty before a run, when the source has nothing to say, and after Forgetting.

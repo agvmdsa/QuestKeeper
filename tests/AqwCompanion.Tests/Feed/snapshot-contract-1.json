@@ -1,0 +1,31 @@
+{
+  "contract": 1,
+  "capture": { "state": "Waiting for a login. Open the game launcher now.", "listening": true },
+  "selected": "Alpha Hero",
+  "characters": [
+    {
+      "name": "Alpha Hero",
+      "level": 60,
+      "live": true,
+      "savedAtUtc": "2026-11-09T12:00:00+00:00",
+      "lastLiveUpdateUtc": "2026-11-09T12:05:00+00:00",
+      "liveUpdates": 3,
+      "figures": { "gold": 1200, "exp": 340, "expToLevel": 5000, "ac": 777, "classPoints": 99, "daysPlayed": 300 },
+      "lastKill": { "gold": 56, "exp": 0 }
+    },
+    {
+      "name": "Beta Hero",
+      "level": 12,
+      "live": false,
+      "savedAtUtc": "2026-11-09T11:00:00+00:00",
+      "lastLiveUpdateUtc": null,
+      "liveUpdates": 0,
+      "figures": { "gold": 5, "exp": 6, "expToLevel": 7, "ac": 8, "classPoints": 9, "daysPlayed": 10 },
+      "lastKill": null
+    }
+  ],
+  "factions": [
+    { "name": "Nation", "rank": 3, "rep": 5000, "toNext": 5000, "fraction": 0.21875, "max": false }
+  ],
+  "hardFarms": { "owned": 4, "total": 8, "missing": ["Cape of Chaos", "Nation Hoodie"] }
+}

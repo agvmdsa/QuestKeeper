@@ -10,7 +10,7 @@
     <ProjectReference Include="..\..\src\AqwCompanion.Capture\AqwCompanion.Capture.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Update="Reputation\Samples\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Feed\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

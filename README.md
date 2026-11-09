@@ -70,7 +70,7 @@ After the login it follows a few of your own plain events: gold and experience g
 
 Off by default. **Settings, "Let other programs on this PC read my characters"** turns on a read-only feed that other programs on the same PC can use, for example a remote viewer. It listens on `127.0.0.1:47821` only, never on the network, and it never sends anything to the game.
 
-- **Secret:** a program must send `Authorization: Bearer <secret>`. The secret is the text in `%LOCALAPPDATA%\AqwCompanion\feed.token`; **New secret** in Settings replaces it. A request with an `Origin` header (a web page) or another `Host` is refused.
+- **Secret:** a program must send `Authorization: Bearer <secret>`. The secret is the text in `%LOCALAPPDATA%\AqwCompanion\feed.token`, which is created when you turn the feed on; **New secret** in Settings replaces it. A request with an `Origin` header (a web page) or another `Host` is refused.
 - **`GET /v1/ping`** returns `{"contract":1,"app":"Questkeeper","version":"..."}`.
 - **`GET /v1/state`** returns the snapshot below.
 - **`GET /v1/events`** is a Server-Sent Events stream: a `state` event with the full snapshot at once and whenever it changed (at most once a second), and a `ping` event every 25 seconds.

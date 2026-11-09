@@ -38,8 +38,6 @@ public partial class GameDataViewModel : ObservableObject
     public const string FooterCapturingText = "Capturing";
     public const string EmptyText = "The capture is already listening. Open the game launcher and log in; your data appears here when the login has been read.";
 
-    private const int MaxRank = 10;
-
     private readonly CaptureSession _session;
     private readonly Action<Action> _onUiThread;
 
@@ -423,7 +421,7 @@ public partial class GameDataViewModel : ObservableObject
             _shownFactions = snapshot?.Factions;
             Factions = snapshot is null
                 ? []
-                : [.. snapshot.Factions.OrderBy(Missing).ThenBy(f => f.Name, StringComparer.OrdinalIgnoreCase).Select(FactionRow)];
+                : [.. snapshot.Factions.OrderBy(FactionProgress.Missing).ThenBy(f => f.Name, StringComparer.OrdinalIgnoreCase).Select(FactionRow)];
             OnPropertyChanged(nameof(Factions));
         }
 
@@ -526,20 +524,16 @@ public partial class GameDataViewModel : ObservableObject
             : "Not a member";
     }
 
-    // What is still missing for the next rank; a faction at the maximum rank has nothing to earn and goes last.
-    private static long Missing(FactionStanding f) =>
-        f.Rank >= MaxRank ? long.MaxValue : Math.Max(0, (long)f.RepToRank - f.SpillRep);
-
     private static GameFactionRow FactionRow(FactionStanding f)
     {
-        var maxed = f.Rank >= MaxRank;
+        var maxed = FactionProgress.IsMax(f);
         return new GameFactionRow(
             f.Name,
             "Rank " + Format(f.Rank),
             Format(f.Rep),
             maxed ? "Max rank" : Format(f.SpillRep) + " / " + Format(f.RepToRank),
             maxed ? Format(0) : Format(Math.Max(0, f.RepToRank - f.SpillRep)),
-            maxed ? 1 : f.RepToRank <= 0 ? 0 : Math.Clamp((double)f.SpillRep / f.RepToRank, 0, 1),
+            FactionProgress.Fraction(f),
             maxed);
     }
 

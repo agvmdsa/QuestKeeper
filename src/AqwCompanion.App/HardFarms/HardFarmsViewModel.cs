@@ -451,6 +451,8 @@ public partial class HardFarmsViewModel : ObservableObject, IForgettable
                 c.WikiUrl))
             .ToList();
         MissingReportText = BuildMissingReport();
+        Summary = BuildSummary();
+        OnPropertyChanged(nameof(Summary));
         OnPropertyChanged(nameof(MissingReportText));
         OnPropertyChanged(nameof(HasMissingReport));
     }
@@ -462,6 +464,25 @@ public partial class HardFarmsViewModel : ObservableObject, IForgettable
     public string MissingReportText { get; private set; } = string.Empty;
 
     public bool HasMissingReport => MissingReportText.Length > 0;
+
+    /// <summary>
+    /// How many entries of the whole list the character owns and which it does not, for the local feed. Null without a list or
+    /// without a loaded inventory (ownership is unknown then).
+    /// </summary>
+    public HardFarmsSummary? Summary { get; private set; }
+
+    private HardFarmsSummary? BuildSummary()
+    {
+        if (_all.Count == 0 || _all.Any(row => row.Ownership == Ownership.Unknown))
+        {
+            return null;
+        }
+
+        return new HardFarmsSummary(
+            _all.Count(row => row.Ownership == Ownership.Owned),
+            _all.Count,
+            [.. _all.Where(row => row.Ownership == Ownership.Missing).Select(row => row.Name)]);
+    }
 
     private string BuildMissingReport()
     {

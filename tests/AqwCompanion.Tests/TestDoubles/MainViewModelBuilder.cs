@@ -15,7 +15,7 @@ public static class MainViewModelBuilder
 {
     public sealed record Built(
         MainViewModel Main, CaptureRig Rig, FakeActiveInventory Inventory, FakeSettingsDialog Dialog, FakeDebugWindowHost DebugHost,
-        FakeAppSettingsStore Settings, FakeHardFarmSync Sync);
+        FakeAppSettingsStore Settings, FakeHardFarmSync Sync, HardFarmStore Store);
 
     public static Built Create(CaptureRig? rig = null, Action<Action>? onUiThread = null)
     {
@@ -27,13 +27,14 @@ public static class MainViewModelBuilder
         var sync = new FakeHardFarmSync();
         var settings = new SettingsViewModel(settingsStore, new ForgetCoordinator(() => true, () => []));
         var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
+        var store = new HardFarmStore(new InMemoryStoredDataStore().Module());
         var main = new MainViewModel(
             new DiagnosticsViewModel(paths, new DiagnosticsExporter(new SnapshotRedactor())),
-            new HardFarmsViewModel(new HardFarmStore(new InMemoryStoredDataStore().Module()), sync, inventory, new FakeUrlLauncher()),
+            new HardFarmsViewModel(store, sync, inventory, new FakeUrlLauncher()),
             rig.CreateViewModel(onUiThread),
             settings,
             dialog,
             new DebugModeController(settings, debugHost));
-        return new Built(main, rig, inventory, dialog, debugHost, settingsStore, sync);
+        return new Built(main, rig, inventory, dialog, debugHost, settingsStore, sync, store);
     }
 }

@@ -50,6 +50,28 @@
       </StackPanel>
     </Border>
 
+    <Border x:Name="SettingsFeedSection" Classes="divider" IsVisible="{Binding HasFeed}">
+      <StackPanel Spacing="4">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="2" Margin="0,0,16,0">
+            <TextBlock Classes="sectionTitle" Text="{x:Static st:SettingsViewModel.FeedTitleText}" />
+            <TextBlock Classes="muted" TextWrapping="Wrap" Text="{x:Static st:SettingsViewModel.FeedDescriptionText}" />
+          </StackPanel>
+          <ToggleSwitch x:Name="SettingsFeedSwitch" Grid.Column="1" IsChecked="{Binding LocalFeedEnabled, Mode=TwoWay}"
+                        OnContent="" OffContent="" VerticalAlignment="Center" AutomationProperties.Name="Let other programs on this PC read my characters" />
+        </Grid>
+        <TextBlock x:Name="SettingsFeedStatus" Text="{Binding FeedStatusText}" FontWeight="SemiBold"
+                   AutomationProperties.Name="{Binding FeedStatusText}" />
+        <SelectableTextBlock x:Name="SettingsFeedPath" Classes="muted" TextWrapping="Wrap" Text="{Binding FeedSecretPath, StringFormat='Secret: {0}'}" />
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <Button x:Name="SettingsFeedNewSecret" Content="{x:Static st:SettingsViewModel.FeedNewSecretText}"
+                  Command="{Binding RegenerateFeedSecretCommand}" AutomationProperties.Name="Make a new secret for the feed" />
+          <TextBlock Classes="muted" TextWrapping="Wrap" VerticalAlignment="Center" MaxWidth="300"
+                     Text="{x:Static st:SettingsViewModel.FeedNewSecretWarningText}" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
     <Border Classes="divider">
       <Grid ColumnDefinitions="*,Auto">
         <StackPanel Spacing="2" Margin="0,0,16,0">

@@ -1,3 +1,4 @@
+using AqwCompanion.App.Feed;
 using AqwCompanion.App.Infrastructure.AutoStart;
 using AqwCompanion.App.Settings;
 using AqwCompanion.Core.Forgetting;
@@ -40,6 +41,46 @@ public class SettingsWindowTests
 
         Assert.True(vm.DebugMode);
         Assert.True(store.Current.DebugMode);
+    }
+
+    [AvaloniaFact]
+    public void The_feed_section_is_hidden_when_the_app_has_no_feed()
+    {
+        var (window, _, _, _) = Open();
+
+        Assert.False(window.FindControl<Border>("SettingsFeedSection")!.IsEffectivelyVisible);
+    }
+
+    [AvaloniaFact]
+    public void The_feed_section_shows_the_switch_the_status_the_secret_file_and_the_new_secret_button()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N"), "feed.token");
+        try
+        {
+            var store = new FakeAppSettingsStore();
+            var secret = new FeedSecretStore(path);
+            var vm = new SettingsViewModel(store, new ForgetCoordinator(() => true, () => []), null, secret);
+            vm.SetFeedStatus("Listening on 127.0.0.1:47821");
+            var window = new SettingsWindow { DataContext = vm };
+            window.Show();
+
+            Assert.True(window.FindControl<Border>("SettingsFeedSection")!.IsEffectivelyVisible);
+            Assert.Equal("Listening on 127.0.0.1:47821", window.FindControl<TextBlock>("SettingsFeedStatus")!.Text);
+            Assert.Contains(path, window.FindControl<SelectableTextBlock>("SettingsFeedPath")!.Text);
+
+            window.FindControl<ToggleSwitch>("SettingsFeedSwitch")!.IsChecked = true;
+            Assert.True(store.Current.LocalFeed);
+
+            var button = window.FindControl<Button>("SettingsFeedNewSecret")!;
+            Assert.True(button.IsEffectivelyEnabled);
+            var old = secret.GetOrCreate();
+            button.Command!.Execute(null);
+            Assert.NotEqual(old, File.ReadAllText(path));
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
+        }
     }
 
     [AvaloniaFact]

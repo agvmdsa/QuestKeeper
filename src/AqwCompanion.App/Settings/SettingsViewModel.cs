@@ -59,6 +59,12 @@ public partial class SettingsViewModel : ObservableObject
     /// <summary>Raised after the feed secret was replaced.</summary>
     public event EventHandler? FeedSecretRegenerated;
 
+    /// <summary>What the local feed is doing, in words; set by the controller that runs it.</summary>
+    [ObservableProperty]
+    private string _feedStatusText = "Off";
+
+    public void SetFeedStatus(string text) => FeedStatusText = text;
+
     /// <summary>Where the secret of the local feed is kept; empty when the app has no feed.</summary>
     public string FeedSecretPath => _feedSecret?.Path ?? string.Empty;
 

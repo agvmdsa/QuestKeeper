@@ -1,3 +1,4 @@
+using AqwCompanion.App.Feed;
 using AqwCompanion.App.GameData;
 using AqwCompanion.App.Infrastructure.Elevation;
 using AqwCompanion.App.Shell;
@@ -41,6 +42,7 @@ public partial class CompanionApp : Application
             TrayIcon.SetIcons(this, [trayIcon.Icon]);
             _ = main.HardFarms.RestoreAsync();
             main.Debug.Start();
+            services.GetRequiredService<LocalFeedController>().Start();
             var capture = services.GetRequiredService<CaptureSession>();
             _ = capture.RestoreAsync();
             _ = capture.StartAsync();

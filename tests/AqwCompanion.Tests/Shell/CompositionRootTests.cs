@@ -1,6 +1,7 @@
 using AqwCompanion.App;
 using AqwCompanion.App.GameData;
 using AqwCompanion.App.HardFarms;
+using AqwCompanion.App.Feed;
 using AqwCompanion.App.Infrastructure;
 using AqwCompanion.App.Infrastructure.AutoStart;
 using AqwCompanion.App.Infrastructure.Elevation;
@@ -68,6 +69,22 @@ public class CompositionRootTests
         Assert.IsType<AvaloniaSettingsDialog>(services.GetRequiredService<ISettingsDialog>());
         Assert.IsType<ScheduledTaskAutoStart>(services.GetRequiredService<IAutoStart>());
         Assert.Same(services.GetRequiredService<SettingsViewModel>(), services.GetRequiredService<MainViewModel>().Settings);
+        Assert.False(Directory.Exists(paths.Root));
+    }
+
+    [Fact]
+    public void Container_resolves_the_local_feed_without_opening_a_port_or_writing_a_secret()
+    {
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
+
+        using var services = CompositionRoot.Build(paths);
+
+        Assert.IsType<HttpListenerFeedHost>(services.GetRequiredService<ILocalFeedHost>());
+        Assert.False(services.GetRequiredService<ILocalFeedHost>().IsRunning);
+        Assert.IsType<SessionFeedSource>(services.GetRequiredService<AqwCompanion.Core.Feed.IFeedSource>());
+        Assert.Equal(paths.FeedTokenPath, services.GetRequiredService<FeedSecretStore>().Path);
+        Assert.Equal(paths.FeedTokenPath, services.GetRequiredService<SettingsViewModel>().FeedSecretPath);
+        Assert.Equal("Off", services.GetRequiredService<LocalFeedController>().ListeningText is null ? "" : services.GetRequiredService<SettingsViewModel>().FeedStatusText);
         Assert.False(Directory.Exists(paths.Root));
     }
 

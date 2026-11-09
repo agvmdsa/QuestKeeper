@@ -1,6 +1,7 @@
 using System.Net;
 using AqwCompanion.App.Debug;
 using AqwCompanion.App.Diagnostics;
+using AqwCompanion.App.Feed;
 using AqwCompanion.App.GameData;
 using AqwCompanion.App.HardFarms;
 using AqwCompanion.App.Infrastructure;
@@ -12,6 +13,7 @@ using AqwCompanion.App.Settings;
 using AqwCompanion.App.Shell;
 using AqwCompanion.Capture;
 using AqwCompanion.Core.Diagnostics;
+using AqwCompanion.Core.Feed;
 using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Persistence;
 using AqwCompanion.Core.Wiki;
@@ -81,8 +83,20 @@ public static class CompositionRoot
         services.AddSingleton<IProcessRunner, ProcessRunner>();
         services.AddSingleton<IAutoStart>(sp => new ScheduledTaskAutoStart(
             sp.GetRequiredService<IProcessRunner>(), Environment.ProcessPath, Environment.UserDomainName + "\\" + Environment.UserName, OperatingSystem.IsWindows));
+        services.AddSingleton(sp => new FeedSecretStore(sp.GetRequiredService<AppPaths>().FeedTokenPath));
         services.AddSingleton(sp => new SettingsViewModel(
-            sp.GetRequiredService<IAppSettingsStore>(), sp.GetRequiredService<ForgetCoordinator>(), sp.GetRequiredService<IAutoStart>()));
+            sp.GetRequiredService<IAppSettingsStore>(), sp.GetRequiredService<ForgetCoordinator>(), sp.GetRequiredService<IAutoStart>(),
+            sp.GetRequiredService<FeedSecretStore>()));
+        services.AddSingleton<IFeedSource>(sp => new SessionFeedSource(
+            sp.GetRequiredService<CaptureSession>(), sp.GetRequiredService<GameDataViewModel>(), sp.GetRequiredService<HardFarmsViewModel>()));
+        services.AddSingleton<ILocalFeedHost>(sp => new HttpListenerFeedHost(
+            new FeedHandler(
+                sp.GetRequiredService<FeedSecretStore>().GetOrCreateBytes,
+                sp.GetRequiredService<IFeedSource>(),
+                $"127.0.0.1:{HttpListenerFeedHost.DefaultPort}",
+                AppInfo.Version),
+            sp.GetRequiredService<IFeedSource>()));
+        services.AddSingleton<LocalFeedController>();
         services.AddSingleton<ISettingsDialog, AvaloniaSettingsDialog>();
         services.AddSingleton<IDebugWindowHost, AvaloniaDebugWindowHost>();
         services.AddSingleton<DebugModeController>();

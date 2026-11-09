@@ -13,7 +13,7 @@ public class DebugWindowTests
     public void The_debug_window_holds_the_capture_card_and_the_diagnostics_export()
     {
         var built = MainViewModelBuilder.Create();
-        var window = new DebugWindow { DataContext = new DebugViewModel(built.Main.GameData, built.Main.Diagnostics) };
+        var window = new DebugWindow { DataContext = new DebugViewModel(built.Main.GameData, built.Main.Diagnostics, built.Main.HardFarms) };
 
         window.Show();
 
@@ -22,5 +22,21 @@ public class DebugWindowTests
         Assert.NotNull(capture.FindControl<Button>("GameDataStartButton"));
         var diagnostics = window.FindControl<DiagnosticsView>("DebugDiagnostics")!;
         Assert.Same(built.Main.Diagnostics, diagnostics.DataContext);
+    }
+
+    [AvaloniaFact]
+    public void The_hard_farms_report_is_in_a_collapsed_section_bound_to_the_hard_farms_view_model()
+    {
+        var built = MainViewModelBuilder.Create();
+        var window = new DebugWindow { DataContext = new DebugViewModel(built.Main.GameData, built.Main.Diagnostics, built.Main.HardFarms) };
+
+        window.Show();
+
+        var section = window.FindControl<Expander>("DebugHardFarmsReport")!;
+        Assert.False(section.IsExpanded);
+        Assert.Same(built.Main.HardFarms, section.DataContext);
+        section.IsExpanded = true;
+        var text = window.FindControl<SelectableTextBlock>("DebugHardFarmsReportText")!;
+        Assert.Equal(built.Main.HardFarms.MissingReportText, text.Text);
     }
 }

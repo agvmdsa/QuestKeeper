@@ -1,10 +1,11 @@
 using AqwCompanion.App.Diagnostics;
 using AqwCompanion.App.GameData;
+using AqwCompanion.App.HardFarms;
 
 namespace AqwCompanion.App.Debug;
 
 /// <summary>Opens <see cref="DebugWindow"/> as an ordinary window next to the main one; showing it twice brings the open one forward.</summary>
-public sealed class AvaloniaDebugWindowHost(GameDataViewModel gameData, DiagnosticsViewModel diagnostics) : IDebugWindowHost
+public sealed class AvaloniaDebugWindowHost(GameDataViewModel gameData, DiagnosticsViewModel diagnostics, HardFarmsViewModel hardFarms) : IDebugWindowHost
 {
     private DebugWindow? _window;
     private bool _closingByCode;
@@ -19,7 +20,7 @@ public sealed class AvaloniaDebugWindowHost(GameDataViewModel gameData, Diagnost
             return;
         }
 
-        var window = new DebugWindow { DataContext = new DebugViewModel(gameData, diagnostics) };
+        var window = new DebugWindow { DataContext = new DebugViewModel(gameData, diagnostics, hardFarms) };
         window.Closed += (_, _) =>
         {
             _window = null;

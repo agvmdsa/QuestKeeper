@@ -11,15 +11,14 @@ public enum Ownership
 }
 
 /// <summary>
-/// Matches a Hard Farming entry against the public inventory by <see cref="NameKey.Compact"/> keys, whole key against whole
-/// key (never a part: "void-paladin" is not "cyber-void-paladin"). Candidate names, in order: the wiki display name (and,
-/// without ONE trailing "(Class)"), the page name, the page name without ONE trailing page-type word. Other qualifiers such
-/// as "(AC)" or "(0 AC)" are never stripped: they tell different items apart.
+/// Matches a Hard Farming entry against the inventory by name keys, whole key against whole key (never a part: "void-paladin"
+/// is not "cyber-void-paladin"). The wiki name is tried as it is and without its trailing acquisition tags ("(Class)",
+/// "(Merge)", "(Quest)", "(Daily Quest)") and AC tags ("(AC)", "(0 AC)", "(Non-AC)"): owning the AC or the non-AC version is
+/// owning the item. The inventory side is stripped the same way. Other qualifiers such as "(Rare)" tell items apart and stay.
+/// When the wiki name is unknown the page name is used, with its trailing page-type words removed one at a time.
 /// </summary>
 public static class OwnershipMatcher
 {
-    private const string ClassQualifier = "(class)";
-
     private static readonly string[] PageTypeWords = ["classmerge", "class", "quest", "merge"];
 
     /// <summary><see cref="Ownership.Unknown"/> only when the inventory is not loaded; otherwise Owned or Missing.</summary>
@@ -30,41 +29,52 @@ public static class OwnershipMatcher
             return Ownership.Unknown;
         }
 
-        foreach (var candidate in Candidates(slug, wikiName))
+        foreach (var key in KeysTried(slug, wikiName))
         {
-            if (inventory.HasCompactKey(candidate))
+            if (inventory.HasCompactKey(key))
             {
                 return Ownership.Owned;
             }
         }
 
-        return Ownership.Missing;
+        // The item may carry the tags itself ("Test Blade (AC)" in the bag, "Test Blade" on the wiki).
+        return !string.IsNullOrWhiteSpace(wikiName) && inventory.HasBaseKey(wikiName) ? Ownership.Owned : Ownership.Missing;
     }
 
-    private static IEnumerable<string> Candidates(string? slug, string? wikiName)
+    /// <summary>The compact keys <see cref="Match"/> looks for, in order and without repeats. Shown in the debug report.</summary>
+    public static IReadOnlyList<string> KeysTried(string? slug, string? wikiName)
     {
+        var keys = new List<string>();
+
+        void Add(string key)
+        {
+            if (key.Length > 0 && !keys.Contains(key))
+            {
+                keys.Add(key);
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(wikiName))
         {
-            yield return NameKey.Compact(wikiName);
-
-            var trimmed = wikiName.TrimEnd();
-            if (trimmed.EndsWith(ClassQualifier, StringComparison.OrdinalIgnoreCase))
-            {
-                yield return NameKey.Compact(trimmed[..^ClassQualifier.Length]);
-            }
+            Add(NameKey.Compact(wikiName));
+            Add(NameKey.Base(wikiName));
         }
 
         if (string.IsNullOrWhiteSpace(slug))
         {
-            yield break;
+            return keys;
         }
 
-        yield return NameKey.Compact(slug);
+        Add(NameKey.Compact(slug));
 
         var words = slug.Split(['-', '_'], StringSplitOptions.RemoveEmptyEntries);
-        if (words.Length > 1 && PageTypeWords.Contains(words[^1], StringComparer.OrdinalIgnoreCase))
+        var count = words.Length;
+        while (count > 1 && PageTypeWords.Contains(words[count - 1], StringComparer.OrdinalIgnoreCase))
         {
-            yield return NameKey.Compact(string.Concat(words[..^1]));
+            count--;
+            Add(NameKey.Compact(string.Concat(words[..count])));
         }
+
+        return keys;
     }
 }

@@ -11,6 +11,12 @@
   <ScrollViewer x:Name="DebugScroll" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Margin="16" Spacing="12">
       <gd:CaptureDebugView x:Name="DebugCapture" DataContext="{Binding GameData}" />
+      <!-- The Hard Farms entries the name matching found nothing for, with the keys it tried. -->
+      <Expander x:Name="DebugHardFarmsReport" Header="Hard Farms without a match" IsExpanded="False" HorizontalAlignment="Stretch"
+                DataContext="{Binding HardFarms}" AutomationProperties.Name="Hard Farms without a match">
+        <SelectableTextBlock x:Name="DebugHardFarmsReportText" Text="{Binding MissingReportText}" TextWrapping="Wrap" FontSize="12"
+                             Margin="0,6,0,0" AutomationProperties.Name="{Binding MissingReportText}" />
+      </Expander>
       <diagnostics:DiagnosticsView x:Name="DebugDiagnostics" DataContext="{Binding Diagnostics}" />
     </StackPanel>
   </ScrollViewer>

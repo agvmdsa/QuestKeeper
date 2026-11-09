@@ -28,6 +28,8 @@ public partial class HardFarmsViewModel : ObservableObject, IForgettable
     public const string UpdateAccessibleName = "Update the Hard Farming list from the Wiki";
     public const string ContinueAccessibleName = "Continue reading the pending Wiki pages";
     public const string NoMatchesText = "No entries match the filters.";
+    private const int MaxReportLines = 200;
+
     public const string NoInventoryHint = "log in to the game to see what you own";
     public const string LicenseText = "AQW Wiki (CC BY-SA 3.0)";
 
@@ -448,6 +450,43 @@ public partial class HardFarmsViewModel : ObservableObject, IForgettable
                 OwnershipMatcher.Match(c.Slug, _types.Find(c.Slug)?.Name, inventory),
                 c.WikiUrl))
             .ToList();
+        MissingReportText = BuildMissingReport();
+        OnPropertyChanged(nameof(MissingReportText));
+        OnPropertyChanged(nameof(HasMissingReport));
+    }
+
+    /// <summary>
+    /// For the debug window: every entry that found no match in the inventory, with the name keys that were tried, so a name the
+    /// matching misses can be seen and fixed. Empty without a loaded inventory and when everything matches.
+    /// </summary>
+    public string MissingReportText { get; private set; } = string.Empty;
+
+    public bool HasMissingReport => MissingReportText.Length > 0;
+
+    private string BuildMissingReport()
+    {
+        var missing = _all.Where(row => row.Ownership == Ownership.Missing).ToList();
+        if (missing.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var lines = new List<string>
+        {
+            string.Create(CultureInfo.InvariantCulture, $"{missing.Count} of {_all.Count} entries have no match in the inventory:"),
+        };
+        foreach (var row in missing.Take(MaxReportLines))
+        {
+            var keys = OwnershipMatcher.KeysTried(row.Slug, _types.Find(row.Slug)?.Name);
+            lines.Add($"{row.Name} [{row.Slug}] tried: {string.Join(", ", keys)}");
+        }
+
+        if (missing.Count > MaxReportLines)
+        {
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"... and {missing.Count - MaxReportLines} more."));
+        }
+
+        return string.Join('\n', lines);
     }
 
     private void Refilter()

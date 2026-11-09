@@ -29,18 +29,34 @@ public class OwnershipMatcherTests
         Assert.Equal(Ownership.Owned, OwnershipMatcher.Match(Slug, "Void Warrior (Class)", Inventory("Void Warrior (Class)")));
     }
 
-    [Fact]
-    public void Only_one_qualifier_is_stripped()
+    [Theory]
+    [InlineData("The Collector (Class) (Merge)", "The Collector")]
+    [InlineData("Pyromancer (Class) (Merge)", "Pyromancer")]
+    [InlineData("Cryomancer (Merge)", "Cryomancer")]
+    [InlineData("Lord Of Order (Quest)", "Lord Of Order")]
+    [InlineData("Some Armor (Daily Quest)", "Some Armor")]
+    [InlineData("Test (Class) (Class)", "Test")]
+    public void Every_trailing_acquisition_qualifier_is_stripped(string wikiName, string owned)
     {
-        Assert.Equal(Ownership.Missing, OwnershipMatcher.Match(Slug, "Test (Class) (Class)", Inventory("Test")));
+        Assert.Equal(Ownership.Owned, OwnershipMatcher.Match(Slug, wikiName, Inventory(owned)));
     }
 
     [Theory]
     [InlineData("Test Blade (AC)", "Test Blade")]
     [InlineData("Test Blade (0 AC)", "Test Blade")]
-    [InlineData("Test Blade (Rare)", "Test Blade")]
+    [InlineData("Test Blade (Non-AC)", "Test Blade")]
     [InlineData("Test Blade", "Test Blade (AC)")]
-    public void Other_qualifiers_are_never_stripped(string wikiName, string owned)
+    [InlineData("Test Blade (AC)", "Test Blade (0 AC)")]
+    public void The_ac_and_non_ac_versions_count_as_the_same_item(string wikiName, string owned)
+    {
+        Assert.Equal(Ownership.Owned, OwnershipMatcher.Match(Slug, wikiName, Inventory(owned)));
+    }
+
+    [Theory]
+    [InlineData("Test Blade (Rare)", "Test Blade")]
+    [InlineData("Test Blade", "Test Blade (Rare)")]
+    [InlineData("Test (Class) Blade", "Test Blade")]
+    public void Qualifiers_that_are_not_known_acquisition_tags_still_tell_items_apart(string wikiName, string owned)
     {
         Assert.Equal(Ownership.Missing, OwnershipMatcher.Match(Slug, wikiName, Inventory(owned)));
     }
@@ -85,10 +101,27 @@ public class OwnershipMatcherTests
     }
 
     [Fact]
-    public void Only_one_page_type_word_is_removed_from_the_slug()
+    public void Every_trailing_page_type_word_is_removed_from_the_slug_one_step_at_a_time()
     {
-        Assert.Equal(Ownership.Missing, OwnershipMatcher.Match("a-class-quest", null, Inventory("A")));
+        Assert.Equal(Ownership.Owned, OwnershipMatcher.Match("a-class-quest", null, Inventory("A")));
         Assert.Equal(Ownership.Owned, OwnershipMatcher.Match("a-class-quest", null, Inventory("A Class")));
+        Assert.Equal(Ownership.Missing, OwnershipMatcher.Match("a-class-quest", null, Inventory("A Quest Class")));
+    }
+
+    [Theory]
+    [InlineData("the-collector-class-merge", "The Collector")]
+    [InlineData("pyromancer-class-merge", "Pyromancer")]
+    public void The_slug_of_a_double_qualifier_page_matches_the_plain_item(string slug, string owned)
+    {
+        Assert.Equal(Ownership.Owned, OwnershipMatcher.Match(slug, null, Inventory(owned)));
+    }
+
+    [Fact]
+    public void The_keys_tried_are_listed_for_the_debug_report()
+    {
+        var keys = OwnershipMatcher.KeysTried("the-collector-class-merge", "The Collector (Class) (Merge)");
+
+        Assert.Equal(["thecollectorclassmerge", "thecollector", "thecollectorclass"], keys);
     }
 
     [Fact]
@@ -105,12 +138,6 @@ public class OwnershipMatcherTests
     public void Matching_is_by_whole_key_never_by_a_part(string slug, string? wikiName, string owned)
     {
         Assert.Equal(Ownership.Missing, OwnershipMatcher.Match(slug, wikiName, Inventory(owned)));
-    }
-
-    [Fact]
-    public void The_slug_never_strips_the_ac_qualifiers_of_the_name_either()
-    {
-        Assert.Equal(Ownership.Missing, OwnershipMatcher.Match(Slug, "Test Blade (AC)", Inventory("Test Blade")));
     }
 
     [Fact]

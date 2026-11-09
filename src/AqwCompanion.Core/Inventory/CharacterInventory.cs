@@ -31,6 +31,8 @@ public sealed record CharacterInventory(IReadOnlyList<InventoryItem> Items)
 
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CharacterInventory, HashSet<string>> CompactKeys = new();
 
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CharacterInventory, HashSet<string>> BaseKeys = new();
+
     private readonly record struct NameEntry(InventoryItem First, long Total);
 
     private Dictionary<string, NameEntry> Index => Indexes.GetValue(this, static inventory =>
@@ -66,6 +68,31 @@ public sealed record CharacterInventory(IReadOnlyList<InventoryItem> Items)
 
         return keys;
     });
+
+    private HashSet<string> BaseIndex => BaseKeys.GetValue(this, static inventory =>
+    {
+        var keys = new HashSet<string>(inventory.Items.Count, StringComparer.Ordinal);
+        foreach (var item in inventory.Items)
+        {
+            var key = NameKey.Base(item.Name);
+            if (key.Length > 0)
+            {
+                keys.Add(key);
+            }
+        }
+
+        return keys;
+    });
+
+    /// <summary>
+    /// True when an item has the same <see cref="NameKey.Base"/> key as this name, so "Cryomancer" is found by "Cryomancer (Merge)"
+    /// and an AC item by its non-AC name. Whole keys only; a name with nothing but qualifiers is never found.
+    /// </summary>
+    public bool HasBaseKey(string name)
+    {
+        var key = NameKey.Base(name);
+        return key.Length > 0 && BaseIndex.Contains(key);
+    }
 
     /// <summary>True when an item's name has exactly this <see cref="NameKey.Compact"/> key (the argument is compacted too, so a name works as well). Whole keys only.</summary>
     public bool HasCompactKey(string key)

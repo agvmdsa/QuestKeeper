@@ -59,4 +59,43 @@ public static class NameKey
 
         return builder.ToString();
     }
+
+    // The tags a trailing "(...)" may carry that say how an item is obtained or in which edition, not which item it is.
+    private static readonly HashSet<string> Qualifiers = new(StringComparer.Ordinal)
+    {
+        "class", "merge", "quest", "daily quest", "ac", "0 ac", "non-ac", "non ac",
+    };
+
+    /// <summary>
+    /// The key two names of the same item share: <see cref="Compact"/> after every trailing "(Class)", "(Merge)", "(Quest)",
+    /// "(Daily Quest)", "(AC)", "(0 AC)" and "(Non-AC)" is dropped, however many there are. Any other qualifier, and any in the
+    /// middle of the name, is kept because it tells different items apart. Empty when nothing but qualifiers is left.
+    /// </summary>
+    public static string Base(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return string.Empty;
+        }
+
+        var rest = name.AsSpan().Trim();
+        while (rest.Length > 0 && rest[^1] == ')')
+        {
+            var open = rest.LastIndexOf('(');
+            if (open < 0)
+            {
+                break;
+            }
+
+            var tag = Normalize(rest[(open + 1)..^1].ToString());
+            if (!Qualifiers.Contains(tag))
+            {
+                break;
+            }
+
+            rest = rest[..open].TrimEnd();
+        }
+
+        return Compact(rest.ToString());
+    }
 }

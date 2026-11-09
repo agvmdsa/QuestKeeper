@@ -189,6 +189,45 @@ public class HardFarmsViewModelTests
     }
 
     [Fact]
+    public async Task The_debug_report_lists_the_missing_entries_with_the_keys_that_were_tried()
+    {
+        _inventory.Data = Owns("Blade One", "Cape One");
+        var vm = await Loaded();
+
+        var report = vm.MissingReportText;
+
+        Assert.StartsWith("3 of 5 entries have no match in the inventory:", report);
+        Assert.Contains("Blade Two (AC) [blade-two] tried: bladetwoac, bladetwo", report);
+        Assert.Contains("Pet One [pet-one]", report);
+        Assert.DoesNotContain("Blade One [blade-one]", report);
+        Assert.DoesNotContain("Cape One [cape-one]", report);
+    }
+
+    [Fact]
+    public async Task The_debug_report_is_empty_without_an_inventory_and_when_everything_matches()
+    {
+        var vm = await Loaded();
+        Assert.Equal(string.Empty, vm.MissingReportText);
+        Assert.False(vm.HasMissingReport);
+
+        _inventory.Data = Owns("Blade One", "Blade Two", "Cape One", "Void Highlord", "Pet One");
+        Assert.Equal(string.Empty, vm.MissingReportText);
+    }
+
+    [Fact]
+    public async Task The_debug_report_follows_the_inventory()
+    {
+        var vm = await Loaded();
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        _inventory.Data = Owns("Pet One");
+
+        Assert.Contains(nameof(HardFarmsViewModel.MissingReportText), changed);
+        Assert.True(vm.HasMissingReport);
+    }
+
+    [Fact]
     public async Task An_inventory_loaded_before_the_list_is_used_at_once()
     {
         _inventory.Data = Owns("Blade One");

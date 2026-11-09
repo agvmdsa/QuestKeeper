@@ -10,9 +10,11 @@ public sealed class LocalFeedController
     private readonly SettingsViewModel _settings;
     private readonly ILocalFeedHost _host;
     private readonly int _port;
+    private readonly FeedSecretStore? _secret;
 
-    public LocalFeedController(SettingsViewModel settings, ILocalFeedHost host, int port = HttpListenerFeedHost.DefaultPort)
+    public LocalFeedController(SettingsViewModel settings, ILocalFeedHost host, int port = HttpListenerFeedHost.DefaultPort, FeedSecretStore? secret = null)
     {
+        _secret = secret;
         _settings = settings;
         _host = host;
         _port = port;
@@ -36,6 +38,8 @@ public sealed class LocalFeedController
             return;
         }
 
+        // The secret file exists as soon as the feed is on, so a program can read it before its first request.
+        _secret?.GetOrCreate();
         _settings.SetFeedStatus(_host.IsRunning || _host.TryStart() ? ListeningText : FailedText);
     }
 }

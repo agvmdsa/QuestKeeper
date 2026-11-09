@@ -80,4 +80,24 @@ public class LocalFeedControllerTests
 
         Assert.Equal("Off", settings.FeedStatusText);
     }
+
+    [Fact]
+    public void Turning_the_feed_on_makes_the_secret_file_so_programs_can_read_it()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N"), "feed.token");
+        try
+        {
+            var settings = new SettingsViewModel(new FakeAppSettingsStore(new AppSettings()), new ForgetCoordinator(() => true, () => []));
+            _ = new LocalFeedController(settings, new FakeLocalFeedHost(), secret: new FeedSecretStore(path));
+            Assert.False(File.Exists(path));
+
+            settings.LocalFeedEnabled = true;
+
+            Assert.True(File.Exists(path));
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
+        }
+    }
 }

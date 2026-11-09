@@ -1,3 +1,4 @@
+using AqwCompanion.App.Feed;
 using AqwCompanion.App.Infrastructure.AutoStart;
 using AqwCompanion.Core.Forgetting;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -12,6 +13,10 @@ public partial class SettingsViewModel : ObservableObject
     public const string AutoStartTitleText = "Start with Windows";
     public const string AutoStartDescriptionText = "Opens the app in the notification area when you sign in to the PC, so the capture is already listening when you start the game.";
     public const string AutoStartFailedText = "Windows did not accept the change. Run the app as administrator and try again.";
+    public const string FeedTitleText = "Let other programs on this PC read my characters";
+    public const string FeedDescriptionText = "Opens a read-only feed on this computer only (127.0.0.1) with your characters' numbers, factions and Hard Farms. A program needs the secret in the file below to read it. Nothing is sent to the game.";
+    public const string FeedNewSecretText = "New secret";
+    public const string FeedNewSecretWarningText = "Programs that use the old secret stop working until they read the new one.";
     public const string DebugTitleText = "Debug mode";
     public const string DebugDescriptionText = "Shows the capture and packet details in their own window. It also opens with Ctrl+Shift+D and from the tray icon menu.";
     public const string PrivacyTitleText = "Privacy";
@@ -35,15 +40,53 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IAppSettingsStore _store;
     private readonly ForgetCoordinator _forgetting;
     private readonly IAutoStart _autoStart;
-    private bool _debugMode;
+    private readonly FeedSecretStore? _feedSecret;
+    private AppSettings _settings;
     private bool _startWithWindows;
 
-    public SettingsViewModel(IAppSettingsStore store, ForgetCoordinator forgetting, IAutoStart? autoStart = null)
+    public SettingsViewModel(IAppSettingsStore store, ForgetCoordinator forgetting, IAutoStart? autoStart = null, FeedSecretStore? feedSecret = null)
     {
         _store = store;
         _forgetting = forgetting;
         _autoStart = autoStart ?? new NoAutoStart();
-        _debugMode = store.Load().DebugMode;
+        _feedSecret = feedSecret;
+        _settings = store.Load();
+    }
+
+    /// <summary>Raised after <see cref="LocalFeedEnabled"/> changed and was saved.</summary>
+    public event EventHandler? LocalFeedChanged;
+
+    /// <summary>Raised after the feed secret was replaced.</summary>
+    public event EventHandler? FeedSecretRegenerated;
+
+    /// <summary>Where the secret of the local feed is kept; empty when the app has no feed.</summary>
+    public string FeedSecretPath => _feedSecret?.Path ?? string.Empty;
+
+    public bool HasFeed => _feedSecret is not null;
+
+    /// <summary>Whether the local read-only feed for other programs on this PC is on. Saved.</summary>
+    public bool LocalFeedEnabled
+    {
+        get => _settings.LocalFeed;
+        set
+        {
+            if (_settings.LocalFeed == value)
+            {
+                return;
+            }
+
+            _settings = _settings with { LocalFeed = value };
+            _store.Save(_settings);
+            OnPropertyChanged();
+            LocalFeedChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(HasFeed))]
+    private void RegenerateFeedSecret()
+    {
+        _feedSecret?.Regenerate();
+        FeedSecretRegenerated?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Whether the switch for starting with Windows is offered at all.</summary>
@@ -112,16 +155,16 @@ public partial class SettingsViewModel : ObservableObject
 
     public bool DebugMode
     {
-        get => _debugMode;
+        get => _settings.DebugMode;
         set
         {
-            if (_debugMode == value)
+            if (_settings.DebugMode == value)
             {
                 return;
             }
 
-            _debugMode = value;
-            _store.Save(new AppSettings(DebugMode: value));
+            _settings = _settings with { DebugMode = value };
+            _store.Save(_settings);
             OnPropertyChanged();
             DebugModeChanged?.Invoke(this, EventArgs.Empty);
         }

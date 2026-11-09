@@ -7,6 +7,7 @@ public sealed record AppPaths(string Root)
     public string ExportDirectory => Path.Combine(Root, "exports");
     public string DataDirectory => Path.Combine(Root, "data");
     public string ReputationDirectory => Path.Combine(Root, "reputation");
+    public string FeedTokenPath => Path.Combine(Root, "feed.token");
     public string SettingsPath => Path.Combine(Root, "settings.json");
     public string DatabasePath => Path.Combine(DataDirectory, "companion.db");
 

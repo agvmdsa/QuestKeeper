@@ -32,6 +32,20 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         Assert.True(new JsonAppSettingsStore(_paths.SettingsPath).Load().DebugMode);
     }
 
+    [Fact]
+    public void The_local_feed_setting_is_saved_and_an_older_file_without_it_means_off()
+    {
+        new JsonAppSettingsStore(_paths.SettingsPath).Save(new AppSettings(DebugMode: true, LocalFeed: true));
+        var saved = new JsonAppSettingsStore(_paths.SettingsPath).Load();
+        Assert.True(saved.LocalFeed);
+        Assert.True(saved.DebugMode);
+
+        File.WriteAllText(_paths.SettingsPath, """{"debugMode":true}""");
+        var older = new JsonAppSettingsStore(_paths.SettingsPath).Load();
+        Assert.True(older.DebugMode);
+        Assert.False(older.LocalFeed);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("not json")]

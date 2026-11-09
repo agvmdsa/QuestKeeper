@@ -1,4 +1,5 @@
 using AqwCompanion.App;
+using AqwCompanion.App.Feed;
 using AqwCompanion.App.Infrastructure.AutoStart;
 using AqwCompanion.App.Settings;
 using AqwCompanion.Core.Forgetting;
@@ -12,8 +13,8 @@ public class SettingsViewModelTests
         new(removeStoredData, () => participants);
 
     private static SettingsViewModel Build(
-        ForgetCoordinator? forgetting = null, FakeAppSettingsStore? store = null, IAutoStart? autoStart = null) =>
-        new(store ?? new FakeAppSettingsStore(), forgetting ?? Coordinator(() => true), autoStart);
+        ForgetCoordinator? forgetting = null, FakeAppSettingsStore? store = null, IAutoStart? autoStart = null, FeedSecretStore? feedSecret = null) =>
+        new(store ?? new FakeAppSettingsStore(), forgetting ?? Coordinator(() => true), autoStart, feedSecret);
 
     [Fact]
     public void Debug_mode_starts_from_the_saved_setting()
@@ -141,6 +142,77 @@ public class SettingsViewModelTests
 
         Assert.Contains("Reputation file", vm.ForgetStatusText);
         Assert.StartsWith(SettingsViewModel.ForgetCompleteText, vm.ForgetStatusText);
+    }
+
+    [Fact]
+    public void The_local_feed_starts_from_the_saved_setting_and_is_off_by_default()
+    {
+        Assert.False(Build().LocalFeedEnabled);
+        Assert.True(Build(store: new FakeAppSettingsStore(new AppSettings(LocalFeed: true))).LocalFeedEnabled);
+    }
+
+    [Fact]
+    public void Turning_the_local_feed_on_saves_it_and_tells_the_app_once()
+    {
+        var store = new FakeAppSettingsStore();
+        var vm = Build(store: store);
+        var changes = 0;
+        vm.LocalFeedChanged += (_, _) => changes++;
+
+        vm.LocalFeedEnabled = true;
+        vm.LocalFeedEnabled = true;
+
+        Assert.True(store.Current.LocalFeed);
+        Assert.Equal(1, changes);
+    }
+
+    [Fact]
+    public void Changing_one_setting_keeps_the_other()
+    {
+        var store = new FakeAppSettingsStore(new AppSettings(DebugMode: false, LocalFeed: true));
+        var vm = Build(store: store);
+
+        vm.DebugMode = true;
+        Assert.True(store.Current.LocalFeed);
+        Assert.True(store.Current.DebugMode);
+
+        vm.LocalFeedEnabled = false;
+        Assert.True(store.Current.DebugMode);
+        Assert.False(store.Current.LocalFeed);
+    }
+
+    [Fact]
+    public void Without_a_feed_the_new_secret_command_is_not_available()
+    {
+        var vm = Build();
+
+        Assert.False(vm.HasFeed);
+        Assert.False(vm.RegenerateFeedSecretCommand.CanExecute(null));
+        Assert.Equal(string.Empty, vm.FeedSecretPath);
+    }
+
+    [Fact]
+    public void A_new_secret_replaces_the_file_and_tells_the_app()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N"), "feed.token");
+        try
+        {
+            var secret = new FeedSecretStore(path);
+            var old = secret.GetOrCreate();
+            var vm = Build(feedSecret: secret);
+            var raised = 0;
+            vm.FeedSecretRegenerated += (_, _) => raised++;
+
+            vm.RegenerateFeedSecretCommand.Execute(null);
+
+            Assert.Equal(path, vm.FeedSecretPath);
+            Assert.NotEqual(old, File.ReadAllText(path));
+            Assert.Equal(1, raised);
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
+        }
     }
 
     [Fact]

@@ -33,14 +33,16 @@ public class PhoneControllerTests
         public required ManualClock Clock { get; init; }
         public required ForgetCoordinator Coordinator { get; init; }
         public required FakeTailscale Tailscale { get; init; }
+        public required FakeServeMarker Marker { get; init; }
         public bool RemovalSucceeds { get; set; } = true;
         public List<FakeTimer> Timers { get; } = [];
         public List<TimeSpan> Intervals { get; } = [];
         public FakeTimer? Live => Timers.LastOrDefault(t => !t.Disposed);
     }
 
-    private static Rig Build(bool saved = false, bool canStart = true, Action<Exception>? onError = null, Action? tickThrows = null, FeedSnapshot? initial = null, FakeTailscale? tailscale = null)
+    private static Rig Build(bool saved = false, bool canStart = true, Action<Exception>? onError = null, Action? tickThrows = null, FeedSnapshot? initial = null, FakeTailscale? tailscale = null, FakeServeMarker? marker = null, Action<Action>? onUi = null)
     {
+        marker ??= new FakeServeMarker();
         tailscale ??= new FakeTailscale();
         var settingsStore = new FakeAppSettingsStore(new AppSettings(PhoneAccess: saved));
         var settings = new SettingsViewModel(settingsStore, new ForgetCoordinator(() => true, () => []));
@@ -59,11 +61,11 @@ public class PhoneControllerTests
             return timer;
         }
 
-        var controller = new PhoneController(settings, host, hub, registry, tailscale, timerFactory: Factory, tick: tickThrows, run: work => work());
+        var controller = new PhoneController(settings, host, hub, registry, tailscale, marker, timerFactory: Factory, tick: tickThrows, run: work => work(), onUiThread: onUi);
         tailscale.HostRunning = () => host.IsRunning;
         PhoneController? self = controller;
         ForgetCoordinator coordinator = new(() => rig!.RemovalSucceeds, () => [self]);
-        rig = new Rig { Clock = clock, Coordinator = coordinator, Settings = settings, Host = host, Controller = controller, Registry = registry, Store = store, Hub = hub, Log = log, SettingsStore = settingsStore, Tailscale = tailscale };
+        rig = new Rig { Clock = clock, Coordinator = coordinator, Settings = settings, Host = host, Controller = controller, Registry = registry, Store = store, Hub = hub, Log = log, SettingsStore = settingsStore, Tailscale = tailscale, Marker = marker };
         return rig;
     }
 
@@ -552,5 +554,183 @@ public class PhoneControllerTests
 
         Assert.Empty(rig.Tailscale.Serves);
         Assert.False(rig.Settings.CanPair);
+    }
+
+    [Fact]
+    public void The_name_is_not_allowed_while_the_serve_is_in_flight_and_is_after_it_succeeded()
+    {
+        var seenAllowedDuringServe = new List<bool>();
+        var tailscale = new FakeTailscale();
+        var rig = Build(tailscale: tailscale);
+        tailscale.OnServe = () => seenAllowedDuringServe.Add(rig.Controller.AllowedHost(Dns));
+
+        rig.Settings.PhoneAccessEnabled = true;
+
+        Assert.Equal([false], seenAllowedDuringServe);
+        Assert.True(rig.Controller.AllowedHost(Dns));
+    }
+
+    [Fact]
+    public async Task On_then_off_while_the_serve_is_pending_stops_once_and_never_allows_the_name()
+    {
+        var gate = new TaskCompletionSource<bool>();
+        var rig = Build(tailscale: new FakeTailscale { ServeGate = gate });
+        rig.Settings.PhoneAccessEnabled = true;
+        Assert.False(rig.Controller.AllowedHost(Dns));
+
+        rig.Settings.PhoneAccessEnabled = false;
+        gate.SetResult(true);
+        await Wait.Until(() => rig.Tailscale.Stops == 1);
+
+        Assert.Equal(1, rig.Tailscale.Stops);
+        Assert.False(rig.Controller.AllowedHost(Dns));
+        Assert.False(rig.Settings.CanPair);
+        Assert.Equal(string.Empty, rig.Settings.PhoneTailscaleText);
+        Assert.False(rig.Marker.Present);
+    }
+
+    [Fact]
+    public async Task Forget_while_the_serve_is_pending_stops_once_and_serves_again()
+    {
+        var gate = new TaskCompletionSource<bool>();
+        var rig = Build(tailscale: new FakeTailscale { ServeGate = gate });
+        rig.Settings.PhoneAccessEnabled = true;
+
+        rig.Controller.Forget();
+        gate.SetResult(true);
+        await Wait.Until(() => rig.Tailscale.Serves.Count == 2);
+
+        Assert.Equal(1, rig.Tailscale.Stops);
+        Assert.True(rig.Controller.AllowedHost(Dns));
+        Assert.True(rig.Settings.CanPair);
+    }
+
+    [Fact]
+    public void The_text_is_judged_again_on_the_ui_thread_so_a_switch_off_leaves_no_ready_on_screen()
+    {
+        var queued = new List<Action>();
+        var tailscale = new FakeTailscale();
+        var rig = Build(tailscale: tailscale, onUi: queued.Add);
+
+        rig.Settings.PhoneAccessEnabled = true;
+        rig.Settings.PhoneAccessEnabled = false;
+        foreach (var action in queued.ToList())
+        {
+            action();
+        }
+
+        Assert.False(rig.Settings.CanPair);
+        Assert.Equal(string.Empty, rig.Settings.PhoneTailscaleText);
+    }
+
+    [Fact]
+    public void A_name_with_a_trailing_dot_and_capitals_is_stored_normalised()
+    {
+        var rig = Build(tailscale: new FakeTailscale { State = FakeTailscale.Ready("My-PC.Tail1234.ts.net.") });
+        rig.Settings.PhoneAccessEnabled = true;
+
+        Assert.True(rig.Controller.AllowedHost("my-pc.tail1234.ts.net"));
+        var link = rig.Controller.CreatePairingLink();
+        Assert.StartsWith("https://my-pc.tail1234.ts.net/#t=", link);
+    }
+
+    [Fact]
+    public void The_marker_is_made_before_the_serve_and_removed_after_a_successful_stop()
+    {
+        var tailscale = new FakeTailscale();
+        var rig = Build(tailscale: tailscale);
+        var markerAtServe = new List<bool>();
+        tailscale.OnServe = () => markerAtServe.Add(rig.Marker.Present);
+
+        rig.Settings.PhoneAccessEnabled = true;
+        Assert.Equal([true], markerAtServe);
+        Assert.True(rig.Marker.Present);
+
+        rig.Settings.PhoneAccessEnabled = false;
+        Assert.False(rig.Marker.Present);
+    }
+
+    [Fact]
+    public void A_failed_stop_keeps_the_marker_says_so_and_the_next_apply_retries()
+    {
+        var rig = Build();
+        rig.Settings.PhoneAccessEnabled = true;
+        rig.Tailscale.StopResult = false;
+
+        rig.Settings.PhoneAccessEnabled = false;
+
+        Assert.True(rig.Marker.Present);
+        Assert.Equal(PhoneController.StopFailedText, rig.Settings.PhoneTailscaleText);
+        Assert.Equal("Could not remove the phone page from Tailscale. It will be tried again.", PhoneController.StopFailedText);
+
+        rig.Tailscale.StopResult = true;
+        rig.Settings.Refresh();
+
+        Assert.Equal(2, rig.Tailscale.Stops);
+        Assert.False(rig.Marker.Present);
+        Assert.Equal(string.Empty, rig.Settings.PhoneTailscaleText);
+    }
+
+    [Fact]
+    public void After_a_crash_the_next_start_with_the_switch_off_removes_the_route_and_the_marker()
+    {
+        var marker = new FakeServeMarker(exists: true);
+        var rig = Build(marker: marker);
+
+        rig.Controller.Start();
+
+        Assert.Equal(1, rig.Tailscale.Stops);
+        Assert.False(marker.Present);
+        Assert.Empty(rig.Tailscale.Serves);
+    }
+
+    [Fact]
+    public void A_failed_cleanup_at_start_keeps_the_marker()
+    {
+        var marker = new FakeServeMarker(exists: true);
+        var rig = Build(marker: marker, tailscale: new FakeTailscale { StopResult = false });
+
+        rig.Controller.Start();
+
+        Assert.True(marker.Present);
+        Assert.Equal(PhoneController.StopFailedText, rig.Settings.PhoneTailscaleText);
+    }
+
+    [Fact]
+    public void Without_a_marker_start_never_stops_anything()
+    {
+        var rig = Build();
+
+        rig.Controller.Start();
+
+        Assert.Equal(0, rig.Tailscale.Stops);
+    }
+
+    [Fact]
+    public void Dispose_waits_for_a_slow_stop()
+    {
+        var gate = new TaskCompletionSource<bool>();
+        var rig = Build(saved: true, tailscale: new FakeTailscale { StopGate = gate });
+        rig.Controller.Start();
+        _ = Task.Delay(300).ContinueWith(_ => gate.SetResult(true));
+
+        rig.Controller.Dispose();
+
+        Assert.Equal(1, rig.Tailscale.Stops);
+        Assert.False(rig.Marker.Present);
+    }
+
+    [Fact]
+    public void Dispose_gives_up_after_the_bounded_wait_and_never_throws()
+    {
+        var rig = Build(saved: true, tailscale: new FakeTailscale { StopGate = new TaskCompletionSource<bool>() });
+        rig.Controller.Start();
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+
+        var ex = Record.Exception(rig.Controller.Dispose);
+
+        Assert.Null(ex);
+        Assert.InRange(watch.Elapsed, TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(9));
+        Assert.True(rig.Marker.Present);
     }
 }

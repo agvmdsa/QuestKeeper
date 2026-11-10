@@ -14,6 +14,17 @@ public sealed class FakeTailscale : ITailscale
 
     public Func<bool>? HostRunning { get; set; }
 
+    /// <summary>When set, ServeAsync completes only when this does (an in-flight serve).</summary>
+    public TaskCompletionSource<bool>? ServeGate { get; set; }
+
+    /// <summary>When set, StopServeAsync completes only when this does.</summary>
+    public TaskCompletionSource<bool>? StopGate { get; set; }
+
+    public bool StopResult { get; set; } = true;
+
+    /// <summary>Runs while ServeAsync is in flight, before it completes.</summary>
+    public Action? OnServe { get; set; }
+
     public int StateCalls { get; private set; }
 
     public List<int> Serves { get; } = [];
@@ -34,12 +45,23 @@ public sealed class FakeTailscale : ITailscale
     {
         Serves.Add(port);
         HostRunningAtServe.Add(HostRunning?.Invoke() ?? false);
+        OnServe?.Invoke();
+        if (ServeGate is { } gate)
+        {
+            return gate.Task;
+        }
+
         return Throws is null ? Task.FromResult(ServeResult) : Task.FromException<bool>(Throws);
     }
 
     public Task<bool> StopServeAsync(CancellationToken ct)
     {
         Stops++;
-        return Throws is null ? Task.FromResult(true) : Task.FromException<bool>(Throws);
+        if (StopGate is { } gate)
+        {
+            return gate.Task;
+        }
+
+        return Throws is null ? Task.FromResult(StopResult) : Task.FromException<bool>(Throws);
     }
 }

@@ -112,6 +112,7 @@ public static class CompositionRoot
             ex => Log.Warning("Phone hub failed: {ExceptionType}", ex.GetType().Name)));
         services.AddSingleton<IAssetSource, EmbeddedAssetSource>();
         services.AddSingleton<ITailscaleProcess, TailscaleProcess>();
+        services.AddSingleton<IServeMarker>(sp => new FileServeMarker(sp.GetRequiredService<AppPaths>().PhoneServeMarkerPath));
         services.AddSingleton<ITailscale>(sp => new TailscaleService(sp.GetRequiredService<ITailscaleProcess>()));
         services.AddSingleton(sp =>
         {
@@ -125,7 +126,7 @@ public static class CompositionRoot
             sp.GetRequiredService<PhoneHandler>(), sp.GetRequiredService<PhoneHub>(), sp.GetRequiredService<PhoneRegistry>()));
         services.AddSingleton<PhoneController>(sp => new PhoneController(
             sp.GetRequiredService<SettingsViewModel>(), sp.GetRequiredService<IPhoneHost>(), sp.GetRequiredService<PhoneHub>(), sp.GetRequiredService<PhoneRegistry>(),
-            sp.GetRequiredService<ITailscale>(), onUiThread: OnUiThread));
+            sp.GetRequiredService<ITailscale>(), sp.GetRequiredService<IServeMarker>(), onUiThread: OnUiThread));
         services.AddSingleton<ISettingsDialog, AvaloniaSettingsDialog>();
         services.AddSingleton<IDebugWindowHost, AvaloniaDebugWindowHost>();
         services.AddSingleton<DebugModeController>();

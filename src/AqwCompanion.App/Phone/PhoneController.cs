@@ -14,6 +14,8 @@ public sealed class PhoneController : IForgettable, IDisposable
 {
     public const string OffText = "Off";
 
+    public static readonly TimeSpan DisposeWait = TimeSpan.FromSeconds(5);
+
     public static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(15);
 
     private readonly SettingsViewModel _settings;
@@ -24,6 +26,7 @@ public sealed class PhoneController : IForgettable, IDisposable
     private readonly Func<TimeSpan, Action, IDisposable> _timerFactory;
     private readonly Action _tick;
     private readonly ITailscale _tailscale;
+    private readonly IServeMarker _marker;
     private readonly Action<Action> _onUiThread;
     private readonly Func<Func<Task>, Task> _run;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -33,6 +36,9 @@ public sealed class PhoneController : IForgettable, IDisposable
     private bool _quiesced;
     private bool _published;
     private bool _stopPending;
+    private bool _stopFailed;
+    private string _tsText = string.Empty;
+    private bool _tsCanPair;
     private TailscaleState? _state;
 
     // The tailnet name, set only after ServeAsync succeeded; read from request threads by AllowedHost.
@@ -41,11 +47,14 @@ public sealed class PhoneController : IForgettable, IDisposable
     /// <param name="onUiThread">Runs a change of the Settings view model on the UI thread (inline by default).</param>
     /// <param name="run">Starts the Tailscale work off the UI thread (<see cref="Task.Run(Func{Task})"/> by default).</param>
     public PhoneController(
-        SettingsViewModel settings, IPhoneHost host, PhoneHub hub, PhoneRegistry registry, ITailscale tailscale, int port = PhoneHost.DefaultPort,
+        SettingsViewModel settings, IPhoneHost host, PhoneHub hub, PhoneRegistry registry, ITailscale tailscale, IServeMarker marker, int port = PhoneHost.DefaultPort,
         Func<TimeSpan, Action, IDisposable>? timerFactory = null, Action? tick = null,
         Action<Action>? onUiThread = null, Func<Func<Task>, Task>? run = null)
     {
         _tailscale = tailscale;
+        _marker = marker;
+        // A flag left by an earlier run (a crash, a failed removal) means a route may still be published.
+        _published = marker.Exists();
         _onUiThread = onUiThread ?? (action => action());
         _run = run ?? (work => Task.Run(work));
         _settings = settings;
@@ -61,6 +70,8 @@ public sealed class PhoneController : IForgettable, IDisposable
     }
 
     public string Name => "Phone access";
+
+    public const string StopFailedText = "Could not remove the phone page from Tailscale. It will be tried again.";
 
     public const string ServeFailedText = "Could not publish the phone page through Tailscale. Check that Tailscale is running and try again.";
 
@@ -158,8 +169,17 @@ public sealed class PhoneController : IForgettable, IDisposable
             StopRunning();
         }
 
-        Reconcile();
+        var pending = Reconcile();
         _cancel.CancelAfter(TimeSpan.FromSeconds(15));
+        try
+        {
+            // The published route outlives the process, so give the removal a short, bounded time to finish.
+            pending.Wait(DisposeWait);
+        }
+        catch (Exception)
+        {
+            // Never throws; a failure was logged by the reconcile and the marker stays for the next start.
+        }
     }
 
     private void Apply()
@@ -212,18 +232,61 @@ public sealed class PhoneController : IForgettable, IDisposable
 
     private bool Wanted() => _settings.PhoneAccessEnabled && !_quiesced && _host.IsRunning;
 
-    private void SetTailscaleText(string text, bool canPair) => _onUiThread(() => _settings.SetPhoneTailscale(text, canPair));
+    /// <summary>Remembers what Settings should say and puts it on the UI thread; the text is judged again there, so a switch-off in between cannot leave "ready" on screen.</summary>
+    private void SetTailscaleText(string text, bool canPair)
+    {
+        lock (_lock)
+        {
+            _tsText = text;
+            _tsCanPair = canPair;
+        }
+
+        _onUiThread(() =>
+        {
+            string shown;
+            bool pair;
+            lock (_lock)
+            {
+                if (!Wanted() && !_stopFailed)
+                {
+                    shown = string.Empty;
+                    pair = false;
+                }
+                else
+                {
+                    shown = _tsText;
+                    pair = _tsCanPair && _servedName is not null && Wanted();
+                }
+            }
+
+            _settings.SetPhoneTailscale(shown, pair);
+        });
+    }
 
     /// <summary>Brings the published address in step with the switch, off the UI thread. Every change of wish calls it; runs are serialised and read the wish when they run.</summary>
-    private void Reconcile()
+    private Task Reconcile()
     {
         try
         {
-            _ = _run(ReconcileAsync);
+            return _run(ReconcileAsync);
         }
         catch (Exception ex)
         {
             Log.Warning("Phone Tailscale work failed: {ExceptionType}", ex.GetType().Name);
+            return Task.CompletedTask;
+        }
+    }
+
+    private async Task<bool> TryStopAsync(CancellationToken ct)
+    {
+        try
+        {
+            return await _tailscale.StopServeAsync(ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning("Phone Tailscale work failed: {ExceptionType}", ex.GetType().Name);
+            return false;
         }
     }
 
@@ -248,13 +311,39 @@ public sealed class PhoneController : IForgettable, IDisposable
                 if (stop)
                 {
                     _servedName = null;
-                    _published = false;
                 }
             }
 
             if (stop)
             {
-                await _tailscale.StopServeAsync(ct).ConfigureAwait(false);
+                if (await TryStopAsync(ct).ConfigureAwait(false))
+                {
+                    lock (_lock)
+                    {
+                        _published = false;
+                        _stopFailed = false;
+                    }
+
+                    _marker.Delete();
+                    if (!wanted)
+                    {
+                        SetTailscaleText(string.Empty, false);
+                    }
+                }
+                else
+                {
+                    // Still published: keep the flag so the next Apply, Refresh or start tries again.
+                    lock (_lock)
+                    {
+                        _stopFailed = true;
+                    }
+
+                    SetTailscaleText(StopFailedText, false);
+                    if (!wanted)
+                    {
+                        return;
+                    }
+                }
             }
 
             if (!wanted)
@@ -263,24 +352,21 @@ public sealed class PhoneController : IForgettable, IDisposable
             }
 
             var state = await _tailscale.GetStateAsync(ct).ConfigureAwait(false);
-            var name = state.Kind == TailscaleStateKind.Ready && state.DnsName is { } dns && TailscaleStatusParser.IsValidDnsName(dns) ? dns : null;
+            var name = state.Kind == TailscaleStateKind.Ready ? TailscaleStatusParser.NormalizeDnsName(state.DnsName) : null;
             string text;
             bool canPair;
             bool needServe;
+            bool staleRoute;
             lock (_lock)
             {
                 _state = state;
-                if (name is null || !string.Equals(_servedName, name, StringComparison.OrdinalIgnoreCase))
+                if (name is null || !string.Equals(_servedName, name, StringComparison.Ordinal))
                 {
                     _servedName = null;
                 }
 
                 needServe = name is not null && _servedName is null && Wanted();
-                if (needServe)
-                {
-                    _published = true;
-                }
-
+                staleRoute = name is null && _published && !_stopFailed;
                 text = name is null ? state.Text : string.Empty;
                 canPair = !needServe && _servedName is not null;
                 if (canPair)
@@ -289,15 +375,36 @@ public sealed class PhoneController : IForgettable, IDisposable
                 }
             }
 
+            if (staleRoute && await TryStopAsync(ct).ConfigureAwait(false))
+            {
+                lock (_lock)
+                {
+                    _published = false;
+                }
+
+                _marker.Delete();
+            }
+
             if (needServe)
             {
+                // The flag goes down before the route does, so a crash in between still gets cleaned up.
+                lock (_lock)
+                {
+                    _published = true;
+                }
+
+                _marker.Create();
                 var ok = await _tailscale.ServeAsync(_port, ct).ConfigureAwait(false);
                 lock (_lock)
                 {
                     // A newer wish (switched off, quiesced) is handled by the run it queued; only record success while still wanted.
-                    if (ok && Wanted())
+                    if (ok)
                     {
-                        _servedName = name;
+                        _stopFailed = false;
+                        if (Wanted())
+                        {
+                            _servedName = name;
+                        }
                     }
                 }
 
@@ -305,10 +412,16 @@ public sealed class PhoneController : IForgettable, IDisposable
                 text = ok ? state.Text : ServeFailedText;
             }
 
-            if (Wanted())
+            lock (_lock)
             {
-                SetTailscaleText(text, canPair);
+                if (_stopFailed)
+                {
+                    text = StopFailedText;
+                    canPair = false;
+                }
             }
+
+            SetTailscaleText(text, canPair);
         }
         catch (Exception ex)
         {

@@ -97,6 +97,9 @@ public static class TailscaleStatusParser
         return new TailscaleState(TailscaleStateKind.Ready, name, TailscaleService.ReadyText);
     }
 
+    /// <summary>The name as the parser trusts it (lower-case, one trailing dot stripped), or null when it fails the check.</summary>
+    public static string? NormalizeDnsName(string? raw) => Normalize(raw);
+
     private static string? Normalize(string? raw)
     {
         if (string.IsNullOrEmpty(raw) || raw.Any(c => c > 127))

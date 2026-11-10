@@ -5,6 +5,7 @@ using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Phone.Devices;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Serilog;
 
 namespace AqwCompanion.App.Settings;
 
@@ -48,14 +49,16 @@ public partial class SettingsViewModel : ObservableObject
     private readonly FeedSecretStore? _feedSecret;
     private readonly PhoneRegistry? _phoneRegistry;
     private readonly Func<string, Task>? _copyToClipboard;
+    private readonly Func<bool>? _isClipboardAvailable;
     private AppSettings _settings;
     private bool _startWithWindows;
 
     public SettingsViewModel(IAppSettingsStore store, ForgetCoordinator forgetting, IAutoStart? autoStart = null, FeedSecretStore? feedSecret = null,
-        PhoneRegistry? phoneRegistry = null, Func<string, Task>? copyToClipboard = null)
+        PhoneRegistry? phoneRegistry = null, Func<string, Task>? copyToClipboard = null, Func<bool>? isClipboardAvailable = null)
     {
         _phoneRegistry = phoneRegistry;
         _copyToClipboard = copyToClipboard;
+        _isClipboardAvailable = isClipboardAvailable;
         _store = store;
         _forgetting = forgetting;
         _autoStart = autoStart ?? new NoAutoStart();
@@ -146,7 +149,20 @@ public partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        await _copyToClipboard($"http://127.0.0.1:{PhoneHost.DefaultPort}/#t={_phoneRegistry.CreatePairingToken()}");
+        // No token is made when there is nowhere to put it.
+        if (_isClipboardAvailable is not null && !_isClipboardAvailable())
+        {
+            return;
+        }
+
+        try
+        {
+            await _copyToClipboard($"http://127.0.0.1:{PhoneHost.DefaultPort}/#t={_phoneRegistry.CreatePairingToken()}");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning("Could not copy the pairing link: {ExceptionType}", ex.GetType().Name);
+        }
     }
 
     /// <summary>Whether the switch for starting with Windows is offered at all.</summary>

@@ -94,7 +94,7 @@ public static class CompositionRoot
         services.AddSingleton(sp => new FeedSecretStore(sp.GetRequiredService<AppPaths>().FeedTokenPath));
         services.AddSingleton(sp => new SettingsViewModel(
             sp.GetRequiredService<IAppSettingsStore>(), sp.GetRequiredService<ForgetCoordinator>(), sp.GetRequiredService<IAutoStart>(),
-            sp.GetRequiredService<FeedSecretStore>(), sp.GetRequiredService<PhoneRegistry>(), CopyToClipboardAsync));
+            sp.GetRequiredService<FeedSecretStore>(), sp.GetRequiredService<PhoneRegistry>(), CopyToClipboardAsync, () => FindClipboard() is not null));
         services.AddSingleton<IFeedSource>(sp => new SessionFeedSource(
             sp.GetRequiredService<CaptureSession>(), sp.GetRequiredService<GameDataViewModel>(), sp.GetRequiredService<HardFarmsViewModel>()));
         services.AddSingleton<ILocalFeedHost>(sp => new HttpListenerFeedHost(
@@ -140,11 +140,15 @@ public static class CompositionRoot
         });
     }
 
+    private static IClipboard? FindClipboard() =>
+        Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+            ? desktop.Windows.Select(w => w.Clipboard).FirstOrDefault(c => c is not null)
+            : null;
+
     // Puts text on the clipboard of the first open window; used by the debug pairing link only.
     private static async Task CopyToClipboardAsync(string text)
     {
-        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
-            && desktop.Windows.Select(w => w.Clipboard).FirstOrDefault(c => c is not null) is { } clipboard)
+        if (FindClipboard() is { } clipboard)
         {
             await clipboard.SetTextAsync(text);
         }

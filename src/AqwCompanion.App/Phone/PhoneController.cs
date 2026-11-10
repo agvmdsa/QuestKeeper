@@ -10,7 +10,7 @@ namespace AqwCompanion.App.Phone;
 /// Keeps the phone host, its notice tick and the pairing registry in step with the Settings switch, which lives in settings.json
 /// and so survives "Forget my data". Also takes part in Forgetting: it revokes every device and clears the hub.
 /// </summary>
-public sealed class PhoneController : IForgettable
+public sealed class PhoneController : IForgettable, IDisposable
 {
     public const string OffText = "Off";
 
@@ -57,6 +57,7 @@ public sealed class PhoneController : IForgettable
         {
             _quiesced = true;
             StopRunning();
+            _settings.SetPhoneStatus(OffText);
         }
     }
 
@@ -69,10 +70,29 @@ public sealed class PhoneController : IForgettable
         }
     }
 
+    /// <summary>
+    /// Revokes every device and clears the hub, then brings the host back as the saved switch says (with no devices every request is refused).
+    /// The coordinator calls <see cref="Resume"/> only when the removal failed, so this must end the quiesced state itself.
+    /// </summary>
     public void Forget()
     {
         _registry.Forget();
         _hub.Reset();
+        lock (_lock)
+        {
+            _quiesced = false;
+            Apply();
+        }
+    }
+
+    /// <summary>Stops the tick and the host; the host and the hub themselves belong to the container.</summary>
+    public void Dispose()
+    {
+        lock (_lock)
+        {
+            _quiesced = true;
+            StopRunning();
+        }
     }
 
     private void Apply()

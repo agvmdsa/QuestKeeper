@@ -303,17 +303,17 @@ public class SettingsViewModelTests
         public void Forget() => throw new InvalidOperationException();
     }
 
-    private static (SettingsViewModel Vm, PhoneRegistry Registry, List<string> Copied) BuildWithPhone(bool debug)
+    private static (SettingsViewModel Vm, PhoneRegistry Registry, List<string> Copied) BuildWithPhone(bool debug, Func<string, Task>? copy = null, Func<bool>? available = null)
     {
         var registry = new PhoneRegistry(new MemoryPhoneFileStore(), () => DateTimeOffset.UtcNow);
         var copied = new List<string>();
         var vm = new SettingsViewModel(
             new FakeAppSettingsStore(new AppSettings(DebugMode: debug)), Coordinator(() => true), null, null,
-            registry, text =>
+            registry, copy ?? (text =>
             {
                 copied.Add(text);
                 return Task.CompletedTask;
-            });
+            }), available);
         return (vm, registry, copied);
     }
 
@@ -371,5 +371,25 @@ public class SettingsViewModelTests
         Assert.Matches(@"^http://127\.0\.0\.1:47822/#t=[A-Za-z0-9_-]{43}$", link);
         Assert.Equal(PairStatus.Paired, registry.TryPair(link[(link.IndexOf("#t=", StringComparison.Ordinal) + 3)..], "Test").Status);
         Assert.DoesNotContain("#t=", on.PhoneStatusText);
+    }
+
+    [Fact]
+    public async Task No_pairing_token_is_made_when_there_is_no_clipboard()
+    {
+        var (vm, _, copied) = BuildWithPhone(debug: true, available: () => false);
+
+        await vm.CopyLocalPairingLinkCommand.ExecuteAsync(null);
+
+        Assert.Empty(copied);
+    }
+
+    [Fact]
+    public async Task A_throwing_clipboard_does_not_escape_the_command()
+    {
+        var (vm, _, _) = BuildWithPhone(debug: true, copy: _ => throw new InvalidOperationException("boom"));
+
+        var ex = await Record.ExceptionAsync(() => vm.CopyLocalPairingLinkCommand.ExecuteAsync(null));
+
+        Assert.Null(ex);
     }
 }

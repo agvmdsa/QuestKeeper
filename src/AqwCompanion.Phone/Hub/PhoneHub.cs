@@ -32,21 +32,26 @@ public sealed class PhoneHub : IDisposable
     private readonly NoticeEngine _engine;
     private readonly NoticeLog _log;
     private readonly Func<DateTimeOffset> _now;
+    private readonly Action<Exception>? _onError;
     private readonly object _lock = new();
     private readonly List<HubSubscription> _subscribers = [];
     private FeedSnapshot _snapshot;
     private string _snapshotJson;
 
-    public PhoneHub(IFeedSource source, NoticeEngine engine, NoticeLog log, Func<DateTimeOffset> now)
+    public PhoneHub(IFeedSource source, NoticeEngine engine, NoticeLog log, Func<DateTimeOffset> now, Action<Exception>? onError = null)
     {
         _source = source;
         _engine = engine;
         _log = log;
         _now = now;
-        _snapshot = source.Current;
-        _snapshotJson = PhoneJson.SerializeSnapshot(_snapshot);
-        _engine.Process(_snapshot, _now());   // the baseline: nothing existing is announced
-        source.Changed += OnSourceChanged;
+        _onError = onError;
+        source.Changed += OnSourceChanged;   // before the read: a change in between is not lost, an equal one is skipped
+        lock (_lock)
+        {
+            _snapshot = source.Current;
+            _snapshotJson = PhoneJson.SerializeSnapshot(_snapshot);
+            _engine.Process(_snapshot, _now());   // the baseline: nothing existing is announced
+        }
     }
 
     public PhoneState Current
@@ -88,7 +93,14 @@ public sealed class PhoneHub : IDisposable
     {
         lock (_lock)
         {
-            PublishNotices(_engine.Tick(_now()));
+            try
+            {
+                PublishNotices(_engine.Tick(_now()));
+            }
+            catch (Exception ex)
+            {
+                Report(ex);
+            }
         }
     }
 
@@ -96,12 +108,21 @@ public sealed class PhoneHub : IDisposable
     {
         lock (_lock)
         {
-            _engine.Reset();
-            _log.Clear();
-            _snapshot = _source.Current;
-            _snapshotJson = PhoneJson.SerializeSnapshot(_snapshot);
-            _engine.Process(_snapshot, _now());
-            PublishState();
+            try
+            {
+                var snapshot = _source.Current;
+                var json = PhoneJson.SerializeSnapshot(snapshot);
+                _engine.Reset();
+                _log.Clear();
+                _engine.Process(snapshot, _now());
+                _snapshot = snapshot;
+                _snapshotJson = json;
+                PublishState();
+            }
+            catch (Exception ex)
+            {
+                Report(ex);
+            }
         }
     }
 
@@ -127,19 +148,40 @@ public sealed class PhoneHub : IDisposable
 
     private void OnSourceChanged(object? sender, EventArgs e)
     {
-        lock (_lock)
+        // Runs on the raiser's thread (capture session, UI): nothing may escape.
+        try
         {
-            var snapshot = _source.Current;
-            var json = PhoneJson.SerializeSnapshot(snapshot);
-            if (json == _snapshotJson)
+            lock (_lock)
             {
-                return;
-            }
+                var snapshot = _source.Current;
+                var json = PhoneJson.SerializeSnapshot(snapshot);
+                if (json == _snapshotJson)
+                {
+                    return;
+                }
 
-            _snapshot = snapshot;
-            _snapshotJson = json;
-            PublishNotices(_engine.Process(snapshot, _now()));
-            PublishState();
+                var notices = _engine.Process(snapshot, _now());
+                _snapshot = snapshot;
+                _snapshotJson = json;
+                PublishNotices(notices);
+                PublishState();
+            }
+        }
+        catch (Exception ex)
+        {
+            Report(ex);
+        }
+    }
+
+    private void Report(Exception ex)
+    {
+        try
+        {
+            _onError?.Invoke(ex);
+        }
+        catch
+        {
+            // The reporter must not throw into the raiser either.
         }
     }
 

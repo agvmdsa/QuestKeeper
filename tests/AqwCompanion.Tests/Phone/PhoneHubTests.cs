@@ -186,11 +186,47 @@ public class PhoneHubTests
         Assert.Equal(1, source.Subscribers);
 
         hub.Dispose();
+        using var live = hub.Subscribe();   // a late subscriber is still registered with the hub
         source.Current = Base(selected: "Bravo");
         source.Raise();
 
         Assert.Equal(0, source.Subscribers);
+        Assert.Empty(Drain(live));
         Assert.Empty(Drain(sub));
+    }
+
+    private sealed class FlakySource(FeedSnapshot initial) : IFeedSource
+    {
+        private int _reads;
+
+        public bool Throw { get; set; }
+
+        public FeedSnapshot Current => Throw && _reads++ >= 0 ? throw new InvalidOperationException("boom") : initial;
+
+        public event EventHandler? Changed;
+
+        public void Raise() => Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    [Fact]
+    public void A_source_that_throws_on_the_second_read_does_not_throw_into_the_raiser_and_the_state_is_kept()
+    {
+        var source = new FlakySource(Base());
+        var errors = new List<Exception>();
+        using var hub = new PhoneHub(source, new NoticeEngine(), new NoticeLog(50), () => T0, errors.Add);
+        using var sub = hub.Subscribe();
+        var before = hub.Current;
+
+        source.Throw = true;
+        var raised = Record.Exception(source.Raise);
+
+        Assert.Null(raised);
+        Assert.Equal(before.Snapshot, hub.Current.Snapshot);
+        Assert.Empty(Drain(sub));
+        Assert.IsType<InvalidOperationException>(Assert.Single(errors));
+        Assert.Null(Record.Exception(hub.Tick));
+        Assert.Null(Record.Exception(hub.Reset));
+        Assert.Equal(before.Snapshot, hub.Current.Snapshot);
     }
 
     [Fact]

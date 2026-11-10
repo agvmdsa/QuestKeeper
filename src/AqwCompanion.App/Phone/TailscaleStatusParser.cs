@@ -33,7 +33,9 @@ public static class TailscaleStatusParser
 
             switch (backend.GetString())
             {
-                case "NeedsLogin" or "NeedsMachineAuth" or "Stopped":
+                case "Stopped":
+                    return new TailscaleState(TailscaleStateKind.NotSignedIn, null, TailscaleService.StoppedText);
+                case "NeedsLogin" or "NeedsMachineAuth":
                     return new TailscaleState(TailscaleStateKind.NotSignedIn, null, TailscaleService.NotSignedInText);
                 case "Running":
                     return ParseRunning(root);
@@ -52,12 +54,18 @@ public static class TailscaleStatusParser
 
     private static TailscaleState ParseRunning(JsonElement root)
     {
-        var certs = false;
+        var certNames = new List<string>();
         if (root.TryGetProperty("CertDomains", out var certDomains))
         {
             if (certDomains.ValueKind == JsonValueKind.Array)
             {
-                certs = certDomains.GetArrayLength() > 0;
+                foreach (var item in certDomains.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.String && Normalize(item.GetString()) is { } cert)
+                    {
+                        certNames.Add(cert);
+                    }
+                }
             }
             else if (certDomains.ValueKind != JsonValueKind.Null)
             {
@@ -69,7 +77,7 @@ public static class TailscaleStatusParser
             && tailnet.ValueKind == JsonValueKind.Object
             && tailnet.TryGetProperty("MagicDNSEnabled", out var magic)
             && magic.ValueKind == JsonValueKind.False;
-        if (!certs || magicDnsOff)
+        if (certNames.Count == 0 || magicDnsOff)
         {
             return new TailscaleState(TailscaleStateKind.HttpsNotEnabled, null, TailscaleService.HttpsNotEnabledText);
         }
@@ -79,6 +87,11 @@ public static class TailscaleStatusParser
             || Normalize(dns.GetString()) is not { } name)
         {
             return Failed;
+        }
+
+        if (!certNames.Contains(name))
+        {
+            return new TailscaleState(TailscaleStateKind.HttpsNotEnabled, null, TailscaleService.HttpsNotEnabledText);
         }
 
         return new TailscaleState(TailscaleStateKind.Ready, name, TailscaleService.ReadyText);
@@ -97,6 +110,17 @@ public static class TailscaleStatusParser
             name = name[..^1];
         }
 
-        return name.Length is > 0 and <= MaxDnsNameLength && DnsNamePattern.IsMatch(name) ? name : null;
+        if (name.Length is 0 or > MaxDnsNameLength || !DnsNamePattern.IsMatch(name))
+        {
+            return null;
+        }
+
+        var labels = name.Split('.');
+        if (labels.Any(l => l.Length > 63 || l[0] == '-' || l[^1] == '-') || !labels[^1].Any(char.IsAsciiLetter))
+        {
+            return null;
+        }
+
+        return name;
     }
 }

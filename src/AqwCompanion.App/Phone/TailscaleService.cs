@@ -13,6 +13,7 @@ public sealed class TailscaleService : ITailscale
     public const string NotInstalledText = "Tailscale is not installed. Install it on this PC and on your phone, then sign in with the same account.";
     public const string NotSignedInText = "Tailscale is installed but not signed in. Sign in to Tailscale on this PC.";
     public const string HttpsNotEnabledText = "In the Tailscale admin console, turn on MagicDNS and HTTPS certificates (one time), then try again.";
+    public const string StoppedText = "Tailscale is turned off. Turn it on in the Tailscale app on this PC.";
     public const string ReadyText = "Tailscale is ready.";
     public const string ErrorText = "Could not read the Tailscale state.";
 
@@ -34,11 +35,14 @@ public sealed class TailscaleService : ITailscale
         _fileExists = fileExists ?? File.Exists;
     }
 
+    // A relative path (empty Program Files folder) would resolve against the working directory: treat it as not installed.
+    private bool IsInstalled() => Path.IsPathFullyQualified(_exePath) && _fileExists(_exePath);
+
     public async Task<TailscaleState> GetStateAsync(CancellationToken ct)
     {
         try
         {
-            if (!_fileExists(_exePath))
+            if (!IsInstalled())
             {
                 return new TailscaleState(TailscaleStateKind.NotInstalled, null, NotInstalledText);
             }
@@ -54,7 +58,11 @@ public sealed class TailscaleService : ITailscale
         }
         catch (Exception ex)
         {
-            Log.Warning("Tailscale status failed: {ExceptionType}", ex.GetType().Name);
+            if (!ct.IsCancellationRequested)
+            {
+                Log.Warning("Tailscale status failed: {ExceptionType}", ex.GetType().Name);
+            }
+
             return new TailscaleState(TailscaleStateKind.Error, null, ErrorText);
         }
     }
@@ -75,7 +83,7 @@ public sealed class TailscaleService : ITailscale
     {
         try
         {
-            if (!_fileExists(_exePath))
+            if (!IsInstalled())
             {
                 return false;
             }
@@ -85,7 +93,11 @@ public sealed class TailscaleService : ITailscale
         }
         catch (Exception ex)
         {
-            Log.Warning("Tailscale serve command failed: {ExceptionType}", ex.GetType().Name);
+            if (!ct.IsCancellationRequested)
+            {
+                Log.Warning("Tailscale serve command failed: {ExceptionType}", ex.GetType().Name);
+            }
+
             return false;
         }
     }

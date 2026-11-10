@@ -24,28 +24,38 @@ public sealed class TailscaleProcessTests
         Assert.False(result.Truncated);
     }
 
+    private static readonly string Ping = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "ping.exe");
+
+    // Windows: ping.exe for 30 rounds prints slowly and runs far past the limit. Unix: sleep. (Windows branch runs on Windows CI / the owner's PC only.)
     [Fact]
     public async Task Stops_a_program_that_runs_too_long()
     {
-        if (OperatingSystem.IsWindows() || !File.Exists("/bin/sleep"))
+        var (exe, args) = OperatingSystem.IsWindows() ? (Ping, new[] { "-n", "30", "127.0.0.1" }) : ("/bin/sleep", new[] { "30" });
+        if (!File.Exists(exe))
         {
             return;
         }
 
-        var result = await new TailscaleProcess().RunAsync("/bin/sleep", ["30"], TimeSpan.FromMilliseconds(300), 1024, CancellationToken.None);
+        var started = DateTime.UtcNow;
+        var result = await new TailscaleProcess().RunAsync(exe, args, TimeSpan.FromMilliseconds(300), 1024 * 1024, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.True(result.TimedOut);
+        Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(10));
     }
 
+    // Windows: ping -t never ends and prints a line a second; the limit is tiny. (Windows branch runs on Windows CI / the owner's PC only.)
     [Fact]
     public async Task Flags_output_over_the_limit()
     {
-        if (OperatingSystem.IsWindows() || !File.Exists("/usr/bin/yes"))
+        var (exe, args) = OperatingSystem.IsWindows() ? (Ping, new[] { "-t", "127.0.0.1" }) : ("/usr/bin/yes", Array.Empty<string>());
+        if (!File.Exists(exe))
         {
             return;
         }
 
-        var result = await new TailscaleProcess().RunAsync("/usr/bin/yes", [], TimeSpan.FromSeconds(10), 1024, CancellationToken.None);
+        var result = await new TailscaleProcess().RunAsync(exe, args, TimeSpan.FromSeconds(10), 16, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.True(result.Truncated);
     }

@@ -47,10 +47,42 @@ public sealed class TailscaleStatusParserTests
         Assert.Equal(TailscaleStateKind.HttpsNotEnabled, TailscaleStatusParser.Parse(json).Kind);
     }
 
+    [Fact]
+    public void Stopped_says_turned_off_not_signed_out()
+    {
+        var state = TailscaleStatusParser.Parse(NeedsLogin.Replace("NeedsLogin", "Stopped"));
+
+        Assert.Equal(TailscaleStateKind.NotSignedIn, state.Kind);
+        Assert.Equal(TailscaleService.StoppedText, state.Text);
+    }
+
+    [Fact]
+    public void Self_name_missing_from_cert_domains_needs_https()
+    {
+        var json = RunningWithCerts.Replace("\"CertDomains\":[\"my-pc.tail1234.ts.net\"]", "\"CertDomains\":[\"other.tail1234.ts.net\"]");
+
+        Assert.Equal(TailscaleStateKind.HttpsNotEnabled, TailscaleStatusParser.Parse(json).Kind);
+    }
+
+    [Fact]
+    public void Cert_domain_match_ignores_case_and_trailing_dot()
+    {
+        var json = RunningWithCerts.Replace("\"CertDomains\":[\"my-pc.tail1234.ts.net\"]", "\"CertDomains\":[\"MY-PC.tail1234.ts.net.\"]");
+
+        Assert.Equal(TailscaleStateKind.Ready, TailscaleStatusParser.Parse(json).Kind);
+    }
+
+    [Fact]
+    public void Running_with_certs_but_null_self_is_an_error()
+    {
+        var json = """{"BackendState":"Running","Self":null,"CertDomains":["my-pc.tail1234.ts.net"]}""";
+
+        Assert.Equal(TailscaleStateKind.Error, TailscaleStatusParser.Parse(json).Kind);
+    }
+
     [Theory]
     [InlineData("NeedsLogin")]
     [InlineData("NeedsMachineAuth")]
-    [InlineData("Stopped")]
     public void Not_signed_in_states(string backend)
     {
         var state = TailscaleStatusParser.Parse(NeedsLogin.Replace("NeedsLogin", backend));
@@ -107,8 +139,20 @@ public sealed class TailscaleStatusParserTests
     [InlineData(".a.ts.net", false)]
     [InlineData("a.ts.net..", false)]
     [InlineData("localhost", false)]
+    [InlineData("-a.ts.net", false)]
+    [InlineData("a-.ts.net", false)]
+    [InlineData("a.-b.ts.net", false)]
+    [InlineData("127.0.0.1", false)]
+    [InlineData("a.b.123", false)]
     public void Dns_name_validity(string name, bool valid) =>
         Assert.Equal(valid, TailscaleStatusParser.IsValidDnsName(name));
+
+    [Fact]
+    public void A_label_of_64_characters_is_rejected_and_63_accepted()
+    {
+        Assert.True(TailscaleStatusParser.IsValidDnsName(new string('a', 63) + ".ts.net"));
+        Assert.False(TailscaleStatusParser.IsValidDnsName(new string('a', 64) + ".ts.net"));
+    }
 
     [Fact]
     public void Dns_name_length_limit()

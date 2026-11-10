@@ -33,6 +33,9 @@ public sealed class TailscaleProcess : ITailscaleProcess
         using var limit = new CancellationTokenSource(timeout);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, limit.Token);
         var truncated = false;
+
+        // Blocked pipe reads (Windows) do not reliably honour cancellation; killing the process closes the pipes and frees them.
+        using var killOnLimit = linked.Token.Register(() => Kill(process));
         try
         {
             var stdout = ReadLimitedAsync(process.StandardOutput.BaseStream, maxOutputBytes, () => Kill(process), linked.Token);
@@ -40,6 +43,16 @@ public sealed class TailscaleProcess : ITailscaleProcess
             var read = await Task.WhenAll(stdout, stderr).ConfigureAwait(false);
             truncated = read[0].Truncated || read[1].Truncated;
             await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
+            if (ct.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(ct);
+            }
+
+            if (limit.IsCancellationRequested && !truncated)
+            {
+                return new ProcessResult(-1, "", true, false);
+            }
+
             return new ProcessResult(process.ExitCode, read[0].Text, false, truncated);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)

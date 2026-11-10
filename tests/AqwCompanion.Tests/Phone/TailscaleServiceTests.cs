@@ -5,7 +5,7 @@ namespace AqwCompanion.Tests.Phone;
 
 public sealed class TailscaleServiceTests
 {
-    private const string ProgramFiles = @"C:\Program Files";
+    private static readonly string ProgramFiles = Path.Combine(Path.GetTempPath(), "Program Files");
     private static readonly string ExpectedExe = Path.Combine(ProgramFiles, "Tailscale", "tailscale.exe");
 
     private const string ReadyJson =
@@ -36,6 +36,17 @@ public sealed class TailscaleServiceTests
         _exists = false;
         var service = Create();
 
+        Assert.False(await service.ServeAsync(47822, CancellationToken.None));
+        Assert.False(await service.StopServeAsync(CancellationToken.None));
+        Assert.Empty(_process.Calls);
+    }
+
+    [Fact]
+    public async Task A_relative_exe_path_is_not_installed_and_nothing_runs()
+    {
+        var service = new TailscaleService(_process, "", _ => true);
+
+        Assert.Equal(TailscaleStateKind.NotInstalled, (await service.GetStateAsync(CancellationToken.None)).Kind);
         Assert.False(await service.ServeAsync(47822, CancellationToken.None));
         Assert.False(await service.StopServeAsync(CancellationToken.None));
         Assert.Empty(_process.Calls);
@@ -164,7 +175,7 @@ public sealed class TailscaleServiceTests
     }
 
     [Fact]
-    public async Task Cancellation_is_not_swallowed_into_a_state()
+    public async Task Cancelled_call_is_an_error_state_not_a_throw()
     {
         _process.Throws = new OperationCanceledException();
 

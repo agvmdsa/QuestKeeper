@@ -65,15 +65,15 @@ public class PhoneEventStreamTests
         }
     }
 
-    /// <summary>Accepts the first frame, then fails every write with an OperationCanceledException that is not the caller's token.</summary>
-    private sealed class FailingAfterFirstFrame : RecordingStream
+    /// <summary>Fails only the second write with an OperationCanceledException that is not the caller's token; every other write succeeds and is recorded.</summary>
+    private sealed class FailingSecondWrite : RecordingStream
     {
         private int _writes;
 
         public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
-            Interlocked.Increment(ref _writes) == 1
-                ? base.WriteAsync(buffer, cancellationToken)
-                : throw new OperationCanceledException("the output stream gave up");
+            Interlocked.Increment(ref _writes) == 2
+                ? throw new OperationCanceledException("the output stream gave up")
+                : base.WriteAsync(buffer, cancellationToken);
     }
 
     private static FeedSnapshot Base(string selected = "Alpha", int rank = 8) =>
@@ -223,15 +223,24 @@ public class PhoneEventStreamTests
     public async Task A_cancellation_from_the_output_while_writing_a_message_is_not_taken_for_a_ping_timeout()
     {
         using var rig = new Rig();
-        var output = new FailingAfterFirstFrame();
+        var output = new FailingSecondWrite();
         using var cts = new CancellationTokenSource();
+        var first = PhoneEventStream.Format("state", rig.Hub.CurrentJson);
         var run = PhoneEventStream.RunAsync(output, rig.Hub, Quiet, cts.Token);
-        await Wait.Until(() => rig.Hub.SubscriberCount == 1 && output.Text.Contains("event: state"));
+        try
+        {
+            await Wait.Until(() => rig.Hub.SubscriberCount == 1 && output.Text.Length >= first.Length);
 
-        rig.Change(Base(selected: "Bravo"));
+            rig.Change(Base(selected: "Bravo"));
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run.WaitAsync(TimeSpan.FromSeconds(30)));
-        Assert.DoesNotContain("event: ping", output.Text);
-        Assert.Equal(0, rig.Hub.SubscriberCount);
+            // Mistaken for a timeout, the failed write would be answered with a ping and the loop would run on (never faulting).
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run.WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.Equal(first, output.Text);
+            Assert.Equal(0, rig.Hub.SubscriberCount);
+        }
+        finally
+        {
+            cts.Cancel();
+        }
     }
 }

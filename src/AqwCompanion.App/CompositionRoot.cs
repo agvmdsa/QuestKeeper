@@ -110,7 +110,7 @@ public static class CompositionRoot
         services.AddSingleton(sp => new PhoneHub(
             sp.GetRequiredService<IFeedSource>(), new NoticeEngine(), new NoticeLog(50), () => DateTimeOffset.UtcNow,
             ex => Log.Warning("Phone hub failed: {ExceptionType}", ex.GetType().Name)));
-        services.AddSingleton<IAssetSource, EmptyAssetSource>();
+        services.AddSingleton<IAssetSource, EmbeddedAssetSource>();
         services.AddSingleton(sp => new PhoneHandler(
             sp.GetRequiredService<PhoneRegistry>(), sp.GetRequiredService<PhoneHub>(), sp.GetRequiredService<IAssetSource>(),
             host => host == "127.0.0.1:47822" || host == "localhost:47822", AppInfo.Version));

@@ -148,7 +148,7 @@ public sealed class PhoneHostTests : IDisposable
         using var response = await _client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.NotEqual(0L, response.Content.Headers.ContentLength ?? -1);
+        Assert.Null(response.Content.Headers.ContentLength);
     }
 
     [Fact]
@@ -440,6 +440,115 @@ public sealed class PhoneHostTests : IDisposable
         var headers = new System.Collections.Specialized.NameValueCollection { { "Origin", "http://a, http://b" } };
 
         Assert.True(PhoneHost.HasRepeated(headers, "Origin"));
+    }
+
+    [Fact]
+    public void The_real_header_collection_shows_a_repeat_whatever_the_letter_case()
+    {
+        var headers = new WebHeaderCollection { { "host", "a" }, { "Host", "a" } };
+
+        Assert.True(PhoneHost.HasRepeated(headers, "Host"));
+    }
+
+    [Fact]
+    public void The_real_header_collection_shows_a_comma_joined_value_as_repeated()
+    {
+        var headers = new WebHeaderCollection { { "Origin", "http://a, http://b" } };
+
+        Assert.True(PhoneHost.HasRepeated(headers, "Origin"));
+    }
+
+    [Fact]
+    public void The_real_header_collection_has_no_repeat_for_single_or_missing_headers()
+    {
+        var headers = new WebHeaderCollection { { "Host", "127.0.0.1:1" } };
+
+        Assert.False(PhoneHost.HasRepeated(headers, "Host"));
+        Assert.False(PhoneHost.HasRepeated(headers, "Origin"));
+    }
+
+    [Fact]
+    public void A_disposed_host_cannot_be_started()
+    {
+        _host.Dispose();
+
+        Assert.False(_host.TryStart());
+        Assert.False(_host.IsRunning);
+    }
+
+    [Fact]
+    public async Task A_stalled_request_is_cut_off_and_the_host_still_serves()
+    {
+        // Binding is denied in some sandboxes; then there is nothing to test here.
+        using var quick = NewHost(TimeSpan.FromSeconds(1), out var port);
+        if (!quick.TryStart())
+        {
+            return;
+        }
+
+        using var tcp = new TcpClient();
+        await tcp.ConnectAsync(IPAddress.Loopback, port);
+        var stream = tcp.GetStream();
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(
+            $"POST /api/pair HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nX-Remote: 1\r\nContent-Length: 100\r\n\r\nabc"));
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var buffer = new byte[256];
+        try
+        {
+            while (await stream.ReadAsync(buffer, cts.Token) > 0)
+            {
+            }
+        }
+        catch (Exception ex) when (ex is IOException or SocketException)
+        {
+            // Reset by the abort: also a cut-off.
+        }
+
+        using var ok = await _client.GetAsync($"http://127.0.0.1:{port}/");
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+    }
+
+    [Fact]
+    public async Task An_event_stream_outlives_the_request_timeout()
+    {
+        // Binding is denied in some sandboxes; then there is nothing to test here.
+        using var quick = NewHost(TimeSpan.FromMilliseconds(300), out var port);
+        if (!quick.TryStart())
+        {
+            return;
+        }
+
+        var token = _registry.CreatePairingToken();
+        using var pair = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{port}/api/pair")
+        {
+            Content = new StringContent($"{{\"token\":\"{token}\",\"name\":\"Phone\"}}", Encoding.UTF8, "application/json"),
+        };
+        pair.Headers.Add("X-Remote", "1");
+        using var paired = await _client.SendAsync(pair);
+        var cookie = paired.Headers.GetValues("Set-Cookie").Single().Split(';')[0];
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{port}/api/events");
+        request.Headers.Add("Cookie", cookie);
+        using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(), Encoding.UTF8);
+        Assert.Equal("event: state", await reader.ReadLineAsync(Bounded()));
+        Assert.StartsWith("data:", await reader.ReadLineAsync(Bounded()), StringComparison.Ordinal);
+        Assert.Equal("", await reader.ReadLineAsync(Bounded()));
+
+        await Task.Delay(1200);
+        _source.Current = FeedSnapshot.Empty with { Selected = "Late Hero" };
+        _source.Raise();
+
+        Assert.StartsWith("event:", await reader.ReadLineAsync(Bounded()), StringComparison.Ordinal);
+    }
+
+    private PhoneHost NewHost(TimeSpan timeout, out int port)
+    {
+        port = FreePort();
+        var own = port;
+        var handler = new PhoneHandler(_registry, _hub, new FakeAssets(), h => h == $"127.0.0.1:{own}", "9.9.9");
+        return new PhoneHost(handler, _hub, _registry, port, timeout);
     }
 
     [Fact]

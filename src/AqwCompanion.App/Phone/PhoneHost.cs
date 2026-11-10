@@ -20,7 +20,7 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
     public const int MaxBody = 4096;
 
     private static readonly TimeSpan PingEvery = TimeSpan.FromSeconds(25);
-    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DefaultRequestTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>The count of open streams of one start; a new start gets a new one, so a stream of an old start cannot upset it.</summary>
     private sealed class Slots
@@ -37,10 +37,12 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
     private HttpListener? _listener;
     private CancellationTokenSource? _cts;
     private Slots _slots = new();
+    private readonly TimeSpan _requestTimeout;
     private int _disposed;
 
-    public PhoneHost(PhoneHandler handler, PhoneHub hub, PhoneRegistry registry, int port = DefaultPort)
+    public PhoneHost(PhoneHandler handler, PhoneHub hub, PhoneRegistry registry, int port = DefaultPort, TimeSpan? requestTimeout = null)
     {
+        _requestTimeout = requestTimeout ?? DefaultRequestTimeout;
         _handler = handler;
         _hub = hub;
         _registry = registry;
@@ -63,6 +65,11 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
     {
         lock (_lock)
         {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                return false;
+            }
+
             if (_listener is not null)
             {
                 return true;
@@ -72,6 +79,7 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
             try
             {
                 listener.Prefixes.Add($"http://127.0.0.1:{_port}/");
+                ApplyWindowsTimeouts(listener);
                 listener.Start();
             }
             catch (Exception ex) when (ex is HttpListenerException or InvalidOperationException or ObjectDisposedException)
@@ -88,6 +96,27 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
             var slots = _slots;
             _ = Task.Run(() => AcceptLoopAsync(listener, slots, token));
             return true;
+        }
+    }
+
+    /// <summary>http.sys can cut off a peer that stalls on the headers, the body or an idle connection; the managed listener has no such knobs.</summary>
+    private static void ApplyWindowsTimeouts(HttpListener listener)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        try
+        {
+            var limits = listener.TimeoutManager;
+            limits.HeaderWait = DefaultRequestTimeout;
+            limits.EntityBody = DefaultRequestTimeout;
+            limits.IdleConnection = DefaultRequestTimeout;
+        }
+        catch (Exception ex) when (ex is PlatformNotSupportedException or ArgumentException or InvalidOperationException or ObjectDisposedException or HttpListenerException)
+        {
+            Log.Warning("Phone host could not set its connection timeouts: {ExceptionType}", ex.GetType().Name);
         }
     }
 
@@ -150,7 +179,7 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
                 if (_streams.TryGetValue(id, out var list))
                 {
                     // Cancelled under the lock: a stream is disposed only after it left the dictionary under the same lock.
-                    foreach (var cts in list)
+                    foreach (var cts in list.ToArray())
                     {
                         cts.Cancel();
                     }
@@ -191,8 +220,11 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
         {
             var http = context.Response;
             using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            requestCts.CancelAfter(RequestTimeout);
+            requestCts.CancelAfter(_requestTimeout);
             var rct = requestCts.Token;
+
+            // The request and response streams of HttpListener ignore cancellation mid-operation, so a stalled peer is cut off by aborting.
+            using var abortOnTimeout = rct.Register(() => TryAbort(context));
 
             if (HasRepeated(context.Request.Headers, "Host") || HasRepeated(context.Request.Headers, "Origin"))
             {
@@ -244,6 +276,7 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
             if (response.IsEventStream)
             {
                 requestCts.CancelAfter(Timeout.InfiniteTimeSpan);
+                abortOnTimeout.Dispose();
                 http.SendChunked = true;
                 await RunStreamAsync(http, response.DeviceId, ct).ConfigureAwait(false);
             }

@@ -11,6 +11,7 @@
     <AvaloniaResource Include="Assets\**" />
     <ProjectReference Include="..\AqwCompanion.Core\AqwCompanion.Core.csproj" />
     <ProjectReference Include="..\AqwCompanion.Capture\AqwCompanion.Capture.csproj" />
+    <ProjectReference Include="..\AqwCompanion.Phone\AqwCompanion.Phone.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="AqwCompanion.Tests" />

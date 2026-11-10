@@ -8,6 +8,7 @@
     <ProjectReference Include="..\..\src\AqwCompanion.Core\AqwCompanion.Core.csproj" />
     <ProjectReference Include="..\..\src\AqwCompanion.App\AqwCompanion.App.csproj" />
     <ProjectReference Include="..\..\src\AqwCompanion.Capture\AqwCompanion.Capture.csproj" />
+    <ProjectReference Include="..\..\src\AqwCompanion.Phone\AqwCompanion.Phone.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Update="Feed\*.json" CopyToOutputDirectory="PreserveNewest" />

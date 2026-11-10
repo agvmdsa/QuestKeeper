@@ -111,13 +111,21 @@ public static class CompositionRoot
             sp.GetRequiredService<IFeedSource>(), new NoticeEngine(), new NoticeLog(50), () => DateTimeOffset.UtcNow,
             ex => Log.Warning("Phone hub failed: {ExceptionType}", ex.GetType().Name)));
         services.AddSingleton<IAssetSource, EmbeddedAssetSource>();
-        services.AddSingleton(sp => new PhoneHandler(
-            sp.GetRequiredService<PhoneRegistry>(), sp.GetRequiredService<PhoneHub>(), sp.GetRequiredService<IAssetSource>(),
-            host => host == "127.0.0.1:47822" || host == "localhost:47822", AppInfo.Version));
+        services.AddSingleton<ITailscaleProcess, TailscaleProcess>();
+        services.AddSingleton<ITailscale>(sp => new TailscaleService(sp.GetRequiredService<ITailscaleProcess>()));
+        services.AddSingleton(sp =>
+        {
+            // The controller needs the host, which needs this handler: resolve the controller on first use and keep it, so a request pays one field read.
+            var controller = new Lazy<PhoneController>(() => sp.GetRequiredService<PhoneController>());
+            return new PhoneHandler(
+                sp.GetRequiredService<PhoneRegistry>(), sp.GetRequiredService<PhoneHub>(), sp.GetRequiredService<IAssetSource>(),
+                host => controller.Value.AllowedHost(host), AppInfo.Version);
+        });
         services.AddSingleton<IPhoneHost>(sp => new PhoneHost(
             sp.GetRequiredService<PhoneHandler>(), sp.GetRequiredService<PhoneHub>(), sp.GetRequiredService<PhoneRegistry>()));
         services.AddSingleton<PhoneController>(sp => new PhoneController(
-            sp.GetRequiredService<SettingsViewModel>(), sp.GetRequiredService<IPhoneHost>(), sp.GetRequiredService<PhoneHub>(), sp.GetRequiredService<PhoneRegistry>()));
+            sp.GetRequiredService<SettingsViewModel>(), sp.GetRequiredService<IPhoneHost>(), sp.GetRequiredService<PhoneHub>(), sp.GetRequiredService<PhoneRegistry>(),
+            sp.GetRequiredService<ITailscale>(), onUiThread: OnUiThread));
         services.AddSingleton<ISettingsDialog, AvaloniaSettingsDialog>();
         services.AddSingleton<IDebugWindowHost, AvaloniaDebugWindowHost>();
         services.AddSingleton<DebugModeController>();

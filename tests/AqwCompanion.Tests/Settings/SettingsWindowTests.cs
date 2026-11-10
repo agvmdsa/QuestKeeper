@@ -120,6 +120,20 @@ public class SettingsWindowTests
     }
 
     [AvaloniaFact]
+    public void The_phone_section_shows_the_tailscale_sentence_only_when_there_is_one()
+    {
+        var window = OpenWithPhone(debug: false, out var vm, out _);
+        var text = window.FindControl<TextBlock>("SettingsPhoneTailscale")!;
+        Assert.False(text.IsEffectivelyVisible);
+
+        vm.SetPhoneTailscale("Tailscale is not installed.", false);
+
+        Assert.True(text.IsEffectivelyVisible);
+        Assert.Equal("Tailscale is not installed.", text.Text);
+        Assert.False(vm.CanPair);
+    }
+
+    [AvaloniaFact]
     public void The_start_with_windows_section_is_hidden_where_it_is_not_supported()
     {
         var (window, _, _, _) = Open();

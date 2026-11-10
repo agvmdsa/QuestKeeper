@@ -117,6 +117,26 @@ public partial class SettingsViewModel : ObservableObject
 
     public void SetPhoneStatus(string text) => PhoneStatusText = text;
 
+    /// <summary>Raised when the dialog opens, so the phone controller can ask Tailscale again.</summary>
+    public event EventHandler? PhoneRefreshRequested;
+
+    /// <summary>What Tailscale offers right now, in a sentence; empty while the phone access is off. Set by the controller.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPhoneTailscaleText))]
+    private string _phoneTailscaleText = string.Empty;
+
+    /// <summary>Whether the phone page is published through Tailscale, so a pairing link can be made.</summary>
+    [ObservableProperty]
+    private bool _canPair;
+
+    public bool HasPhoneTailscaleText => PhoneTailscaleText.Length > 0;
+
+    public void SetPhoneTailscale(string text, bool canPair)
+    {
+        PhoneTailscaleText = text;
+        CanPair = canPair;
+    }
+
     public bool HasPhone => _phoneRegistry is not null;
 
     /// <summary>Whether the debug-only local pairing link is offered.</summary>
@@ -201,6 +221,7 @@ public partial class SettingsViewModel : ObservableObject
         AutoStartError = string.Empty;
         OnPropertyChanged(nameof(StartWithWindows));
         OnPropertyChanged(nameof(CanAutoStart));
+        PhoneRefreshRequested?.Invoke(this, EventArgs.Empty);
     }
 
     [ObservableProperty]

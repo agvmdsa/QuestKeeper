@@ -6,11 +6,11 @@ namespace AqwCompanion.Tests.Phone;
 
 public class PhoneRegistryTests
 {
-    private static (PhoneRegistry Registry, FakeClock Clock, MemoryPhoneFileStore Store) Build()
+    private static (PhoneRegistry Registry, ManualClock Clock, MemoryPhoneFileStore Store) Build()
     {
-        var clock = new FakeClock(new DateTimeOffset(2026, 11, 9, 12, 0, 0, TimeSpan.Zero));
+        var clock = new ManualClock(new DateTimeOffset(2026, 11, 9, 12, 0, 0, TimeSpan.Zero));
         var store = new MemoryPhoneFileStore();
-        return (new PhoneRegistry(store, clock.Read), clock, store);
+        return (new PhoneRegistry(store, clock.GetUtcNow), clock, store);
     }
 
     private static string PairDevice(PhoneRegistry registry, string? name = "Phone")
@@ -29,7 +29,7 @@ public class PhoneRegistryTests
         registry.SetEnabled(true);
 
         Assert.Equal(1, store.Saves);
-        Assert.True(new PhoneRegistry(store, clock.Read).Enabled);
+        Assert.True(new PhoneRegistry(store, clock.GetUtcNow).Enabled);
     }
 
     [Fact]
@@ -137,7 +137,7 @@ public class PhoneRegistryTests
         Assert.Null(registry.Authenticate(null));
         Assert.Null(registry.Authenticate(""));
 
-        var second = new PhoneRegistry(store, clock.Read);
+        var second = new PhoneRegistry(store, clock.GetUtcNow);
         Assert.Equal(device.Id, second.Authenticate(token)?.Id);
     }
 
@@ -222,8 +222,8 @@ public class PhoneRegistryTests
     [Fact]
     public void RegistryToleratesAFileWithNullDevices()
     {
-        var clock = new FakeClock(new DateTimeOffset(2026, 11, 9, 12, 0, 0, TimeSpan.Zero));
-        var registry = new PhoneRegistry(new MemoryPhoneFileStore(new PhoneFile(true, null!)), clock.Read);
+        var clock = new ManualClock(new DateTimeOffset(2026, 11, 9, 12, 0, 0, TimeSpan.Zero));
+        var registry = new PhoneRegistry(new MemoryPhoneFileStore(new PhoneFile(true, null!)), clock.GetUtcNow);
 
         Assert.True(registry.Enabled);
         Assert.Empty(registry.List());
@@ -393,6 +393,7 @@ public class PhoneRegistryTests
         registry.Forget();
 
         Assert.Equal(1, store.Deletes);
+        Assert.Same(PhoneFile.Empty, store.Saved);
         Assert.Empty(registry.List());
         Assert.Null(registry.Authenticate(token));
         Assert.True(registry.Enabled);
@@ -448,5 +449,38 @@ public class PhoneRegistryTests
         registry.Forget();
         registry.TryPair("one more", "x");
         Assert.Equal(PairStatus.Paired, registry.TryPair(registry.CreatePairingToken(), "x").Status);
+    }
+
+    [Fact]
+    public void AThrowingSubscriberDoesNotStopLaterSubscribers()
+    {
+        var (registry, _, _) = Build();
+        registry.DevicesRevoked += _ => throw new InvalidOperationException("boom");
+        registry.DevicesChanged += () => throw new InvalidOperationException("boom");
+        var (revoked, changed) = Watch(registry);
+        var token = PairDevice(registry);
+        var id = registry.Authenticate(token)!.Id;
+        var changedBefore = changed();
+
+        registry.Revoke(id);
+
+        Assert.Equal([id], Assert.Single(revoked));
+        Assert.Equal(changedBefore + 1, changed());
+    }
+
+    [Fact]
+    public void ToStringOfPairRecordsRedactsTokens()
+    {
+        var (registry, _, _) = Build();
+        var pairingToken = registry.CreatePairingToken();
+        var result = registry.TryPair(pairingToken, "Phone");
+
+        var resultText = result.ToString();
+        var bodyText = new PairBody(pairingToken, "Phone").ToString();
+
+        Assert.DoesNotContain(result.DeviceToken!, resultText);
+        Assert.Contains("Paired", resultText);
+        Assert.DoesNotContain(pairingToken, bodyText);
+        Assert.Contains("Phone", bodyText);
     }
 }

@@ -30,9 +30,23 @@ public sealed record PairedDevice(string Id, string Name, DateTimeOffset Created
 
 public enum PairStatus { Paired, Invalid, Locked }
 
-public sealed record PairResult(PairStatus Status, string? DeviceToken = null);
+public sealed record PairResult(PairStatus Status, string? DeviceToken = null)
+{
+    private bool PrintMembers(StringBuilder builder)
+    {
+        builder.Append("Status = ").Append(Status).Append(", DeviceToken = <redacted>");
+        return true;
+    }
+}
 
-public sealed record PairBody(string? Token, string? Name);
+public sealed record PairBody(string? Token, string? Name)
+{
+    private bool PrintMembers(StringBuilder builder)
+    {
+        builder.Append("Token = <redacted>, Name = ").Append(Name);
+        return true;
+    }
+}
 
 [JsonSourceGenerationOptions(JsonSerializerDefaults.Web, DefaultIgnoreCondition = JsonIgnoreCondition.Never)]
 [JsonSerializable(typeof(PhoneFile))]
@@ -288,27 +302,33 @@ public sealed class PhoneRegistry
 
     private void Raise(IReadOnlyList<string>? revoked, bool changed)
     {
-        if (revoked is { Count: > 0 })
+        if (revoked is { Count: > 0 } && DevicesRevoked is { } onRevoked)
         {
-            try
+            foreach (var handler in onRevoked.GetInvocationList().Cast<Action<IReadOnlyList<string>>>())
             {
-                DevicesRevoked?.Invoke(revoked);
-            }
-            catch (Exception)
-            {
-                // A listener must never break the registry.
+                try
+                {
+                    handler(revoked);
+                }
+                catch (Exception)
+                {
+                    // One listener must never stop the others (the host closes revoked streams here).
+                }
             }
         }
 
-        if (changed)
+        if (changed && DevicesChanged is { } onChanged)
         {
-            try
+            foreach (var handler in onChanged.GetInvocationList().Cast<Action>())
             {
-                DevicesChanged?.Invoke();
-            }
-            catch (Exception)
-            {
-                // A listener must never break the registry.
+                try
+                {
+                    handler();
+                }
+                catch (Exception)
+                {
+                    // One listener must never stop the others.
+                }
             }
         }
     }

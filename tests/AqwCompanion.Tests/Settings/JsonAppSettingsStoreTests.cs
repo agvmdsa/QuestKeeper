@@ -46,6 +46,26 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         Assert.False(older.LocalFeed);
     }
 
+    [Fact]
+    public void The_phone_access_setting_is_saved_and_an_older_file_without_it_means_off()
+    {
+        new JsonAppSettingsStore(_paths.SettingsPath).Save(new AppSettings(PhoneAccess: true));
+        Assert.True(new JsonAppSettingsStore(_paths.SettingsPath).Load().PhoneAccess);
+
+        File.WriteAllText(_paths.SettingsPath, """{"debugMode":true,"localFeed":true}""");
+        var older = new JsonAppSettingsStore(_paths.SettingsPath).Load();
+        Assert.True(older.LocalFeed);
+        Assert.False(older.PhoneAccess);
+    }
+
+    [Fact]
+    public void Turning_debug_mode_on_keeps_phone_access()
+    {
+        var loaded = new AppSettings(PhoneAccess: true);
+
+        Assert.True((loaded with { DebugMode = true }).PhoneAccess);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("not json")]

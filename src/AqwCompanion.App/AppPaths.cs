@@ -9,6 +9,7 @@ public sealed record AppPaths(string Root)
     public string ReputationDirectory => Path.Combine(Root, "reputation");
     public string FeedTokenPath => Path.Combine(Root, "feed.token");
     public string SettingsPath => Path.Combine(Root, "settings.json");
+    public string PhonePath => Path.Combine(Root, "phone.json");
     public string DatabasePath => Path.Combine(DataDirectory, "companion.db");
 
     /// <summary>The per-user root, or <paramref name="dataRoot"/> when it names an existing directory (an elevated relaunch).</summary>

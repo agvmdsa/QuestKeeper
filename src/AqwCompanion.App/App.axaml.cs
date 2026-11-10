@@ -1,6 +1,7 @@
 using AqwCompanion.App.Feed;
 using AqwCompanion.App.GameData;
 using AqwCompanion.App.Infrastructure.Elevation;
+using AqwCompanion.App.Phone;
 using AqwCompanion.App.Shell;
 using Avalonia;
 using Avalonia.Controls;
@@ -43,6 +44,7 @@ public partial class CompanionApp : Application
             _ = main.HardFarms.RestoreAsync();
             main.Debug.Start();
             services.GetRequiredService<LocalFeedController>().Start();
+            services.GetRequiredService<PhoneController>().Start();
             var capture = services.GetRequiredService<CaptureSession>();
             _ = capture.RestoreAsync();
             _ = capture.StartAsync();

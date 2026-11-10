@@ -3,6 +3,7 @@ using AqwCompanion.App.Feed;
 using AqwCompanion.App.Infrastructure.AutoStart;
 using AqwCompanion.App.Settings;
 using AqwCompanion.Core.Forgetting;
+using AqwCompanion.Phone.Devices;
 using AqwCompanion.Tests.TestDoubles;
 
 namespace AqwCompanion.Tests.Settings;
@@ -300,5 +301,75 @@ public class SettingsViewModelTests
         }
 
         public void Forget() => throw new InvalidOperationException();
+    }
+
+    private static (SettingsViewModel Vm, PhoneRegistry Registry, List<string> Copied) BuildWithPhone(bool debug)
+    {
+        var registry = new PhoneRegistry(new MemoryPhoneFileStore(), () => DateTimeOffset.UtcNow);
+        var copied = new List<string>();
+        var vm = new SettingsViewModel(
+            new FakeAppSettingsStore(new AppSettings(DebugMode: debug)), Coordinator(() => true), null, null,
+            registry, text =>
+            {
+                copied.Add(text);
+                return Task.CompletedTask;
+            });
+        return (vm, registry, copied);
+    }
+
+    [Fact]
+    public void The_phone_switch_is_saved_and_raises_the_event()
+    {
+        var store = new FakeAppSettingsStore();
+        var vm = Build(store: store);
+        var raised = 0;
+        vm.PhoneAccessChanged += (_, _) => raised++;
+        Assert.False(vm.PhoneAccessEnabled);
+
+        vm.PhoneAccessEnabled = true;
+        vm.PhoneAccessEnabled = true;
+
+        Assert.True(store.Current.PhoneAccess);
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
+    public void The_phone_status_defaults_to_off_and_can_be_set()
+    {
+        var vm = Build();
+        Assert.Equal("Off", vm.PhoneStatusText);
+
+        vm.SetPhoneStatus("Listening on 127.0.0.1:47822");
+
+        Assert.Equal("Listening on 127.0.0.1:47822", vm.PhoneStatusText);
+    }
+
+    [Fact]
+    public void Without_a_registry_there_is_no_phone_section_and_no_local_link()
+    {
+        var vm = Build();
+
+        Assert.False(vm.HasPhone);
+        Assert.False(vm.CopyLocalPairingLinkCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task The_debug_command_puts_a_local_pairing_link_on_the_clipboard_only_in_debug_mode()
+    {
+        var (off, _, copiedOff) = BuildWithPhone(debug: false);
+        Assert.True(off.HasPhone);
+        Assert.False(off.IsLocalPairingLinkVisible);
+        Assert.False(off.CopyLocalPairingLinkCommand.CanExecute(null));
+        await off.CopyLocalPairingLinkCommand.ExecuteAsync(null);
+        Assert.Empty(copiedOff);
+
+        var (on, registry, copied) = BuildWithPhone(debug: true);
+        Assert.True(on.IsLocalPairingLinkVisible);
+        await on.CopyLocalPairingLinkCommand.ExecuteAsync(null);
+
+        var link = Assert.Single(copied);
+        Assert.Matches(@"^http://127\.0\.0\.1:47822/#t=[A-Za-z0-9_-]{43}$", link);
+        Assert.Equal(PairStatus.Paired, registry.TryPair(link[(link.IndexOf("#t=", StringComparison.Ordinal) + 3)..], "Test").Status);
+        Assert.DoesNotContain("#t=", on.PhoneStatusText);
     }
 }

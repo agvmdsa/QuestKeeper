@@ -2,6 +2,7 @@ using AqwCompanion.App.Feed;
 using AqwCompanion.App.Infrastructure.AutoStart;
 using AqwCompanion.App.Settings;
 using AqwCompanion.Core.Forgetting;
+using AqwCompanion.Phone.Devices;
 using AqwCompanion.Tests.TestDoubles;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
@@ -81,6 +82,41 @@ public class SettingsWindowTests
         {
             Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
         }
+    }
+
+    private static SettingsWindow OpenWithPhone(bool debug, out SettingsViewModel vm, out FakeAppSettingsStore store)
+    {
+        store = new FakeAppSettingsStore(new AppSettings(DebugMode: debug));
+        var registry = new PhoneRegistry(new MemoryPhoneFileStore(), () => DateTimeOffset.UtcNow);
+        vm = new SettingsViewModel(store, new ForgetCoordinator(() => true, () => []), null, null, registry, _ => Task.CompletedTask);
+        var window = new SettingsWindow { DataContext = vm };
+        window.Show();
+        return window;
+    }
+
+    [AvaloniaFact]
+    public void The_phone_section_is_hidden_when_the_app_has_no_phone_access()
+    {
+        var (window, _, _, _) = Open();
+
+        Assert.False(window.FindControl<Border>("SettingsPhoneSection")!.IsEffectivelyVisible);
+    }
+
+    [AvaloniaFact]
+    public void The_phone_section_shows_the_switch_and_the_status_and_hides_the_debug_link_unless_debug_mode_is_on()
+    {
+        var window = OpenWithPhone(debug: false, out var vm, out var store);
+        vm.SetPhoneStatus("Listening on 127.0.0.1:47822");
+
+        Assert.True(window.FindControl<Border>("SettingsPhoneSection")!.IsEffectivelyVisible);
+        Assert.Equal("Listening on 127.0.0.1:47822", window.FindControl<TextBlock>("SettingsPhoneStatus")!.Text);
+        Assert.False(window.FindControl<Button>("SettingsPhoneCopyLink")!.IsEffectivelyVisible);
+
+        window.FindControl<ToggleSwitch>("SettingsPhoneSwitch")!.IsChecked = true;
+        Assert.True(store.Current.PhoneAccess);
+
+        vm.DebugMode = true;
+        Assert.True(window.FindControl<Button>("SettingsPhoneCopyLink")!.IsEffectivelyVisible);
     }
 
     [AvaloniaFact]

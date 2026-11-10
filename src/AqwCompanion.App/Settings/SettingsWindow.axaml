@@ -72,6 +72,24 @@
       </StackPanel>
     </Border>
 
+    <Border x:Name="SettingsPhoneSection" Classes="divider" IsVisible="{Binding HasPhone}">
+      <StackPanel Spacing="4">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="2" Margin="0,0,16,0">
+            <TextBlock Classes="sectionTitle" Text="{x:Static st:SettingsViewModel.PhoneTitleText}" />
+            <TextBlock Classes="muted" TextWrapping="Wrap" Text="{x:Static st:SettingsViewModel.PhoneDescriptionText}" />
+          </StackPanel>
+          <ToggleSwitch x:Name="SettingsPhoneSwitch" Grid.Column="1" IsChecked="{Binding PhoneAccessEnabled, Mode=TwoWay}"
+                        OnContent="" OffContent="" VerticalAlignment="Center" AutomationProperties.Name="Watch my characters from my phone" />
+        </Grid>
+        <TextBlock x:Name="SettingsPhoneStatus" Text="{Binding PhoneStatusText}" FontWeight="SemiBold"
+                   AutomationProperties.Name="{Binding PhoneStatusText}" />
+        <Button x:Name="SettingsPhoneCopyLink" HorizontalAlignment="Left" Content="{x:Static st:SettingsViewModel.PhoneCopyLinkText}"
+                Command="{Binding CopyLocalPairingLinkCommand}" IsVisible="{Binding IsLocalPairingLinkVisible}"
+                AutomationProperties.Name="Copy a pairing link for this PC (debug)" />
+      </StackPanel>
+    </Border>
+
     <Border Classes="divider">
       <Grid ColumnDefinitions="*,Auto">
         <StackPanel Spacing="2" Margin="0,0,16,0">

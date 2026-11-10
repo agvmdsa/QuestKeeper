@@ -1,6 +1,8 @@
 using AqwCompanion.App.Feed;
 using AqwCompanion.App.Infrastructure.AutoStart;
+using AqwCompanion.App.Phone;
 using AqwCompanion.Core.Forgetting;
+using AqwCompanion.Phone.Devices;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -17,6 +19,9 @@ public partial class SettingsViewModel : ObservableObject
     public const string FeedDescriptionText = "Opens a read-only feed on this computer only (127.0.0.1) with your characters' numbers, factions and Hard Farms. A program needs the secret in the file below to read it. Nothing is sent to the game.";
     public const string FeedNewSecretText = "New secret";
     public const string FeedNewSecretWarningText = "Programs that use the old secret stop working until they read the new one.";
+    public const string PhoneTitleText = "Watch my characters from my phone";
+    public const string PhoneDescriptionText = "Shows your characters' numbers, factions and Hard Farms on a phone you pair, over your own Tailscale network. It only watches and never sends anything to the game.";
+    public const string PhoneCopyLinkText = "Copy local pairing link";
     public const string DebugTitleText = "Debug mode";
     public const string DebugDescriptionText = "Shows the capture and packet details in their own window. It also opens with Ctrl+Shift+D and from the tray icon menu.";
     public const string PrivacyTitleText = "Privacy";
@@ -41,11 +46,16 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ForgetCoordinator _forgetting;
     private readonly IAutoStart _autoStart;
     private readonly FeedSecretStore? _feedSecret;
+    private readonly PhoneRegistry? _phoneRegistry;
+    private readonly Func<string, Task>? _copyToClipboard;
     private AppSettings _settings;
     private bool _startWithWindows;
 
-    public SettingsViewModel(IAppSettingsStore store, ForgetCoordinator forgetting, IAutoStart? autoStart = null, FeedSecretStore? feedSecret = null)
+    public SettingsViewModel(IAppSettingsStore store, ForgetCoordinator forgetting, IAutoStart? autoStart = null, FeedSecretStore? feedSecret = null,
+        PhoneRegistry? phoneRegistry = null, Func<string, Task>? copyToClipboard = null)
     {
+        _phoneRegistry = phoneRegistry;
+        _copyToClipboard = copyToClipboard;
         _store = store;
         _forgetting = forgetting;
         _autoStart = autoStart ?? new NoAutoStart();
@@ -93,6 +103,50 @@ public partial class SettingsViewModel : ObservableObject
     {
         _feedSecret?.Regenerate();
         FeedSecretRegenerated?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Raised after <see cref="PhoneAccessEnabled"/> changed and was saved.</summary>
+    public event EventHandler? PhoneAccessChanged;
+
+    /// <summary>What the phone access is doing, in words; set by the controller that runs it.</summary>
+    [ObservableProperty]
+    private string _phoneStatusText = "Off";
+
+    public void SetPhoneStatus(string text) => PhoneStatusText = text;
+
+    public bool HasPhone => _phoneRegistry is not null;
+
+    /// <summary>Whether the debug-only local pairing link is offered.</summary>
+    public bool IsLocalPairingLinkVisible => HasPhone && DebugMode;
+
+    /// <summary>Whether the phone page may be reached over the tailnet. Saved here, which is the source of truth for the switch.</summary>
+    public bool PhoneAccessEnabled
+    {
+        get => _settings.PhoneAccess;
+        set
+        {
+            if (_settings.PhoneAccess == value)
+            {
+                return;
+            }
+
+            _settings = _settings with { PhoneAccess = value };
+            _store.Save(_settings);
+            OnPropertyChanged();
+            PhoneAccessChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>Debug aid: puts a one-time pairing link for this PC on the clipboard. The link is never logged or shown.</summary>
+    [RelayCommand(CanExecute = nameof(IsLocalPairingLinkVisible))]
+    private async Task CopyLocalPairingLink()
+    {
+        if (!IsLocalPairingLinkVisible || _phoneRegistry is null || _copyToClipboard is null)
+        {
+            return;
+        }
+
+        await _copyToClipboard($"http://127.0.0.1:{PhoneHost.DefaultPort}/#t={_phoneRegistry.CreatePairingToken()}");
     }
 
     /// <summary>Whether the switch for starting with Windows is offered at all.</summary>
@@ -172,6 +226,8 @@ public partial class SettingsViewModel : ObservableObject
             _settings = _settings with { DebugMode = value };
             _store.Save(_settings);
             OnPropertyChanged();
+            OnPropertyChanged(nameof(IsLocalPairingLinkVisible));
+            CopyLocalPairingLinkCommand.NotifyCanExecuteChanged();
             DebugModeChanged?.Invoke(this, EventArgs.Empty);
         }
     }

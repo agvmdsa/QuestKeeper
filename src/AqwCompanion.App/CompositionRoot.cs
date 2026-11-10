@@ -8,6 +8,7 @@ using AqwCompanion.App.Infrastructure;
 using AqwCompanion.App.Infrastructure.AutoStart;
 using AqwCompanion.App.Infrastructure.Elevation;
 using AqwCompanion.App.Infrastructure.Persistence;
+using AqwCompanion.App.Phone;
 using AqwCompanion.App.Inventory;
 using AqwCompanion.App.Settings;
 using AqwCompanion.App.Shell;
@@ -16,7 +17,14 @@ using AqwCompanion.Core.Diagnostics;
 using AqwCompanion.Core.Feed;
 using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Persistence;
+using AqwCompanion.Phone.Devices;
+using AqwCompanion.Phone.Hub;
+using AqwCompanion.Phone.Notices;
+using AqwCompanion.Phone.Web;
 using AqwCompanion.Core.Wiki;
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input.Platform;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -86,7 +94,7 @@ public static class CompositionRoot
         services.AddSingleton(sp => new FeedSecretStore(sp.GetRequiredService<AppPaths>().FeedTokenPath));
         services.AddSingleton(sp => new SettingsViewModel(
             sp.GetRequiredService<IAppSettingsStore>(), sp.GetRequiredService<ForgetCoordinator>(), sp.GetRequiredService<IAutoStart>(),
-            sp.GetRequiredService<FeedSecretStore>()));
+            sp.GetRequiredService<FeedSecretStore>(), sp.GetRequiredService<PhoneRegistry>(), CopyToClipboardAsync));
         services.AddSingleton<IFeedSource>(sp => new SessionFeedSource(
             sp.GetRequiredService<CaptureSession>(), sp.GetRequiredService<GameDataViewModel>(), sp.GetRequiredService<HardFarmsViewModel>()));
         services.AddSingleton<ILocalFeedHost>(sp => new HttpListenerFeedHost(
@@ -97,6 +105,19 @@ public static class CompositionRoot
                 AppInfo.Version),
             sp.GetRequiredService<IFeedSource>()));
         services.AddSingleton<LocalFeedController>();
+        services.AddSingleton<IPhoneFileStore>(sp => new PhoneStore(sp.GetRequiredService<AppPaths>().PhonePath));
+        services.AddSingleton(sp => new PhoneRegistry(sp.GetRequiredService<IPhoneFileStore>(), () => DateTimeOffset.UtcNow));
+        services.AddSingleton(sp => new PhoneHub(
+            sp.GetRequiredService<IFeedSource>(), new NoticeEngine(), new NoticeLog(50), () => DateTimeOffset.UtcNow,
+            ex => Log.Warning("Phone hub failed: {ExceptionType}", ex.GetType().Name)));
+        services.AddSingleton<IAssetSource, EmptyAssetSource>();
+        services.AddSingleton(sp => new PhoneHandler(
+            sp.GetRequiredService<PhoneRegistry>(), sp.GetRequiredService<PhoneHub>(), sp.GetRequiredService<IAssetSource>(),
+            host => host == "127.0.0.1:47822" || host == "localhost:47822", AppInfo.Version));
+        services.AddSingleton<IPhoneHost>(sp => new PhoneHost(
+            sp.GetRequiredService<PhoneHandler>(), sp.GetRequiredService<PhoneHub>(), sp.GetRequiredService<PhoneRegistry>()));
+        services.AddSingleton<PhoneController>(sp => new PhoneController(
+            sp.GetRequiredService<SettingsViewModel>(), sp.GetRequiredService<IPhoneHost>(), sp.GetRequiredService<PhoneHub>(), sp.GetRequiredService<PhoneRegistry>()));
         services.AddSingleton<ISettingsDialog, AvaloniaSettingsDialog>();
         services.AddSingleton<IDebugWindowHost, AvaloniaDebugWindowHost>();
         services.AddSingleton<DebugModeController>();
@@ -107,6 +128,7 @@ public static class CompositionRoot
                 sp.GetRequiredService<HardFarmsViewModel>(),
                 new LegacyReputationFolder(sp.GetRequiredService<AppPaths>()),
                 sp.GetRequiredService<CaptureSession>(),
+                sp.GetRequiredService<PhoneController>(),
             ]));
         services.AddSingleton<DiagnosticsViewModel>();
         services.AddSingleton<MainViewModel>();
@@ -116,6 +138,16 @@ public static class CompositionRoot
             ValidateOnBuild = true,
             ValidateScopes = true,
         });
+    }
+
+    // Puts text on the clipboard of the first open window; used by the debug pairing link only.
+    private static async Task CopyToClipboardAsync(string text)
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+            && desktop.Windows.Select(w => w.Clipboard).FirstOrDefault(c => c is not null) is { } clipboard)
+        {
+            await clipboard.SetTextAsync(text);
+        }
     }
 
     // Runs the action at once on the UI thread, otherwise posts it there; for view models fed from background threads.

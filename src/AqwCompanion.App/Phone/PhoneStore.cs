@@ -44,13 +44,17 @@ public sealed class PhoneStore(string path) : IPhoneFileStore
 
     public void Delete()
     {
-        try
+        // A crashed save can leave the temp file behind, and it holds the same token hashes.
+        foreach (var file in new[] { path, path + ".tmp" })
         {
-            File.Delete(path);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            Log.Error("Phone file delete failed: {ExceptionType}", ex.GetType().Name);
+            try
+            {
+                File.Delete(file);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Log.Error("Phone file delete failed: {ExceptionType}", ex.GetType().Name);
+            }
         }
     }
 }

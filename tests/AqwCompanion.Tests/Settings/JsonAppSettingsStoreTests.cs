@@ -59,11 +59,29 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public void Turning_debug_mode_on_keeps_phone_access()
+    public void Turning_debug_mode_on_after_phone_access_keeps_both_through_the_store()
     {
-        var loaded = new AppSettings(PhoneAccess: true);
+        var store = new JsonAppSettingsStore(_paths.SettingsPath);
+        store.Save(new AppSettings(PhoneAccess: true));
 
-        Assert.True((loaded with { DebugMode = true }).PhoneAccess);
+        store.Save(store.Load() with { DebugMode = true });
+
+        var loaded = new JsonAppSettingsStore(_paths.SettingsPath).Load();
+        Assert.True(loaded.DebugMode);
+        Assert.True(loaded.PhoneAccess);
+    }
+
+    [Fact]
+    public void Turning_phone_access_on_after_debug_mode_keeps_both_through_the_store()
+    {
+        var store = new JsonAppSettingsStore(_paths.SettingsPath);
+        store.Save(new AppSettings(DebugMode: true));
+
+        store.Save(store.Load() with { PhoneAccess = true });
+
+        var loaded = new JsonAppSettingsStore(_paths.SettingsPath).Load();
+        Assert.True(loaded.DebugMode);
+        Assert.True(loaded.PhoneAccess);
     }
 
     [Theory]

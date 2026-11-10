@@ -24,6 +24,17 @@ public class SettingsViewModelTests
     }
 
     [Fact]
+    public void Turning_debug_mode_on_keeps_the_saved_phone_access_setting()
+    {
+        var store = new FakeAppSettingsStore(new AppSettings(PhoneAccess: true));
+
+        Build(store: store).DebugMode = true;
+
+        Assert.True(store.Current.DebugMode);
+        Assert.True(store.Current.PhoneAccess);
+    }
+
+    [Fact]
     public void Turning_debug_mode_on_saves_it_and_tells_the_app()
     {
         var store = new FakeAppSettingsStore();

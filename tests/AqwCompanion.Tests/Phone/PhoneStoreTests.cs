@@ -80,4 +80,16 @@ public sealed class PhoneStoreTests : IDisposable
         Assert.False(File.Exists(_paths.PhonePath));
         Assert.Null(Record.Exception(store.Delete));
     }
+
+    [Fact]
+    public void Delete_also_removes_a_leftover_temp_file()
+    {
+        Directory.CreateDirectory(_paths.Root);
+        File.WriteAllText(_paths.PhonePath, "{}");
+        File.WriteAllText(_paths.PhonePath + ".tmp", "{}");
+
+        new PhoneStore(_paths.PhonePath).Delete();
+
+        Assert.Empty(Directory.GetFiles(_paths.Root));
+    }
 }

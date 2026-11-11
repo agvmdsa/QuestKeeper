@@ -3,6 +3,7 @@ using AqwCompanion.App.Feed;
 using AqwCompanion.App.Infrastructure.AutoStart;
 using AqwCompanion.App.Settings;
 using AqwCompanion.Core.Forgetting;
+using AqwCompanion.Phone.Devices;
 using AqwCompanion.Tests.TestDoubles;
 
 namespace AqwCompanion.Tests.Settings;
@@ -21,6 +22,17 @@ public class SettingsViewModelTests
     {
         Assert.True(Build(store: new FakeAppSettingsStore(new AppSettings(DebugMode: true))).DebugMode);
         Assert.False(Build().DebugMode);
+    }
+
+    [Fact]
+    public void Turning_debug_mode_on_keeps_the_saved_phone_access_setting()
+    {
+        var store = new FakeAppSettingsStore(new AppSettings(PhoneAccess: true));
+
+        Build(store: store).DebugMode = true;
+
+        Assert.True(store.Current.DebugMode);
+        Assert.True(store.Current.PhoneAccess);
     }
 
     [Fact]
@@ -54,6 +66,9 @@ public class SettingsViewModelTests
         Assert.Contains("never", SettingsViewModel.PrivacyText);
         Assert.Contains("e-mail", SettingsViewModel.PrivacyText);
         Assert.Contains("other players", SettingsViewModel.PrivacyText);
+        Assert.Contains("Phone access", SettingsViewModel.PrivacyText);
+        Assert.Contains("Tailscale", SettingsViewModel.PrivacyText);
+        Assert.DoesNotContain("Nothing leaves this computer", SettingsViewModel.PrivacyText);
         Assert.Contains("Artix Entertainment", SettingsViewModel.CreditsText);
         Assert.Contains("CC BY-SA", SettingsViewModel.CreditsText);
         Assert.Equal(SettingsViewModel.DisplayVersion(AppInfo.Version), Build().Version);
@@ -289,5 +304,95 @@ public class SettingsViewModelTests
         }
 
         public void Forget() => throw new InvalidOperationException();
+    }
+
+    private static (SettingsViewModel Vm, PhoneRegistry Registry, List<string> Copied) BuildWithPhone(bool debug, Func<string, Task>? copy = null, Func<bool>? available = null)
+    {
+        var registry = new PhoneRegistry(new MemoryPhoneFileStore(), () => DateTimeOffset.UtcNow);
+        var copied = new List<string>();
+        var vm = new SettingsViewModel(
+            new FakeAppSettingsStore(new AppSettings(DebugMode: debug)), Coordinator(() => true), null, null,
+            registry, copy ?? (text =>
+            {
+                copied.Add(text);
+                return Task.CompletedTask;
+            }), available);
+        return (vm, registry, copied);
+    }
+
+    [Fact]
+    public void The_phone_switch_is_saved_and_raises_the_event()
+    {
+        var store = new FakeAppSettingsStore();
+        var vm = Build(store: store);
+        var raised = 0;
+        vm.PhoneAccessChanged += (_, _) => raised++;
+        Assert.False(vm.PhoneAccessEnabled);
+
+        vm.PhoneAccessEnabled = true;
+        vm.PhoneAccessEnabled = true;
+
+        Assert.True(store.Current.PhoneAccess);
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
+    public void The_phone_status_defaults_to_off_and_can_be_set()
+    {
+        var vm = Build();
+        Assert.Equal("Off", vm.PhoneStatusText);
+
+        vm.SetPhoneStatus("Listening on 127.0.0.1:47822");
+
+        Assert.Equal("Listening on 127.0.0.1:47822", vm.PhoneStatusText);
+    }
+
+    [Fact]
+    public void Without_a_registry_there_is_no_phone_section_and_no_local_link()
+    {
+        var vm = Build();
+
+        Assert.False(vm.HasPhone);
+        Assert.False(vm.CopyLocalPairingLinkCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task The_debug_command_puts_a_local_pairing_link_on_the_clipboard_only_in_debug_mode()
+    {
+        var (off, _, copiedOff) = BuildWithPhone(debug: false);
+        Assert.True(off.HasPhone);
+        Assert.False(off.IsLocalPairingLinkVisible);
+        Assert.False(off.CopyLocalPairingLinkCommand.CanExecute(null));
+        await off.CopyLocalPairingLinkCommand.ExecuteAsync(null);
+        Assert.Empty(copiedOff);
+
+        var (on, registry, copied) = BuildWithPhone(debug: true);
+        Assert.True(on.IsLocalPairingLinkVisible);
+        await on.CopyLocalPairingLinkCommand.ExecuteAsync(null);
+
+        var link = Assert.Single(copied);
+        Assert.Matches(@"^http://127\.0\.0\.1:47822/#t=[A-Za-z0-9_-]{43}$", link);
+        Assert.Equal(PairStatus.Paired, registry.TryPair(link[(link.IndexOf("#t=", StringComparison.Ordinal) + 3)..], "Test").Status);
+        Assert.DoesNotContain("#t=", on.PhoneStatusText);
+    }
+
+    [Fact]
+    public async Task No_pairing_token_is_made_when_there_is_no_clipboard()
+    {
+        var (vm, _, copied) = BuildWithPhone(debug: true, available: () => false);
+
+        await vm.CopyLocalPairingLinkCommand.ExecuteAsync(null);
+
+        Assert.Empty(copied);
+    }
+
+    [Fact]
+    public async Task A_throwing_clipboard_does_not_escape_the_command()
+    {
+        var (vm, _, _) = BuildWithPhone(debug: true, copy: _ => throw new InvalidOperationException("boom"));
+
+        var ex = await Record.ExceptionAsync(() => vm.CopyLocalPairingLinkCommand.ExecuteAsync(null));
+
+        Assert.Null(ex);
     }
 }

@@ -7,12 +7,15 @@ using AqwCompanion.App.Infrastructure.AutoStart;
 using AqwCompanion.App.Infrastructure.Elevation;
 using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Inventory;
+using AqwCompanion.App.Phone;
 using AqwCompanion.App.Settings;
 using AqwCompanion.App.Shell;
 using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Inventory;
 using AqwCompanion.Core.Persistence;
 using AqwCompanion.Core.Wiki;
+using AqwCompanion.Phone.Devices;
+using AqwCompanion.Phone.Hub;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -86,6 +89,54 @@ public class CompositionRootTests
         Assert.Equal(paths.FeedTokenPath, services.GetRequiredService<SettingsViewModel>().FeedSecretPath);
         Assert.Equal("Off", services.GetRequiredService<LocalFeedController>().ListeningText is null ? "" : services.GetRequiredService<SettingsViewModel>().FeedStatusText);
         Assert.False(Directory.Exists(paths.Root));
+    }
+
+    [Fact]
+    public void Container_resolves_the_phone_access_without_opening_a_port_or_writing_a_file_and_forgets_through_the_coordinator()
+    {
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
+
+        using var services = CompositionRoot.Build(paths);
+
+        var controller = services.GetRequiredService<PhoneController>();
+        Assert.Same(controller, services.GetRequiredService<PhoneController>());
+        Assert.NotNull(services.GetRequiredService<PhoneHub>());
+        Assert.False(services.GetRequiredService<IPhoneHost>().IsRunning);
+        Assert.Equal("Off", services.GetRequiredService<SettingsViewModel>().PhoneStatusText);
+        Assert.True(services.GetRequiredService<SettingsViewModel>().HasPhone);
+        Assert.False(File.Exists(paths.PhonePath));
+        Assert.False(Directory.Exists(paths.Root));
+
+        // It takes part in Forgetting: the coordinator revokes the paired devices of the registry the controller works on.
+        var registry = services.GetRequiredService<PhoneRegistry>();
+        Assert.Equal(PairStatus.Paired, registry.TryPair(registry.CreatePairingToken(), "Phone").Status);
+        try
+        {
+            services.GetRequiredService<ForgetCoordinator>().Forget();
+            Assert.Empty(registry.List());
+        }
+        finally
+        {
+            if (Directory.Exists(paths.Root))
+            {
+                Directory.Delete(paths.Root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void The_phone_controller_is_the_last_forget_participant()
+    {
+        // PhoneController.Forget resets the hub, which reads the feed: every other participant must have forgotten first,
+        // or the phone host comes back serving data from before the Forget.
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
+
+        using var services = CompositionRoot.Build(paths);
+
+        var participants = CompositionRoot.ForgetParticipants(services).ToList();
+        Assert.True(participants.Count > 1);
+        Assert.Same(services.GetRequiredService<PhoneController>(), participants[^1]);
+        Assert.Single(participants, p => p is PhoneController);
     }
 
     [Fact]

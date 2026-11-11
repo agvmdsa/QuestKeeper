@@ -1,0 +1,78 @@
+{
+  "Version": "1.104.6-tXXXXXXXXX-gXXXXXXXXX",
+  "TUN": true,
+  "BackendState": "Running",
+  "HaveNodeKey": true,
+  "AuthURL": "",
+  "TailscaleIPs": ["100.64.0.1", "fd7a:115c:a1e0::1"],
+  "Self": {
+    "ID": "nXXXXXXXXXXXXCNTRL",
+    "NodeID": 1111111111111111,
+    "PublicKey": "nodekey:0000000000000000000000000000000000000000000000000000000000000000",
+    "HostName": "MY-PC",
+    "DNSName": "my-pc.tail1234.ts.net.",
+    "OS": "windows",
+    "UserID": 2222222222222222,
+    "TailscaleIPs": ["100.64.0.1", "fd7a:115c:a1e0::1"],
+    "AllowedIPs": ["100.64.0.1/32", "fd7a:115c:a1e0::1/128"],
+    "Addrs": ["192.0.2.1:41641"],
+    "CurAddr": "",
+    "Relay": "sao",
+    "PeerRelay": "",
+    "RxBytes": 0,
+    "TxBytes": 0,
+    "Created": "2026-01-01T00:00:00Z",
+    "LastWrite": "0001-01-01T00:00:00Z",
+    "LastSeen": "0001-01-01T00:00:00Z",
+    "LastHandshake": "0001-01-01T00:00:00Z",
+    "Online": true,
+    "ExitNode": false,
+    "ExitNodeOption": false,
+    "Active": false,
+    "PeerAPIURL": ["http://100.64.0.1:61181"],
+    "TaildropTarget": 0,
+    "NoFileSharingReason": "",
+    "Capabilities": ["https", "default-auto-update"],
+    "CapMap": {
+      "https": null,
+      "default-auto-update": [true],
+      "tailnet-display-name": ["example.tailnet"]
+    },
+    "InNetworkMap": true,
+    "InMagicSock": false,
+    "InEngine": false,
+    "KeyExpiry": "2027-01-01T00:00:00Z"
+  },
+  "Health": [],
+  "MagicDNSSuffix": "tail1234.ts.net",
+  "CurrentTailnet": {
+    "Name": "example.tailnet",
+    "StableID": "TXXXXXXXXXXXCNTRL",
+    "MagicDNSSuffix": "tail1234.ts.net",
+    "MagicDNSEnabled": true
+  },
+  "CertDomains": ["my-pc.tail1234.ts.net"],
+  "ExtraRecords": null,
+  "Peer": {
+    "nodekey:1111111111111111111111111111111111111111111111111111111111111111": {
+      "ID": "nYYYYYYYYYYYYCNTRL",
+      "HostName": "localhost",
+      "DNSName": "phone.tail1234.ts.net.",
+      "OS": "iOS",
+      "TailscaleIPs": ["100.64.0.2"],
+      "Online": true,
+      "Active": true,
+      "CurAddr": "192.0.2.2:41641",
+      "Relay": "mia"
+    }
+  },
+  "User": {
+    "2222222222222222": {
+      "ID": 2222222222222222,
+      "LoginName": "player@example.test",
+      "DisplayName": "Example Player",
+      "ProfilePicURL": ""
+    }
+  },
+  "ClientVersion": null
+}

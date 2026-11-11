@@ -11,6 +11,7 @@
     <AvaloniaResource Include="Assets\**" />
     <ProjectReference Include="..\AqwCompanion.Core\AqwCompanion.Core.csproj" />
     <ProjectReference Include="..\AqwCompanion.Capture\AqwCompanion.Capture.csproj" />
+    <ProjectReference Include="..\AqwCompanion.Phone\AqwCompanion.Phone.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="AqwCompanion.Tests" />
@@ -23,8 +24,17 @@
     <PackageReference Include="LiteDB" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="QRCoder" />
     <PackageReference Include="Serilog" />
     <PackageReference Include="Serilog.Extensions.Logging" />
     <PackageReference Include="Serilog.Sinks.File" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\web\dist\**\*" LogicalName="web/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+  <!-- The phone page is embedded from web/dist; without it the exe would serve nothing. Skip with -p:SkipWebCheck=true. -->
+  <Target Name="CheckWebDist" BeforeTargets="BeforeBuild" Condition="'$(SkipWebCheck)' != 'true'">
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)..\..\web\dist\index.html')"
+           Text="web/dist is missing: run &quot;npm ci &amp;&amp; npm run build&quot; in the web folder first." />
+  </Target>
 </Project>

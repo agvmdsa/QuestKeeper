@@ -1,0 +1,34 @@
+/* Questkeeper's AQW parchment palette (sampled from the AQW site), plus a dark variant built from the same hues.
+   Contrast is enforced by web/test/tokens.test.ts. The accent orange is a FILL with --on-accent text only (1.9:1 on cream). */
+:root {
+  color-scheme: light dark;
+  --bg: #FEF0C2;
+  --surface: #FEF7E1;
+  --raised: #F3E1AB;
+  --border: #9A7410;
+  --text: #16151A;
+  --muted: #5C4A1F;
+  --link: #800000;
+  --danger: #9B1C14;
+  --accent: #F69A07;
+  --on-accent: #2A1208;
+  --ok: #197419;
+  --on-ok: #C7F6B6;
+  --bar: #800000;
+  --top: #3B0C30;
+  --on-top: #FFFDF7;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1A0B17;
+    --surface: #2A1124;
+    --raised: #3B1A33;
+    --border: #94741A;
+    --text: #FEF0C2;
+    --muted: #D9C99A;
+    --link: #FAB84F;
+    --danger: #FF9A8F;
+    --bar: #F69A07;
+  }
+}

@@ -7,7 +7,7 @@
 <p align="center">
   An unofficial Windows companion for AdventureQuest Worlds players. It reads the game's own network traffic on your
   machine while you play and shows your character, reputation and inventory in one place — read-only,
-  nothing sent anywhere.
+  and it never sends anything to the game.
 </p>
 
 <p align="center">
@@ -28,7 +28,7 @@ Seeing what you own, your faction ranks and what is missing for the next rank me
 
 - **Read-only.** It never sends anything to the game and never acts for you.
 - **One screen.** Your character, your factions (closest to the next rank first) and the Hard Farms list, with what you own marked from your captured inventory.
-- **Local.** Everything is saved on your computer. **Forget my data** (in **Settings**) removes it. No telemetry.
+- **Local.** Everything is saved on your computer. **Forget my data** (in **Settings**) removes it. No telemetry. Nothing leaves the PC except the Wiki request you start and, if you turn it on, [Phone access](#phone-access-for-your-own-phone).
 
 ## Install
 
@@ -95,6 +95,29 @@ Off by default. **Settings, "Let other programs on this PC read my characters"**
 
 Every character logged in is its own entry, identified by its name. `factions` and `hardFarms` describe the `selected` character (`hardFarms` is `null` while the inventory is unknown, and `missing` is cut to 200 names). The session keeps a single last kill, so `lastKill` is on the character updated last and `null` on the others. Fields are only ever added within contract 1; a breaking change raises the number. There are no ids, e-mail, IP addresses or other players in it.
 
+## Phone access (for your own phone)
+
+Off by default. **Settings, "Watch my characters from my phone"** serves a small page that shows your characters' numbers, factions and Hard Farms, with the same live updates as the app, on a phone you pair. It only watches: it never sends anything to the game or to Skua (a third-party game client). The page works as an installed web app, and its notifications (for example "Activity stopped") appear inside the page only.
+
+**You need**
+
+- [Tailscale](https://tailscale.com/) on this PC and on your phone, signed in with the same account. The phone reaches the page only through your own tailnet; nothing is opened to the internet.
+- In the Tailscale admin console, **MagicDNS** and **HTTPS certificates** turned on, one time. The app tells you in words which step is missing.
+- Questkeeper running on the PC.
+
+**Steps:** open **Settings**, turn on **Watch my characters from my phone** (the switch of the Phone access section), press **Pair a phone...**, scan the QR code with the phone camera, then add the page to the home screen. On an iPhone the page shows a hint: tap Share, then Add to Home Screen. A pairing link works once (it is spent by the first phone that pairs with it) and for 5 minutes; making a new one or closing the window cancels the old one. Each paired phone can be revoked in the same window, and its open page falls back to "Not paired".
+
+**Installed to the Home Screen first?** An iPhone Home Screen web app keeps its own storage, apart from Safari, and a scanned code always opens Safari, so pairing in Safari does not pair the installed app. Open the installed app instead: its "Not paired" card has a **Pairing link** field. Copy the link (with **Copy link** in the pairing window, or from the scanned code) and paste it there, then press **Pair**.
+
+**What is stored:** `%LOCALAPPDATA%\AqwCompanion\phone.json` holds a hash of each paired device's token, never the token itself, and a tiny marker file `phone-serve.flag` in the same folder records that the page was published through Tailscale, so it can be cleaned up. **Forget my data** revokes every device and deletes `phone.json`; it does not delete `phone-serve.flag`, which holds no data and is removed when the published page is removed.
+
+**Ports:** the local feed stays as described above on `127.0.0.1:47821`. The phone server listens on `127.0.0.1:47822` only and drops connections that do not come from this PC itself. The phone reaches it through `tailscale serve`, which the app sets up and removes. Through Tailscale Serve every device on your tailnet reaches the server as the PC itself, so anyone on your tailnet can **open** the page. Only a paired phone sees any data: it holds a 256-bit device cookie, and a phone gets one only with a one-time pairing link that is shown only on this PC.
+
+**Not there yet**
+
+- Push notifications (a notice while the page is closed).
+- Testing: the author has run the page on a Windows PC with a paired browser. The path through Tailscale to a real phone is only being tested now in a prerelease, so expect rough edges.
+
 ## Build from source
 
 You need the [.NET 10 SDK](https://dotnet.microsoft.com/download) (the exact version is in `global.json`).
@@ -104,6 +127,8 @@ dotnet build AqwCompanion.slnx -c Release   # build everything
 dotnet test AqwCompanion.slnx -c Release    # unit tests, the architecture tests and the headless UI tests
 dotnet run --project src/AqwCompanion.App   # run the app (the capture needs Windows, Npcap and an elevated terminal)
 ```
+
+The phone page lives in `web/` and the exe embeds the built page, so build it before the .NET build: `cd web && npm ci && npm run build`. Without `web/dist` the build stops with a message; pass `-p:SkipWebCheck=true` to skip that check (the exe then serves nothing on the phone port).
 
 A `vX.Y.Z` tag runs `.github/workflows/release.yml`: tests, a self-contained single-file `win-x64` publish, and a zip with its `SHA256SUMS.txt`. The version comes from the tag (MinVer).
 

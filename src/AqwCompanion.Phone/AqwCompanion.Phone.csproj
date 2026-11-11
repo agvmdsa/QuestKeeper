@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>AqwCompanion.Phone</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AqwCompanion.Core\AqwCompanion.Core.csproj" />
+  </ItemGroup>
+</Project>

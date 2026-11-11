@@ -1,8 +1,11 @@
 using AqwCompanion.App.Feed;
 using AqwCompanion.App.Infrastructure.AutoStart;
+using AqwCompanion.App.Phone;
 using AqwCompanion.Core.Forgetting;
+using AqwCompanion.Phone.Devices;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Serilog;
 
 namespace AqwCompanion.App.Settings;
 
@@ -17,6 +20,10 @@ public partial class SettingsViewModel : ObservableObject
     public const string FeedDescriptionText = "Opens a read-only feed on this computer only (127.0.0.1) with your characters' numbers, factions and Hard Farms. A program needs the secret in the file below to read it. Nothing is sent to the game.";
     public const string FeedNewSecretText = "New secret";
     public const string FeedNewSecretWarningText = "Programs that use the old secret stop working until they read the new one.";
+    public const string PhoneTitleText = "Watch my characters from my phone";
+    public const string PhoneDescriptionText = "Shows your characters' numbers, factions and Hard Farms on a phone you pair, over your own Tailscale network. It only watches and never sends anything to the game.";
+    public const string PairPhoneText = "Pair a phone...";
+    public const string PhoneCopyLinkText = "Copy local pairing link";
     public const string DebugTitleText = "Debug mode";
     public const string DebugDescriptionText = "Shows the capture and packet details in their own window. It also opens with Ctrl+Shift+D and from the tray icon menu.";
     public const string PrivacyTitleText = "Privacy";
@@ -30,8 +37,9 @@ public partial class SettingsViewModel : ObservableObject
         "Questkeeper reads, on this computer only, the data the game sends your own computer when you log in, and a few of your own events while you play: " +
         "character name and level, gold, experience, AC, class points, days played, membership days, faction reputation, and your items. " +
         "It never reads or keeps your e-mail address, IP address, password, user or character ids, or anything about other players. " +
-        "It never sends anything to the game and never acts for you. Nothing leaves this computer; the only network access is to the AQW Wiki, " +
-        "when you ask for the Hard Farms list. The data is saved locally so the app opens with it, and Forget my data removes it.";
+        "It never sends anything to the game and never acts for you. Only two things go beyond this computer, and only when you ask for them: the AQW Wiki is contacted when you ask for the Hard Farms list, " +
+        "and with Phone access on the app serves the character numbers it already shows to the phones you paired, over your own Tailscale network. " +
+        "The data is saved locally so the app opens with it, and Forget my data removes it.";
 
     public const string CreditsText =
         "Unofficial fan project, not made by, endorsed by or connected to Artix Entertainment. AdventureQuest Worlds belongs to its owners. " +
@@ -41,11 +49,18 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ForgetCoordinator _forgetting;
     private readonly IAutoStart _autoStart;
     private readonly FeedSecretStore? _feedSecret;
+    private readonly PhoneRegistry? _phoneRegistry;
+    private readonly Func<string, Task>? _copyToClipboard;
+    private readonly Func<bool>? _isClipboardAvailable;
     private AppSettings _settings;
     private bool _startWithWindows;
 
-    public SettingsViewModel(IAppSettingsStore store, ForgetCoordinator forgetting, IAutoStart? autoStart = null, FeedSecretStore? feedSecret = null)
+    public SettingsViewModel(IAppSettingsStore store, ForgetCoordinator forgetting, IAutoStart? autoStart = null, FeedSecretStore? feedSecret = null,
+        PhoneRegistry? phoneRegistry = null, Func<string, Task>? copyToClipboard = null, Func<bool>? isClipboardAvailable = null)
     {
+        _phoneRegistry = phoneRegistry;
+        _copyToClipboard = copyToClipboard;
+        _isClipboardAvailable = isClipboardAvailable;
         _store = store;
         _forgetting = forgetting;
         _autoStart = autoStart ?? new NoAutoStart();
@@ -95,6 +110,90 @@ public partial class SettingsViewModel : ObservableObject
         FeedSecretRegenerated?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>Raised after <see cref="PhoneAccessEnabled"/> changed and was saved.</summary>
+    public event EventHandler? PhoneAccessChanged;
+
+    /// <summary>What the phone access is doing, in words; set by the controller that runs it.</summary>
+    [ObservableProperty]
+    private string _phoneStatusText = "Off";
+
+    public void SetPhoneStatus(string text) => PhoneStatusText = text;
+
+    /// <summary>Raised when the dialog opens, so the phone controller can ask Tailscale again.</summary>
+    public event EventHandler? PhoneRefreshRequested;
+
+    /// <summary>What Tailscale offers right now, in a sentence; empty while the phone access is off. Set by the controller.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPhoneTailscaleText))]
+    private string _phoneTailscaleText = string.Empty;
+
+    /// <summary>Whether the phone page is published through Tailscale, so a pairing link can be made.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(PairPhoneCommand))]
+    private bool _canPair;
+
+    /// <summary>Raised when "Pair a phone..." is pressed; the dialog host opens the pairing window.</summary>
+    public event EventHandler? PairRequested;
+
+    [RelayCommand(CanExecute = nameof(CanPair))]
+    private void PairPhone() => PairRequested?.Invoke(this, EventArgs.Empty);
+
+    public bool HasPhoneTailscaleText => PhoneTailscaleText.Length > 0;
+
+    public void SetPhoneTailscale(string text, bool canPair)
+    {
+        PhoneTailscaleText = text;
+        CanPair = canPair;
+    }
+
+    public bool HasPhone => _phoneRegistry is not null;
+
+    /// <summary>Whether the debug-only local pairing link is offered.</summary>
+    public bool IsLocalPairingLinkVisible => HasPhone && DebugMode;
+
+    /// <summary>Whether the phone page may be reached over the tailnet. Saved here, which is the source of truth for the switch.</summary>
+    public bool PhoneAccessEnabled
+    {
+        get => _settings.PhoneAccess;
+        set
+        {
+            if (_settings.PhoneAccess == value)
+            {
+                return;
+            }
+
+            _settings = _settings with { PhoneAccess = value };
+            _store.Save(_settings);
+            OnPropertyChanged();
+            PhoneAccessChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>Debug aid: puts a one-time pairing link for this PC on the clipboard. The link is never logged or shown.</summary>
+    [RelayCommand(CanExecute = nameof(IsLocalPairingLinkVisible))]
+    private async Task CopyLocalPairingLink()
+    {
+        if (!IsLocalPairingLinkVisible || _phoneRegistry is null || _copyToClipboard is null)
+        {
+            return;
+        }
+
+        // No token is made when there is nowhere to put it.
+        if (_isClipboardAvailable is not null && !_isClipboardAvailable())
+        {
+            return;
+        }
+
+        try
+        {
+            await _copyToClipboard($"http://127.0.0.1:{PhoneHost.DefaultPort}/#t={_phoneRegistry.CreatePairingToken()}");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning("Could not copy the pairing link: {ExceptionType}", ex.GetType().Name);
+        }
+    }
+
     /// <summary>Whether the switch for starting with Windows is offered at all.</summary>
     public bool CanAutoStart => _autoStart.IsSupported;
 
@@ -131,6 +230,7 @@ public partial class SettingsViewModel : ObservableObject
         AutoStartError = string.Empty;
         OnPropertyChanged(nameof(StartWithWindows));
         OnPropertyChanged(nameof(CanAutoStart));
+        PhoneRefreshRequested?.Invoke(this, EventArgs.Empty);
     }
 
     [ObservableProperty]
@@ -172,6 +272,8 @@ public partial class SettingsViewModel : ObservableObject
             _settings = _settings with { DebugMode = value };
             _store.Save(_settings);
             OnPropertyChanged();
+            OnPropertyChanged(nameof(IsLocalPairingLinkVisible));
+            CopyLocalPairingLinkCommand.NotifyCanExecuteChanged();
             DebugModeChanged?.Invoke(this, EventArgs.Empty);
         }
     }

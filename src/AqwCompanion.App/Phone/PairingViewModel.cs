@@ -20,7 +20,7 @@ public sealed partial class PairingViewModel : ObservableObject, IDisposable
     public const string ExplainText = "Scan with your phone's camera. The link works once and expires in 5 minutes.";
     public const string ExpiredText = "This link expired. Create a new one.";
     public const string EmptyDevicesText = "No phones paired yet.";
-    public const int PixelsPerModule = 8;
+    public const int PixelsPerModule = 6;
 
     private static readonly TimeSpan Life = PhoneRegistry.PairingTokenLife;
 
@@ -30,6 +30,7 @@ public sealed partial class PairingViewModel : ObservableObject, IDisposable
     private readonly Action<Action> _post;
     private readonly Func<string, Task>? _copy;
     private DateTimeOffset _createdAt;
+    private string? _token;
     private bool _hasLink;
     private bool _disposed;
 
@@ -82,8 +83,9 @@ public sealed partial class PairingViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public void Regenerate()
     {
-        var link = _source.CreatePairingLink();
-        if (link is null)
+        CancelCurrent();
+        var offer = _source.CreateOffer();
+        if (offer is null)
         {
             _hasLink = false;
             IsExpired = false;
@@ -94,6 +96,8 @@ public sealed partial class PairingViewModel : ObservableObject, IDisposable
             return;
         }
 
+        var link = offer.Link;
+        _token = offer.Token;
         byte[] png;
         try
         {
@@ -122,9 +126,22 @@ public sealed partial class PairingViewModel : ObservableObject, IDisposable
             return;
         }
 
+        if (!_source.IsAvailable)
+        {
+            // Tailscale or the host dropped: the link cannot work any more.
+            CancelCurrent();
+            _hasLink = false;
+            Link = string.Empty;
+            QrPng = [];
+            ExpiresText = string.Empty;
+            Message = _source.UnavailableText;
+            return;
+        }
+
         var left = _createdAt + Life - _now();
         if (left <= TimeSpan.Zero)
         {
+            CancelCurrent();
             _hasLink = false;
             IsExpired = true;
             Link = string.Empty;
@@ -175,7 +192,15 @@ public sealed partial class PairingViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _disposed = true;
+        CancelCurrent();
         _registry.DevicesChanged -= OnDevicesChanged;
+    }
+
+    // A link that was replaced, expired or left behind by a closed window must not stay a live credential. Cancelling a used token is harmless.
+    private void CancelCurrent()
+    {
+        _registry.CancelPairingToken(_token);
+        _token = null;
     }
 
     private void OnDevicesChanged() => _post(() =>

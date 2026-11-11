@@ -483,4 +483,40 @@ public class PhoneRegistryTests
         Assert.DoesNotContain(pairingToken, bodyText);
         Assert.Contains("Phone", bodyText);
     }
+
+    [Fact]
+    public void A_cancelled_pairing_token_is_invalid()
+    {
+        var (registry, _, _) = Build();
+        var token = registry.CreatePairingToken();
+
+        Assert.True(registry.CancelPairingToken(token));
+
+        Assert.Equal(PairStatus.Invalid, registry.TryPair(token, "Phone").Status);
+    }
+
+    [Fact]
+    public void Cancelling_an_unknown_or_null_token_is_harmless()
+    {
+        var (registry, _, _) = Build();
+        var token = registry.CreatePairingToken();
+
+        Assert.False(registry.CancelPairingToken("nope"));
+        Assert.False(registry.CancelPairingToken(null));
+
+        Assert.Equal(PairStatus.Paired, registry.TryPair(token, "Phone").Status);
+    }
+
+    [Fact]
+    public void Cancelling_tokens_does_not_count_as_failed_pairing_attempts()
+    {
+        var (registry, _, _) = Build();
+        for (var i = 0; i < 10; i++)
+        {
+            registry.CancelPairingToken("unknown" + i);
+            registry.CancelPairingToken(registry.CreatePairingToken());
+        }
+
+        Assert.Equal(PairStatus.Paired, registry.TryPair(registry.CreatePairingToken(), "Phone").Status);
+    }
 }

@@ -34,8 +34,8 @@
     <Border Classes="divider">
       <StackPanel Spacing="10" HorizontalAlignment="Center" Width="400">
         <TextBlock x:Name="PairingExplain" Classes="muted" TextWrapping="Wrap" Text="{x:Static ph:PairingViewModel.ExplainText}" />
-        <Border Background="White" HorizontalAlignment="Center" Width="240" Height="240" IsVisible="{Binding HasLink}">
-          <Image x:Name="PairingQrImage" Width="240" Height="240" Stretch="Uniform" RenderOptions.BitmapInterpolationMode="None"
+        <Border Background="White" HorizontalAlignment="Center" IsVisible="{Binding HasLink}">
+          <Image x:Name="PairingQrImage" Stretch="None" RenderOptions.BitmapInterpolationMode="None"
                  AutomationProperties.Name="QR code for pairing a phone" />
         </Border>
         <TextBlock x:Name="PairingMessage" TextWrapping="Wrap" Text="{Binding Message}" IsVisible="{Binding HasMessage}"

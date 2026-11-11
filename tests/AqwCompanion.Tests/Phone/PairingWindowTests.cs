@@ -2,6 +2,7 @@ using AqwCompanion.App.Phone;
 using AqwCompanion.Phone.Devices;
 using AqwCompanion.Tests.TestDoubles;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 
@@ -11,9 +12,15 @@ public class PairingWindowTests
 {
     private sealed class Links(PhoneRegistry registry) : IPairingLinkSource
     {
+        public bool IsAvailable => true;
+
         public string UnavailableText => "Tailscale is not installed.";
 
-        public string? CreatePairingLink() => "https://pc.tail1.ts.net/#t=" + registry.CreatePairingToken();
+        public PairingOffer? CreateOffer()
+        {
+            var token = registry.CreatePairingToken();
+            return new PairingOffer("https://pc.tail1.ts.net/#t=" + token, token);
+        }
     }
 
     private static (PairingWindow Window, PairingViewModel Vm, PhoneRegistry Registry) Open()
@@ -104,5 +111,27 @@ public class PairingWindowTests
         Assert.Null(window.Named<Image>("PairingQrImage").Source);
         Assert.Equal("This link expired. Create a new one.", window.Named<TextBlock>("PairingMessage").Text);
         Assert.False(window.Named<SelectableTextBlock>("PairingLinkText").IsEffectivelyVisible);
+    }
+
+    [AvaloniaFact]
+    public void Escape_closes_the_window()
+    {
+        var (window, _, _) = Open();
+        var closed = false;
+        window.Closed += (_, _) => closed = true;
+
+        window.KeyPressQwerty(Avalonia.Input.PhysicalKey.Escape, Avalonia.Input.RawInputModifiers.None);
+
+        Assert.True(closed);
+    }
+
+    [AvaloniaFact]
+    public void The_qr_bitmap_is_a_whole_number_of_pixels_per_module_and_fits_the_window()
+    {
+        var (_, vm, _) = Open();
+        var width = (vm.QrPng[16] << 24) | (vm.QrPng[17] << 16) | (vm.QrPng[18] << 8) | vm.QrPng[19];
+
+        Assert.Equal(0, width % PairingViewModel.PixelsPerModule);
+        Assert.InRange(width, 1, 400);
     }
 }

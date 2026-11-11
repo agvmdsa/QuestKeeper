@@ -10,9 +10,20 @@ public class PairingViewModelTests
     {
         public bool Available { get; set; } = true;
 
+        public bool IsAvailable => Available;
+
         public string UnavailableText => "Tailscale is not installed.";
 
-        public string? CreatePairingLink() => Available ? "https://pc.tail1.ts.net/#t=" + registry.CreatePairingToken() : null;
+        public PairingOffer? CreateOffer()
+        {
+            if (!Available)
+            {
+                return null;
+            }
+
+            var token = registry.CreatePairingToken();
+            return new PairingOffer("https://pc.tail1.ts.net/#t=" + token, token);
+        }
     }
 
     private static (PairingViewModel Vm, PhoneRegistry Registry, FakeLinks Links, ManualClock Clock) Build(bool available = true, Action<Action>? post = null)
@@ -51,15 +62,65 @@ public class PairingViewModelTests
     }
 
     [Fact]
-    public void Regenerate_after_a_pairing_gives_a_link_whose_predecessor_no_longer_pairs()
+    public void Regenerate_cancels_the_old_token_so_it_no_longer_pairs()
     {
         var (vm, registry, _, _) = Build();
         var old = Token(vm.Link);
-        Assert.Equal(PairStatus.Paired, registry.TryPair(old, "Phone").Status);
 
         vm.Regenerate();
 
         Assert.Equal(PairStatus.Invalid, registry.TryPair(old, "Phone").Status);
+        Assert.Equal(PairStatus.Paired, registry.TryPair(Token(vm.Link), "Phone").Status);
+    }
+
+    [Fact]
+    public void Dispose_cancels_the_current_token()
+    {
+        var (vm, registry, _, _) = Build();
+        var token = Token(vm.Link);
+
+        vm.Dispose();
+
+        Assert.Equal(PairStatus.Invalid, registry.TryPair(token, "Phone").Status);
+    }
+
+    [Fact]
+    public void Expiry_cancels_the_token_even_before_the_registry_would_drop_it()
+    {
+        var (vm, registry, _, clock) = Build();
+        var token = Token(vm.Link);
+        clock.Advance(PhoneRegistry.PairingTokenLife);
+        vm.Tick();
+
+        Assert.True(vm.IsExpired);
+        Assert.False(registry.CancelPairingToken(token));
+    }
+
+    [Fact]
+    public void Cancelling_a_token_that_was_already_used_is_harmless()
+    {
+        var (vm, registry, _, _) = Build();
+        Assert.Equal(PairStatus.Paired, registry.TryPair(Token(vm.Link), "Phone").Status);
+
+        vm.Regenerate();
+        vm.Dispose();
+
+        Assert.Single(registry.List());
+    }
+
+    [Fact]
+    public void A_link_that_can_no_longer_work_is_withdrawn_on_the_next_tick()
+    {
+        var (vm, registry, links, _) = Build();
+        var token = Token(vm.Link);
+
+        links.Available = false;
+        vm.Tick();
+
+        Assert.Equal(string.Empty, vm.Link);
+        Assert.Empty(vm.QrPng);
+        Assert.Equal("Tailscale is not installed.", vm.Message);
+        Assert.Equal(PairStatus.Invalid, registry.TryPair(token, "Phone").Status);
     }
 
     [Fact]

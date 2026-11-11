@@ -169,6 +169,23 @@ public sealed class PhoneRegistry
         }
     }
 
+    /// <summary>
+    /// Withdraws an outstanding pairing token so it can no longer pair (its link was replaced or its window closed).
+    /// Not a pairing attempt: it never counts toward the failure lock. False for null, unknown, used or expired tokens.
+    /// </summary>
+    public bool CancelPairingToken(string? token)
+    {
+        if (token is null)
+        {
+            return false;
+        }
+
+        lock (_lock)
+        {
+            return _pairing.Remove(token);
+        }
+    }
+
     public PairResult TryPair(string? pairingToken, string? deviceName)
     {
         PairResult result;

@@ -91,12 +91,15 @@ public sealed class PhoneController : IForgettable, IDisposable, IPairingLinkSou
         || (_servedName is { } name && string.Equals(host, name, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>A one-time pairing link for the phone, or null unless the host runs and the page is published through Tailscale.</summary>
-    public string? CreatePairingLink()
+    public string? CreatePairingLink() => CreateOffer()?.Link;
+
+    /// <summary>Like <see cref="CreatePairingLink"/>, with the token that is in the link so the caller can withdraw it.</summary>
+    public PairingOffer? CreateOffer()
     {
         string name;
         lock (_lock)
         {
-            if (!_host.IsRunning || _state?.Kind != TailscaleStateKind.Ready || _servedName is not { } served)
+            if (!IsAvailableLocked(out var served))
             {
                 return null;
             }
@@ -104,14 +107,34 @@ public sealed class PhoneController : IForgettable, IDisposable, IPairingLinkSou
             name = served;
         }
 
+        var token = _registry.CreatePairingToken();
         try
         {
-            return PairingUrl.Build(name, _registry.CreatePairingToken());
+            return new PairingOffer(PairingUrl.Build(name, token), token);
         }
         catch (ArgumentException)
         {
+            _registry.CancelPairingToken(token);
             return null;
         }
+    }
+
+    /// <summary>Whether a pairing link can be made right now.</summary>
+    public bool IsAvailable
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return IsAvailableLocked(out _);
+            }
+        }
+    }
+
+    private bool IsAvailableLocked(out string name)
+    {
+        name = _servedName ?? string.Empty;
+        return _host.IsRunning && _state?.Kind == TailscaleStateKind.Ready && _servedName is not null;
     }
 
     /// <summary>The sentence to show instead of a QR code while no link can be made: what Tailscale last said, or a hint to turn the access on.</summary>

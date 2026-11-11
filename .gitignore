@@ -9,3 +9,6 @@ TestResults/
 .DS_Store
 web/node_modules/
 web/dist/
+
+# Skua assemblies fetched by tools/skua (never committed)
+/plugin/**/lib/

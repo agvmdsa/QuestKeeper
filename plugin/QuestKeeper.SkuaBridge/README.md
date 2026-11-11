@@ -23,8 +23,10 @@ throwaway project and read in the tag source.
 3. **Skua drops plugin handlers on every script stop.** `ScriptEvent` handles `ScriptStoppedMessage` with
    `ClearHandlers()`, which sets `PlayerDeath`, `QuestAccepted`, `QuestTurnedIn`, `MapChanged`, `ReloginTriggered`,
    `ItemDropped` and `ScriptStopping` (and others) to null. The plugin therefore re-attaches its handlers on each
-   `ScriptRunning` change (remove, then add, under a lock, so there is exactly one copy). The stop message is sent before
-   `ScriptRunning = false` on the same thread, so the re-attach runs after the clear.
+   `ScriptRunning` notification (remove, then add, under a lock, so there is exactly one copy; done on every
+   notification, not only on detected transitions). The stop message is sent before `ScriptRunning = false` on the same
+   thread, so the re-attach runs after the clear. A script that itself calls `Bot.Events.ClearHandlers()` silences the
+   plugin's log lines until the next script start or stop.
 4. **Game events only arrive while a script runs.** `ScriptEvent` registers for the game messages on
    `ScriptStartedMessage` and unregisters on `ScriptStoppedMessage`. A login, logout or map change by hand raises no
    event, so the status is re-read every 3 s on the plugin's own background task and sent only when it changed. The log
@@ -48,8 +50,10 @@ throwaway project and read in the tag source.
 - `status` on every (re)connect and whenever it changes: logged in; character, server, map (only while logged in);
   script file name without folder or extension (no local path leaves the plugin); running; running since.
 - `log`: bought (quantity = now minus snapshot when positive, else none), sold (name from the snapshot taken before the
-  sale), dropped (`(not kept)` when Skua reports the drop without adding it to the inventory), map changed, quest
-  accepted, quest turned in, died, logged out, relogin, script started, script stopped, script error.
+  sale), dropped (`Drop: X` for an item offered in the drop list, Skua's `dropItem`, the usual farming case; `Received: X`
+  for an item put straight into the inventory, Skua's `addItems`, such as a reward; accepting a drop-list item raises no
+  further event, so each drop is one line), map changed, quest accepted, quest turned in, died, logged out, relogin,
+  script started, script stopped, script error.
 - Never: gold, inventory contents, monster kills (`MonsterKilled` is not subscribed).
 
 ## Threading and safety
@@ -60,10 +64,15 @@ throwaway project and read in the tag source.
   `ScriptStopping`) and only build a message and queue it. Every read that goes through Flash (inventory, quests,
   logged in, map, user name) runs on one background task, never on Skua's threads.
 - Queues are bounded (256, oldest dropped): the pipe client's line queue and the worker's queue.
-- Pipe client: connect timeout 2 s, waits 1 s doubling to 30 s, retries for the plugin's whole life; on each connect it
-  writes `hello`, the latest status, then the queue; a write error drops the connection and reconnects; an empty line
-  every 10 s while idle finds a closed Questkeeper (Questkeeper's reader skips empty lines). `Dispose` cancels and waits
-  up to 2 s.
+- While Questkeeper is not connected the plugin does no Flash reads at all: no status poll, no inventory snapshot, no
+  quest-name lookup (log lines still queue, unnamed where a read would be needed). When the pipe connects, `hello` and
+  the last known status are written, then one status read and one snapshot are requested.
+- Pipe client: one connect attempt each time (timeout 0: on Windows a longer connect timeout spins a pool thread for the
+  whole timeout while the pipe does not exist), then waits 1 s doubling to 30 s, retrying for the plugin's whole life; on
+  each connect it writes `hello`, the latest status, then the queue; a write error drops the connection and reconnects;
+  an empty line every 10 s while idle finds a closed Questkeeper (Questkeeper's reader skips empty lines). `Dispose`
+  cancels, waits up to 2 s, then disposes its token source.
+- No snapshot on a map change (it does not change the inventory).
 
 ## Read-only audit: every Skua member the plugin touches
 
@@ -107,7 +116,9 @@ Generated from the compiled DLL's member references (System.Reflection.Metadata)
 No other Skua member is referenced. In particular nothing calls `Send`, `Flash`, `Shops`, `Options`, `StartScript`,
 `StopScript`, `SetLoadedScript`, `Inventory.Sell` or any setter. Some getters above are implemented by Skua as Flash
 reads (`isLoggedIn`, `world.strMapName`, `world.myAvatar.items`, `world.questTree`, `loginInfo.strUsername`); they
-read game objects and change nothing. `IScriptQuest.Tree` refreshes Skua's own 100 ms cache of the tree it just read.
+read game objects and change nothing. `IScriptQuest.Tree` is not a pure getter: it writes Skua's own 100 ms cache of
+the quest tree it just read (`_cachedTree`, `_lastTreeUpdate`); that is read-only in effect (no game or script state
+changes) but it is a write inside Skua.
 
 ## Build
 
@@ -127,5 +138,7 @@ references are `Skua.Core.Interfaces` and `Skua.Core.Models`.
 - The plugin loads in Skua 1.4.5.0 and connects to Questkeeper (including an elevated Questkeeper and a non-elevated Skua).
 - Whether the game has applied a purchase to the inventory when `buyItem` arrives; the plugin reads it 300 ms later.
   If not, "Bought" shows without a quantity and possibly as `item #id`.
+- Bought quantity can be wrong or missing for back-to-back buys of the same item: the "before" comes from the last
+  snapshot, which may already include an earlier buy, or not yet include it.
 - That the re-attach after `ClearHandlers` keeps the log working across several script runs.
 - Only one Skua instance is reported at a time (Questkeeper serves one connection); a second Skua keeps retrying quietly.

@@ -13,8 +13,13 @@ public static class SkuaLogFormatter
     public static SkuaLogEntry Sold(DateTimeOffset at, string? name, int id, int quantity, int cost, bool isAc) =>
         Entry(at, SkuaLogKind.Sold, $"Sold {Item(name, id)} x{quantity.ToString(Inv)} for {cost.ToString("N0", Inv)} {(isAc ? "AC" : "gold")}");
 
-    public static SkuaLogEntry Dropped(DateTimeOffset at, string? name, bool kept) =>
-        Entry(at, SkuaLogKind.Dropped, $"Drop: {(string.IsNullOrWhiteSpace(name) ? "unknown item" : name)}{(kept ? string.Empty : " (not kept)")}");
+    /// <summary>
+    /// A drop. Skua raises it for an item offered in the drop list (<paramref name="addedDirectly"/> false, the usual farming
+    /// case; accepting it later raises nothing more) and for an item the game put straight into the inventory, such as a
+    /// reward (<paramref name="addedDirectly"/> true).
+    /// </summary>
+    public static SkuaLogEntry Dropped(DateTimeOffset at, string? name, bool addedDirectly) =>
+        Entry(at, SkuaLogKind.Dropped, $"{(addedDirectly ? "Received" : "Drop")}: {(string.IsNullOrWhiteSpace(name) ? "unknown item" : name)}");
 
     public static SkuaLogEntry MapChanged(DateTimeOffset at, string map) => Entry(at, SkuaLogKind.MapChanged, $"Map: {map}");
 

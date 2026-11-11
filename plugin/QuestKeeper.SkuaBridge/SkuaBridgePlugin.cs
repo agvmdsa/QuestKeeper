@@ -105,7 +105,14 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
             }
 
             var skuaVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
-            _client = new PipeClient(new SkuaHello(BridgeMessages.PluginVersion(typeof(SkuaBridgePlugin).Assembly), skuaVersion));
+            _client = new PipeClient(
+                new SkuaHello(BridgeMessages.PluginVersion(typeof(SkuaBridgePlugin).Assembly), skuaVersion),
+                onConnected: () =>
+                {
+                    // hello and the last known status are already written; read the current state now.
+                    RequestStatus();
+                    RequestSnapshot();
+                });
             _work = Channel.CreateBounded<WorkItem>(
                 new BoundedChannelOptions(WorkCapacity) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true, SingleWriter = false });
             _stop = new CancellationTokenSource();
@@ -136,7 +143,8 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
 
             _work?.Writer.TryComplete();
             _stop?.Cancel();
-            _client?.Dispose();
+            _client?.Dispose(); // Waits up to 2 s, which also gives the worker time to leave.
+            _stop?.Dispose();
         }
         catch (Exception)
         {
@@ -278,7 +286,6 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
         }
 
         RequestStatus();
-        RequestSnapshot();
     }
 
     private void Quest(int questId, bool accepted)
@@ -312,6 +319,9 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
         var all = string.IsNullOrEmpty(propertyName);
         if (all || propertyName == nameof(IScriptStatus.ScriptRunning))
         {
+            // On every notification, outside the dedupe: two quick notifications may both read the same current value
+            // and see no transition, yet ClearHandlers may have run in between. Re-attaching is idempotent.
+            Resubscribe();
             RunningChanged(_bot?.Manager.ScriptRunning ?? false);
         }
 
@@ -321,7 +331,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
         }
     }
 
-    /// <summary>Skua raises ScriptRunning more than once per change (StopScript raises it again), so only real transitions count.</summary>
+    /// <summary>Skua raises ScriptRunning more than once per change (StopScript raises it again), so only real transitions log and move RunningSince.</summary>
     private void RunningChanged(bool running)
     {
         var at = Now();
@@ -336,7 +346,6 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
             _runningSince = running ? at : null;
         }
 
-        Resubscribe();
         var script = BridgeMessages.ScriptName(_bot?.Manager.LoadedScript) ?? "unknown script";
         Log(running ? SkuaLogFormatter.ScriptStarted(at, script) : SkuaLogFormatter.ScriptStopped(at, script));
         RequestStatus();
@@ -434,7 +443,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
 
     private void PublishStatus()
     {
-        if (_bot is not { } bot || Volatile.Read(ref _unloaded))
+        if (_bot is not { } bot || Volatile.Read(ref _unloaded) || !Connected)
         {
             return;
         }
@@ -476,7 +485,8 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
     /// <summary>The inventory, or null when it cannot be read (not logged in, game not loaded, or Skua answered with nothing).</summary>
     private List<InventoryItem>? ReadInventory()
     {
-        if (_bot is not { } bot || Volatile.Read(ref _unloaded))
+        // Nobody is listening: no Flash reads. The snapshot is refreshed when the pipe connects.
+        if (_bot is not { } bot || Volatile.Read(ref _unloaded) || !Connected)
         {
             return null;
         }
@@ -499,7 +509,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
 
     private string? ReadQuestName(int questId)
     {
-        if (_bot is not { } bot || Volatile.Read(ref _unloaded))
+        if (_bot is not { } bot || Volatile.Read(ref _unloaded) || !Connected)
         {
             return null;
         }
@@ -509,6 +519,9 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
     }
 
     // ---- Helpers ---------------------------------------------------------------------------------------------------
+
+    /// <summary>While Questkeeper is absent the plugin does no Flash reads at all (no status poll, no snapshot); log lines still queue.</summary>
+    private bool Connected => _client?.IsConnected == true;
 
     private void Log(SkuaLogEntry entry) => _client?.Send(new LogMessage(entry));
 

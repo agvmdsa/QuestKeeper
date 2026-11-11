@@ -13,7 +13,13 @@ namespace QuestKeeper.SkuaBridge;
 internal sealed class PipeClient : IDisposable
 {
     public const int Capacity = 256;
-    public static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// One connect attempt, no timeout loop. On Windows, NamedPipeClientStream.Connect(timeout) spins a thread until the
+    /// timeout while the pipe does not exist (WaitNamedPipe fails at once and .NET retries); with 0 it tries once and, when the
+    /// pipe exists but its instance is busy, waits only the server's default (50 ms). The retry waits below set the pace.
+    /// </summary>
+    public const int ConnectTimeoutMs = 0;
     public static readonly TimeSpan FirstRetryWait = TimeSpan.FromSeconds(1);
     public static readonly TimeSpan MaxRetryWait = TimeSpan.FromSeconds(30);
     public static readonly TimeSpan DisposeWait = TimeSpan.FromSeconds(2);
@@ -30,14 +36,20 @@ internal sealed class PipeClient : IDisposable
     private readonly CancellationTokenSource _cancel = new();
     private readonly object _lock = new();
     private readonly string _helloLine;
+    private readonly Action? _onConnected;
     private string? _statusLine;
+    private bool _connected;
     private Task? _loop;
     private bool _disposed;
 
-    public PipeClient(SkuaHello hello)
+    public PipeClient(SkuaHello hello, Action? onConnected = null)
     {
         _helloLine = SkuaLine.ToLine(new HelloMessage(hello));
+        _onConnected = onConnected;
     }
+
+    /// <summary>True while a pipe to Questkeeper is open (hello written and no write has failed since).</summary>
+    public bool IsConnected => Volatile.Read(ref _connected);
 
     public void Start()
     {
@@ -102,10 +114,18 @@ internal sealed class PipeClient : IDisposable
         {
             _queue.Writer.TryComplete();
             _cancel.Cancel();
-            if (loop is null || loop.Wait(DisposeWait))
-            {
-                _cancel.Dispose();
-            }
+            loop?.Wait(DisposeWait);
+        }
+        catch (Exception)
+        {
+            // Bounded and quiet: unloading the plugin must not fail or hang Skua.
+        }
+
+        try
+        {
+            // After the wait. A loop still running only reads IsCancellationRequested, which stays valid after Dispose,
+            // and treats any other failure as cancellation.
+            _cancel.Dispose();
         }
         catch (Exception)
         {
@@ -124,7 +144,7 @@ internal sealed class PipeClient : IDisposable
             {
                 pipe = new NamedPipeClientStream(
                     ".", SkuaProtocol.PipeName, PipeDirection.Out, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-                await pipe.ConnectAsync((int)ConnectTimeout.TotalMilliseconds, ct).ConfigureAwait(false);
+                await pipe.ConnectAsync(ConnectTimeoutMs, ct).ConfigureAwait(false);
                 wait = FirstRetryWait;
 
                 await WriteAsync(pipe, _helloLine, ct).ConfigureAwait(false);
@@ -132,6 +152,9 @@ internal sealed class PipeClient : IDisposable
                 {
                     await WriteAsync(pipe, status, ct).ConfigureAwait(false);
                 }
+
+                Volatile.Write(ref _connected, true);
+                Notify();
 
                 if (unsent is not null)
                 {
@@ -152,6 +175,7 @@ internal sealed class PipeClient : IDisposable
             }
             finally
             {
+                Volatile.Write(ref _connected, false);
                 try
                 {
                     pipe?.Dispose();
@@ -172,6 +196,18 @@ internal sealed class PipeClient : IDisposable
             }
 
             wait = TimeSpan.FromTicks(Math.Min(wait.Ticks * 2, MaxRetryWait.Ticks));
+        }
+    }
+
+    private void Notify()
+    {
+        try
+        {
+            _onConnected?.Invoke();
+        }
+        catch (Exception)
+        {
+            // The callback only queues work; a failure there must not drop the connection.
         }
     }
 

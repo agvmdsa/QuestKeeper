@@ -43,10 +43,11 @@ public class SkuaLogFormatterTests
     }
 
     [Fact]
-    public void Dropped_says_when_the_item_was_not_kept()
+    public void Dropped_tells_a_drop_list_entry_from_a_direct_add()
     {
-        Assert.Equal("Drop: Blood Orb", SkuaLogFormatter.Dropped(T, "Blood Orb", true).Text);
-        Assert.Equal("Drop: Blood Orb (not kept)", SkuaLogFormatter.Dropped(T, "Blood Orb", false).Text);
+        Assert.Equal("Drop: Blood Orb", SkuaLogFormatter.Dropped(T, "Blood Orb", addedDirectly: false).Text);
+        Assert.Equal("Received: Blood Orb", SkuaLogFormatter.Dropped(T, "Blood Orb", addedDirectly: true).Text);
+        Assert.Equal("Drop: unknown item", SkuaLogFormatter.Dropped(T, null, addedDirectly: false).Text);
     }
 
     [Fact]

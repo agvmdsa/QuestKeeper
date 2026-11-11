@@ -285,6 +285,29 @@ public class SkuaPipeServerTests
         using var again = new NamedPipeServerStream(name, PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
     }
 
+    [Fact]
+    public void On_Windows_the_pipe_belongs_to_the_user_sid_and_grants_only_that_sid()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            // Pipe security descriptors exist only on Windows; elsewhere the server uses CurrentUserOnly.
+            return;
+        }
+
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        var user = identity.User!;
+        var security = SkuaPipeServer.CreateUserOnlySecurity();
+
+        Assert.Equal(user, security.GetOwner(typeof(System.Security.Principal.SecurityIdentifier)));
+        Assert.True(security.AreAccessRulesProtected);
+        var rules = security.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(System.Security.Principal.SecurityIdentifier))
+            .Cast<PipeAccessRule>()
+            .ToList();
+        var rule = Assert.Single(rules);
+        Assert.Equal(user, rule.IdentityReference);
+        Assert.Equal(System.Security.AccessControl.AccessControlType.Allow, rule.AccessControlType);
+    }
+
     private sealed class FakeStore : ISkuaLogStore
     {
         public List<SkuaLogEntry> Stored { get; private set; } = [];

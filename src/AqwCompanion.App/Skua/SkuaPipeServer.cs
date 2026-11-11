@@ -1,4 +1,7 @@
 using System.IO.Pipes;
+using System.Runtime.Versioning;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using AqwCompanion.Phone.Skua;
 using AqwCompanion.Skua;
 
@@ -87,10 +90,7 @@ public sealed class SkuaPipeServer(string pipeName, SkuaBridge bridge, Action<Ex
             NamedPipeServerStream? pipe = null;
             try
             {
-                // CurrentUserOnly keeps other users out. UNVERIFIED on Windows: whether an elevated Questkeeper accepts a
-                // non-elevated Skua of the same user (same SID, different integrity level); see the owner's Windows checklist.
-                pipe = new NamedPipeServerStream(
-                    pipeName, Direction, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+                pipe = CreatePipe(pipeName);
                 lastCreateFailure = null;
                 lock (_lock)
                 {
@@ -142,6 +142,42 @@ public sealed class SkuaPipeServer(string pipeName, SkuaBridge bridge, Action<Ex
                 pipe?.Dispose();
             }
         }
+    }
+
+    /// <summary>
+    /// Windows: an explicit security descriptor (see <see cref="CreateUserOnlySecurity"/>) instead of
+    /// <see cref="PipeOptions.CurrentUserOnly"/>, because .NET builds that one from the token's default owner, which for an
+    /// elevated administrator (Questkeeper always runs elevated for capture) is BUILTIN\Administrators: a normal Skua holds
+    /// that group deny-only and would be refused, and the plugin's own CurrentUserOnly owner check would fail.
+    /// Elsewhere (tests on macOS/Linux): CurrentUserOnly as before.
+    /// UNVERIFIED on Windows: a real elevated Questkeeper with a non-elevated Skua (the owner's checklist), including
+    /// whether the pipe's default integrity label lets a medium-integrity client write to it.
+    /// </summary>
+    private static NamedPipeServerStream CreatePipe(string name) =>
+        OperatingSystem.IsWindows()
+            ? NamedPipeServerStreamAcl.Create(
+                name, Direction, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous, inBufferSize: 0, outBufferSize: 0, CreateUserOnlySecurity())
+            : new NamedPipeServerStream(name, Direction, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+
+    /// <summary>
+    /// Owner and only grantee are the user's own SID (not the Administrators group an elevated token uses as owner), and
+    /// inherited entries are blocked, so no other account, other users included, has any access. The right is FullControl
+    /// for that one SID, exactly what .NET's CurrentUserOnly grants, only to the user instead of the token owner: the client
+    /// opens with GENERIC_WRITE, which for a pipe maps to FILE_GENERIC_WRITE and includes FILE_APPEND_DATA (the same bit as
+    /// CreateNewInstance) and READ_CONTROL (needed by the client's owner check), and the server needs CreateNewInstance to
+    /// open the next instance. A narrower set is not provable without Windows. Data still flows one way: the server is
+    /// created <see cref="Direction"/> and never writes.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    internal static PipeSecurity CreateUserOnlySecurity()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        var user = identity.User ?? throw new InvalidOperationException("The current Windows identity has no user SID.");
+        var security = new PipeSecurity();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        security.SetOwner(user);
+        security.AddAccessRule(new PipeAccessRule(user, PipeAccessRights.FullControl, AccessControlType.Allow));
+        return security;
     }
 
     private async Task ServeAsync(Stream stream, CancellationToken ct)

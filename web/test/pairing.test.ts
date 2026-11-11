@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getState, probeOf, STATE_TIMEOUT_MS, UnpairedError } from '../src/api';
+import { getState, probeOf, STATE_TIMEOUT_MS, timeoutSignal, UnpairedError } from '../src/api';
 import { PASTE_REJECTED, parsePairingInput } from '../src/state';
 import { pairNeededView, type VNode } from '../src/views';
 
@@ -80,6 +80,35 @@ describe('getState', () => {
   });
 });
 
+describe('timeoutSignal', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('uses AbortSignal.timeout where the browser has it', () => {
+    const t = timeoutSignal(1000, true);
+    expect(t.signal).toBeInstanceOf(AbortSignal);
+    expect(t.signal.aborted).toBe(false);
+    t.done();
+  });
+  it('falls back to a timer for Safari before 16, aborting with a TimeoutError', async () => {
+    vi.useFakeTimers();
+    const t = timeoutSignal(1000, false);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(t.signal.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(t.signal.aborted).toBe(true);
+    expect((t.signal.reason as DOMException).name).toBe('TimeoutError');
+    expect(probeOf(t.signal.reason)).toBe('failed');
+  });
+  it('clears the fallback timer once the request finished', async () => {
+    vi.useFakeTimers();
+    const t = timeoutSignal(1000, false);
+    t.done();
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(t.signal.aborted).toBe(false);
+  });
+});
+
 describe('the paste field of the Not paired card', () => {
   const view = pairNeededView();
   const input = all(view).find((n) => n.tag === 'input');
@@ -94,6 +123,10 @@ describe('the paste field of the Not paired card', () => {
   it('has a Pair button that is not a form submit', () => {
     expect(button).toMatchObject({ tag: 'button', text: 'Pair', attrs: { type: 'button', 'data-action': 'pair-paste' } });
     expect(all(view).some((n) => n.tag === 'form')).toBe(false);
+  });
+  it('announces why a paste or a link was refused', () => {
+    const reason = all(pairNeededView(PASTE_REJECTED)).find((n) => n.text === PASTE_REJECTED);
+    expect(reason?.attrs).toEqual({ role: 'status' });
   });
   it('explains why an app on the Home Screen needs it', () => {
     expect(all(view).map((n) => n.text)).toContain(

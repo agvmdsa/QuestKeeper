@@ -2,7 +2,7 @@ import type { PairOutcome } from './api';
 import type { Character, Figures, HardFarms, Notice, RemoteState } from './types';
 
 export interface Banner {
-  tone: 'warn';
+  tone: 'warn' | 'neutral';
   text: string;
 }
 
@@ -134,11 +134,13 @@ export interface FocusTarget {
   tag: string;
   action: string | null;
   href: string | null;
+  id?: string | null;
 }
 
 /** Names a focused control so the same control can get focus back after a redraw. */
 export function focusKey(t: FocusTarget): string | null {
   if (t.action) return `action:${t.action}`;
+  if (t.id) return `id:${t.id}`;
   const tag = t.tag.toLowerCase();
   if (tag === 'a' && t.href) return `href:${t.href}`;
   if (tag === 'summary') return 'summary';
@@ -212,12 +214,12 @@ export function relativeTime(iso: string, nowMs: number): string {
 }
 
 /**
- * Nothing while the event stream is open, nor on a first visit when no data was ever shown (there is nothing old to warn about);
- * otherwise the shown data is old, and the banner says how old when the time is known.
+ * Nothing while the event stream is open; a calm "Connecting..." on a first visit when no data was ever shown (nothing old to warn
+ * about); otherwise the shown data is old, and the banner says how old when the time is known.
  */
 export function linkBanner(sseOpen: boolean, lastUpdateMs: number | null, nowMs: number, hasData = true): Banner | null {
   if (sseOpen) return null;
-  if (!hasData && lastUpdateMs === null) return null;
+  if (!hasData && lastUpdateMs === null) return { tone: 'neutral', text: 'Connecting...' };
   const age = lastUpdateMs === null || !Number.isFinite(lastUpdateMs) ? '' : relativeTime(new Date(lastUpdateMs).toISOString(), nowMs);
   return { tone: 'warn', text: age ? `Old data - last update ${age}. Reconnecting...` : 'Old data - reconnecting...' };
 }

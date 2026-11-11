@@ -169,6 +169,11 @@ describe('focusKey', () => {
     expect(focusKey({ tag: 'A', action: null, href: '#/c/Alpha' })).toBe('href:#/c/Alpha');
     expect(focusKey({ tag: 'SUMMARY', action: null, href: null })).toBe('summary');
   });
+  it('keys a text field by its id, so focus stays in the pairing link field after a redraw', () => {
+    expect(focusKey({ tag: 'INPUT', action: null, href: null, id: 'pair-link' })).toBe('id:pair-link');
+    expect(focusKey({ tag: 'INPUT', action: null, href: null, id: '' })).toBeNull();
+    expect(focusKey({ tag: 'INPUT', action: null, href: null })).toBeNull();
+  });
   it('has no key for anything else', () => {
     expect(focusKey({ tag: 'DIV', action: null, href: null })).toBeNull();
     expect(focusKey({ tag: 'A', action: null, href: null })).toBeNull();

@@ -85,13 +85,13 @@ function tree(): VNode {
 function focusedKey(): string | null {
   const el = document.activeElement;
   if (!(el instanceof HTMLElement) || !app.contains(el)) return null;
-  return focusKey({ tag: el.tagName, action: el.getAttribute('data-action'), href: el.getAttribute('href') });
+  return focusKey({ tag: el.tagName, action: el.getAttribute('data-action'), href: el.getAttribute('href'), id: el.id });
 }
 
 function restoreFocus(key: string | null): void {
   if (!key) return;
-  for (const el of app.querySelectorAll<HTMLElement>('a, button, summary')) {
-    if (focusKey({ tag: el.tagName, action: el.getAttribute('data-action'), href: el.getAttribute('href') }) === key) {
+  for (const el of app.querySelectorAll<HTMLElement>('a, button, summary, input')) {
+    if (focusKey({ tag: el.tagName, action: el.getAttribute('data-action'), href: el.getAttribute('href'), id: el.id }) === key) {
       el.focus({ preventScroll: true });
       return;
     }

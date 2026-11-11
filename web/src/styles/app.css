@@ -13,6 +13,7 @@ a { color: var(--link); text-underline-offset: 0.15em; }
 .top h1 { font-size: 1.25rem; }
 
 .banner { padding: 0.75rem max(1rem, calc((100% - 34rem) / 2 + 1rem)); background: var(--raised); border-bottom: 1px solid var(--border); font-weight: 600; }
+.banner[data-tone="neutral"] { font-weight: 400; color: var(--muted); }
 
 main { max-width: 34rem; margin: 0 auto; padding: 1rem 1rem calc(2rem + env(safe-area-inset-bottom)); }
 main > div { display: grid; gap: 1rem; }

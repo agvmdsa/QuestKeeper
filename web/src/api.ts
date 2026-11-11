@@ -8,9 +8,14 @@ export function probeOf(error: unknown): 'unpaired' | 'failed' {
   return error instanceof UnpairedError ? 'unpaired' : 'failed';
 }
 
-// AbortSignal.timeout arrived in Safari 16; an older browser waits as long as the network does.
-function timeoutSignal(ms: number): AbortSignal | undefined {
-  return typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(ms) : undefined;
+const hasNativeTimeout = (): boolean => typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function';
+
+/** A signal that aborts with a TimeoutError after `ms`. AbortSignal.timeout arrived in Safari 16; older browsers get a timer, cleared by done(). */
+export function timeoutSignal(ms: number, native = hasNativeTimeout()): { signal: AbortSignal; done(): void } {
+  if (native) return { signal: AbortSignal.timeout(ms), done: () => undefined };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new DOMException('The operation timed out.', 'TimeoutError')), ms);
+  return { signal: controller.signal, done: () => clearTimeout(timer) };
 }
 
 export type PairOutcome = 'paired' | 'invalid' | 'locked' | 'failed';
@@ -32,11 +37,15 @@ async function send(path: string, init: RequestInit = {}): Promise<Response> {
 }
 
 export async function getState(timeoutMs = STATE_TIMEOUT_MS): Promise<string> {
-  const signal = timeoutSignal(timeoutMs);
-  const response = await send('/api/state', signal ? { signal } : {});
-  if (response.status === 401) throw new UnpairedError();
-  if (!response.ok) throw new Error(`state ${response.status}`);
-  return response.text();
+  const timeout = timeoutSignal(timeoutMs);
+  try {
+    const response = await send('/api/state', { signal: timeout.signal });
+    if (response.status === 401) throw new UnpairedError();
+    if (!response.ok) throw new Error(`state ${response.status}`);
+    return await response.text();
+  } finally {
+    timeout.done();
+  }
 }
 
 export async function pair(token: string, name: string): Promise<PairOutcome> {

@@ -208,7 +208,7 @@ export function pairNeededView(reason: string | null = null, installHint: string
     'section',
     { className: 'card' },
     h('h2', { text: 'Not paired' }),
-    reason ? h('p', { className: 'reason', text: reason }) : null,
+    reason ? h('p', { className: 'reason', text: reason, attrs: { role: 'status' } }) : null,
     h('p', {
       text: 'On your PC, open Questkeeper, then Settings, "Watch my characters from my phone", "Pair a phone...", and scan the code or open the link here.',
     }),

@@ -64,8 +64,9 @@ describe('linkBanner', () => {
     expect(linkBanner(false, Number.NaN, NOW)).toEqual({ tone: 'warn', text: 'Old data - reconnecting...' });
     expect(linkBanner(false, null, NOW, true)).toEqual({ tone: 'warn', text: 'Old data - reconnecting...' });
   });
-  it('says nothing on a first visit, when no data was ever shown', () => {
-    expect(linkBanner(false, null, NOW, false)).toBeNull();
+  it('only says "Connecting..." in a calm tone on a first visit, when no data was ever shown', () => {
+    expect(linkBanner(false, null, NOW, false)).toEqual({ tone: 'neutral', text: 'Connecting...' });
+    expect(linkBanner(true, null, NOW, false)).toBeNull();
   });
 });
 

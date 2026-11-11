@@ -64,6 +64,12 @@ public class SkuaLineTests
     [InlineData("{\"v\":1,\"type\":\"hello\"}")]
     [InlineData("{\"v\":1,\"type\":\"log\",\"at\":\"not a time\",\"kind\":\"Sold\",\"text\":\"x\"}")]
     [InlineData("{\"v\":1,\"type\":\"log\",\"at\":\"2026-11-11T12:00:05.0000000+00:00\",\"kind\":\"Nope\",\"text\":\"x\"}")]
+    [InlineData("{\"v\":1,\"type\":\"log\",\"at\":\"2026-11-11T12:00:05.0000000+00:00\",\"kind\":\"Sold\",\"text\":\"\\ud800\"}")]
+    [InlineData("{\"v\":1,\"type\":\"log\",\"at\":\"2026-11-11T12:00:05.0000000+00:00\",\"kind\":\"Sold\",\"text\":\"\\udc00\"}")]
+    [InlineData("{\"v\":1,\"type\":\"log\",\"at\":\"2026-11-11T12:00:05.0000000+00:00\",\"kind\":\"Sold\",\"text\":\"\ud800\"}")]
+    [InlineData("{\"v\":1,\"type\":\"log\",\"at\":\"2026-11-11T12:00:05.0000000+00:00\",\"kind\":\"Sold, Died\",\"text\":\"x\"}")]
+    [InlineData("{\"v\":1,\"type\":\"log\",\"at\":\"2026-11-11T12:00:05.0000000+00:00\",\"kind\":\"3\",\"text\":\"x\"}")]
+    [InlineData("{\"v\":1,\"type\":\"log\",\"at\":\"2026-11-11T12:00:05.0000000+00:00\",\"kind\":\" Sold\",\"text\":\"x\"}")]
     public void Malformed_or_unknown_lines_parse_to_null(string line)
     {
         Assert.Null(SkuaLine.Parse(line));
@@ -93,5 +99,27 @@ public class SkuaLineTests
         var parsed = Assert.IsType<LogMessage>(SkuaLine.Parse(SkuaLine.ToLine(new LogMessage(entry))));
 
         Assert.Equal(SkuaProtocol.MaxTextLength, parsed.Entry.Text.Length);
+    }
+
+    [Fact]
+    public void A_surrogate_pair_straddling_the_cap_is_kept_whole()
+    {
+        var text = new string('a', SkuaProtocol.MaxTextLength - 1) + "\U0001F600";
+        var entry = new SkuaLogEntry(Noon, SkuaLogKind.MapChanged, text);
+
+        var parsed = Assert.IsType<LogMessage>(SkuaLine.Parse(SkuaLine.ToLine(new LogMessage(entry))));
+
+        Assert.True(parsed.Entry.Text.Length <= SkuaProtocol.MaxTextLength);
+        Assert.False(char.IsHighSurrogate(parsed.Entry.Text[^1]));
+    }
+
+    [Fact]
+    public void The_line_cap_counts_bytes_not_characters()
+    {
+        var line = "{\"v\":1,\"type\":\"hello\",\"plugin\":\"" + new string('\u00e9', 8300) + "\",\"skua\":\"1\"}";
+
+        Assert.True(line.Length < SkuaProtocol.MaxLineBytes);
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(line) > SkuaProtocol.MaxLineBytes);
+        Assert.Null(SkuaLine.Parse(line));
     }
 }

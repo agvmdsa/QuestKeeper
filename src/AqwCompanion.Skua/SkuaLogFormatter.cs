@@ -45,6 +45,12 @@ public static class SkuaLogFormatter
     private static SkuaLogEntry Entry(DateTimeOffset at, SkuaLogKind kind, string text)
     {
         var single = string.Join(' ', text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)).Trim();
-        return new SkuaLogEntry(at, kind, single.Length <= SkuaProtocol.MaxTextLength ? single : single[..SkuaProtocol.MaxTextLength]);
+        var length = single.Length;
+        if (length > SkuaProtocol.MaxTextLength)
+        {
+            length = char.IsHighSurrogate(single[SkuaProtocol.MaxTextLength - 1]) ? SkuaProtocol.MaxTextLength - 1 : SkuaProtocol.MaxTextLength;
+        }
+
+        return new SkuaLogEntry(at, kind, single[..length]);
     }
 }

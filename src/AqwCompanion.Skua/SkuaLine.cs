@@ -62,6 +62,11 @@ public static class SkuaLine
             return null;
         }
 
+        if (HasLoneSurrogate(line))
+        {
+            return null;
+        }
+
         try
         {
             using var doc = JsonDocument.Parse(line);
@@ -86,10 +91,27 @@ public static class SkuaLine
                 _ => null,
             };
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or ArgumentException or FormatException or OverflowException)
         {
             return null;
         }
+    }
+
+    private static bool HasLoneSurrogate(string value)
+    {
+        for (var i = 0; i < value.Length; i++)
+        {
+            if (char.IsHighSurrogate(value[i]) && i + 1 < value.Length && char.IsLowSurrogate(value[i + 1]))
+            {
+                i++;
+            }
+            else if (char.IsSurrogate(value[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static SkuaMessage? ParseStatus(JsonElement root)
@@ -121,18 +143,27 @@ public static class SkuaLine
         if (Str(root, "at") is not { } at
             || !DateTimeOffset.TryParse(at, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var time)
             || Str(root, "kind") is not { } kindText
-            || !Enum.TryParse<SkuaLogKind>(kindText, ignoreCase: false, out var kind)
-            || !Enum.IsDefined(kind)
+            || Array.IndexOf(Enum.GetNames<SkuaLogKind>(), kindText) < 0
             || Str(root, "text") is not { } body)
         {
             return null;
         }
 
+        var kind = Enum.Parse<SkuaLogKind>(kindText);
         return new LogMessage(new SkuaLogEntry(time, kind, Cut(body)));
     }
 
-    private static string? Str(JsonElement root, string name) =>
-        root.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
+    /// <summary>A string value, or null when absent, not a string, or damaged (an escaped lone surrogate decodes to U+FFFD, which the plugin never sends).</summary>
+    private static string? Str(JsonElement root, string name)
+    {
+        if (!root.TryGetProperty(name, out var p) || p.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var text = p.GetString();
+        return text is null || text.Contains('\uFFFD') ? null : text;
+    }
 
     private static void WriteNullable(Utf8JsonWriter w, string name, string? value)
     {
@@ -146,7 +177,21 @@ public static class SkuaLine
         }
     }
 
-    private static string Cut(string value) => value.Length <= SkuaProtocol.MaxTextLength ? value : value[..SkuaProtocol.MaxTextLength];
+    private static string Cut(string value)
+    {
+        if (value.Length <= SkuaProtocol.MaxTextLength)
+        {
+            return value;
+        }
+
+        var length = SkuaProtocol.MaxTextLength;
+        if (char.IsHighSurrogate(value[length - 1]))
+        {
+            length--;
+        }
+
+        return value[..length];
+    }
 
     private static string? CutOrNull(string? value) => value is null ? null : Cut(value);
 }

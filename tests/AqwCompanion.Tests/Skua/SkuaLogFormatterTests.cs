@@ -78,4 +78,13 @@ public class SkuaLogFormatterTests
         Assert.True(entry.Text.Length <= SkuaProtocol.MaxTextLength);
         Assert.StartsWith("Script stopped with an error: line one line two", entry.Text);
     }
+
+    [Fact]
+    public void Cutting_long_text_does_not_split_a_surrogate_pair()
+    {
+        var entry = SkuaLogFormatter.ScriptError(T, new string('a', 300 - "Script stopped with an error: ".Length - 1) + "\U0001F600");
+
+        Assert.True(entry.Text.Length <= SkuaProtocol.MaxTextLength);
+        Assert.False(char.IsHighSurrogate(entry.Text[^1]));
+    }
 }

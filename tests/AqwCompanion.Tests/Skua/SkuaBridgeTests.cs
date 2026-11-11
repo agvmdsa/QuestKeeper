@@ -270,6 +270,114 @@ public class SkuaBridgeTests
         Assert.Equal(2, reached);
     }
 
+    [Fact]
+    public void The_first_entry_after_a_forget_saves_at_once()
+    {
+        var bridge = Create();
+        bridge.Accept(Entry(1));
+        bridge.Forget();
+        Assert.Equal(1, _store.Saves);
+
+        bridge.Accept(Entry(2));
+
+        Assert.Equal(2, _store.Saves);
+    }
+
+    [Fact]
+    public async Task A_forget_waits_for_a_save_in_flight_and_the_file_does_not_reappear()
+    {
+        var gate = new ManualResetEventSlim();
+        var store = new BlockingStore(gate);
+        var bridge = new SkuaBridge(store, () => _now);
+        var writer = Task.Run(() => bridge.Accept(Entry(1)));
+        Assert.True(store.SaveEntered.Wait(TimeSpan.FromSeconds(10)));
+
+        var forgetter = Task.Run(bridge.Forget);
+        // Without the I/O lock the delete would run now; with it Forget is still waiting for the save.
+        var deletedEarly = store.DeleteCalled.Wait(TimeSpan.FromMilliseconds(300));
+        gate.Set();
+        await Task.WhenAll(writer, forgetter).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.False(deletedEarly);
+        Assert.Empty(store.Stored);
+    }
+
+    [Fact]
+    public async Task A_save_that_loses_the_race_with_a_forget_is_suppressed()
+    {
+        var bridge = Create();
+        var entered = new ManualResetEventSlim();
+        var gate = new ManualResetEventSlim();
+        bridge.BeforeWrite = () =>
+        {
+            entered.Set();
+            gate.Wait();
+        };
+        var writer = Task.Run(() => bridge.Accept(Entry(1)));
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(10)));
+
+        bridge.Forget();
+        gate.Set();
+        await writer.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(0, _store.Saves);
+        Assert.Empty(_store.Stored);
+    }
+
+    [Fact]
+    public async Task An_older_snapshot_arriving_after_a_newer_one_is_skipped()
+    {
+        var bridge = Create();
+        var entered = new ManualResetEventSlim();
+        var gate = new ManualResetEventSlim();
+        var calls = 0;
+        bridge.BeforeWrite = () =>
+        {
+            if (Interlocked.Increment(ref calls) == 1)
+            {
+                entered.Set();
+                gate.Wait();
+            }
+        };
+        var writer = Task.Run(() => bridge.Accept(Entry(1)));
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(10)));
+
+        bridge.Accept(Entry(2));
+        bridge.Flush();
+        Assert.Equal(2, _store.Stored.Count);
+        gate.Set();
+        await writer.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(1, _store.Saves);
+        Assert.Equal(2, _store.Stored.Count);
+        bridge.Flush();
+        Assert.Equal(1, _store.Saves);
+    }
+
+    private sealed class BlockingStore(ManualResetEventSlim gate) : ISkuaLogStore
+    {
+        public ManualResetEventSlim SaveEntered { get; } = new();
+
+        public ManualResetEventSlim DeleteCalled { get; } = new();
+
+        public List<SkuaLogEntry> Stored { get; private set; } = [];
+
+        public IReadOnlyList<SkuaLogEntry> Load() => [];
+
+        public void Save(IReadOnlyList<SkuaLogEntry> log)
+        {
+            SaveEntered.Set();
+            gate.Wait();
+            Stored = [.. log];
+        }
+
+        public void Delete()
+        {
+            DeleteCalled.Set();
+            Stored = [];
+        }
+    }
+
     private sealed class FakeStore : ISkuaLogStore
     {
         public List<SkuaLogEntry> Stored { get; set; } = [];

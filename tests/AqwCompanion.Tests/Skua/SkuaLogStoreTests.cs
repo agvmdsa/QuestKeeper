@@ -90,4 +90,14 @@ public sealed class SkuaLogStoreTests : IDisposable
         Assert.Null(Record.Exception(store.Delete));
         Assert.Empty(store.Load());
     }
+
+    [Fact]
+    public void A_path_the_platform_rejects_never_throws()
+    {
+        var store = new SkuaLogStore("bad\0path/skua-log.json");
+
+        Assert.Null(Record.Exception(store.Load));
+        Assert.Null(Record.Exception(() => store.Save([new SkuaLogEntry(DateTimeOffset.UnixEpoch, SkuaLogKind.Died, "x")])));
+        Assert.Null(Record.Exception(store.Delete));
+    }
 }

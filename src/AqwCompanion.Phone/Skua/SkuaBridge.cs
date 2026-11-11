@@ -26,6 +26,8 @@ public sealed class SkuaBridge : ISkuaFeed, IForgettable
     private DateTimeOffset _lastSave = DateTimeOffset.MinValue;
     private int _rejected;
     private int _epoch;
+    private long _snapshotSeq;
+    private long _writtenSeq;
 
     public SkuaBridge(ISkuaLogStore store, Func<DateTimeOffset> now)
     {
@@ -104,6 +106,7 @@ public sealed class SkuaBridge : ISkuaFeed, IForgettable
     {
         IReadOnlyList<SkuaLogEntry>? snapshot = null;
         int epoch;
+        long seq = 0;
         lock (_lock)
         {
             if (_quiesced)
@@ -136,7 +139,7 @@ public sealed class SkuaBridge : ISkuaFeed, IForgettable
                     var now = _now();
                     if (now - _lastSave >= SaveEvery)
                     {
-                        snapshot = TakeSnapshot(now);
+                        snapshot = TakeSnapshot(now, out seq);
                     }
 
                     break;
@@ -150,7 +153,7 @@ public sealed class SkuaBridge : ISkuaFeed, IForgettable
 
         if (snapshot is not null)
         {
-            Save(snapshot, epoch);
+            Save(snapshot, epoch, seq);
         }
 
         RaiseChanged();
@@ -161,18 +164,19 @@ public sealed class SkuaBridge : ISkuaFeed, IForgettable
     {
         IReadOnlyList<SkuaLogEntry>? snapshot = null;
         int epoch;
+        long seq = 0;
         lock (_lock)
         {
             epoch = _epoch;
             if (_dirty)
             {
-                snapshot = TakeSnapshot(_now());
+                snapshot = TakeSnapshot(_now(), out seq);
             }
         }
 
         if (snapshot is not null)
         {
-            Save(snapshot, epoch);
+            Save(snapshot, epoch, seq);
         }
     }
 
@@ -200,6 +204,7 @@ public sealed class SkuaBridge : ISkuaFeed, IForgettable
             _hello = null;
             _status = null;
             _dirty = false;
+            _lastSave = DateTimeOffset.MinValue;
             _epoch++;
         }
 
@@ -211,18 +216,28 @@ public sealed class SkuaBridge : ISkuaFeed, IForgettable
         RaiseChanged();
     }
 
-    private List<SkuaLogEntry> TakeSnapshot(DateTimeOffset now)
+    /// <summary>
+    /// Called under the state lock. A failed save is not retried until the next entry or flush: the store never throws, so there is nothing to retry on.
+    /// </summary>
+    private List<SkuaLogEntry> TakeSnapshot(DateTimeOffset now, out long seq)
     {
         _dirty = false;
         _lastSave = now;
+        seq = ++_snapshotSeq;
         return [.. _log];
     }
 
-    private void Save(IReadOnlyList<SkuaLogEntry> snapshot, int epoch)
+    /// <summary>Test seam: runs after a snapshot is taken and before the write is ordered. Never set in production.</summary>
+    internal Action? BeforeWrite { get; set; }
+
+    private void Save(IReadOnlyList<SkuaLogEntry> snapshot, int epoch, long seq)
     {
+        BeforeWrite?.Invoke();
         lock (_io)
         {
-            // A Forget since the snapshot must not be undone by a late save.
+            // A Forget since the snapshot must not be undone by a late save (epoch), and an older snapshot
+            // must not overwrite a newer one that already reached the store (sequence; it never resets, so
+            // snapshots taken after a Forget always win over _writtenSeq values from before it).
             lock (_lock)
             {
                 if (_epoch != epoch)
@@ -231,6 +246,12 @@ public sealed class SkuaBridge : ISkuaFeed, IForgettable
                 }
             }
 
+            if (seq <= _writtenSeq)
+            {
+                return;
+            }
+
+            _writtenSeq = seq;
             _store.Save(snapshot);
         }
     }

@@ -48,7 +48,7 @@ public sealed class SkuaLogStore(string path) : ISkuaLogStore
 
             return result;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception ex) when (IsExpected(ex))
         {
             Log.Error("Skua log load failed: {ExceptionType}", ex.GetType().Name);
             return [];
@@ -64,14 +64,14 @@ public sealed class SkuaLogStore(string path) : ISkuaLogStore
             File.WriteAllText(temp, JsonSerializer.Serialize(log, Options));
             File.Move(temp, path, overwrite: true);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (IsExpected(ex))
         {
             Log.Error("Skua log save failed: {ExceptionType}", ex.GetType().Name);
             try
             {
                 File.Delete(temp);
             }
-            catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException)
+            catch (Exception cleanup) when (IsExpected(cleanup))
             {
                 // The temp file is harmless; the next save overwrites it.
             }
@@ -86,10 +86,13 @@ public sealed class SkuaLogStore(string path) : ISkuaLogStore
             {
                 File.Delete(file);
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (IsExpected(ex))
             {
                 Log.Error("Skua log delete failed: {ExceptionType}", ex.GetType().Name);
             }
         }
     }
+
+    private static bool IsExpected(Exception ex) =>
+        ex is IOException or UnauthorizedAccessException or JsonException or NotSupportedException or ArgumentException or System.Security.SecurityException;
 }

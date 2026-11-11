@@ -47,6 +47,7 @@ public partial class CompanionApp : Application
             services.GetRequiredService<LocalFeedController>().Start();
             services.GetRequiredService<PhoneController>().Start();
             services.GetRequiredService<SkuaBridgeHost>().Start();
+            services.GetRequiredService<SkuaSettingsPresenter>().Start();
             var capture = services.GetRequiredService<CaptureSession>();
             _ = capture.RestoreAsync();
             _ = capture.StartAsync();

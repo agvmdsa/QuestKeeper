@@ -1,6 +1,7 @@
 using AqwCompanion.App.Feed;
 using AqwCompanion.App.Infrastructure.AutoStart;
 using AqwCompanion.App.Phone;
+using AqwCompanion.App.Skua;
 using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Phone.Devices;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -24,6 +25,14 @@ public partial class SettingsViewModel : ObservableObject
     public const string PhoneDescriptionText = "Shows your characters' numbers, factions and Hard Farms on a phone you pair, over your own Tailscale network. It only watches and never sends anything to the game.";
     public const string PairPhoneText = "Pair a phone...";
     public const string PhoneCopyLinkText = "Copy local pairing link";
+    public const string SkuaTitleText = "Skua";
+    public const string SkuaDescriptionText = "Shows what Skua is doing in the Skua tab of the phone page. The plugin only watches: it cannot start, stop or change anything.";
+    public const string SkuaStepsText = "1. Download QuestKeeper.SkuaBridge.dll from the release page. 2. Copy it into Skua's plugins folder. 3. Close and reopen Skua.";
+    public const string OpenSkuaPluginsFolderText = "Open Skua's plugins folder";
+    public const string OpenReleasePageText = "Open the release page";
+    public const string SkuaFolderNotFoundText = "Skua's plugins folder was not found. Open Skua once, then try again.";
+    public const string SkuaFolderFailedText = "Could not open Skua's plugins folder.";
+    public const string ReleasePageFailedText = "Could not open the release page.";
     public const string DebugTitleText = "Debug mode";
     public const string DebugDescriptionText = "Shows the capture and packet details in their own window. It also opens with Ctrl+Shift+D and from the tray icon menu.";
     public const string PrivacyTitleText = "Privacy";
@@ -52,12 +61,21 @@ public partial class SettingsViewModel : ObservableObject
     private readonly PhoneRegistry? _phoneRegistry;
     private readonly Func<string, Task>? _copyToClipboard;
     private readonly Func<bool>? _isClipboardAvailable;
+    private readonly IReleasePageLauncher _releasePage;
+    private readonly IFolderLauncher _folders;
+    private readonly string _skuaPluginsPath;
+    private readonly Func<string, bool> _directoryExists;
     private AppSettings _settings;
     private bool _startWithWindows;
 
     public SettingsViewModel(IAppSettingsStore store, ForgetCoordinator forgetting, IAutoStart? autoStart = null, FeedSecretStore? feedSecret = null,
-        PhoneRegistry? phoneRegistry = null, Func<string, Task>? copyToClipboard = null, Func<bool>? isClipboardAvailable = null)
+        PhoneRegistry? phoneRegistry = null, Func<string, Task>? copyToClipboard = null, Func<bool>? isClipboardAvailable = null,
+        IReleasePageLauncher? releasePage = null, IFolderLauncher? folders = null, string? skuaPluginsPath = null, Func<string, bool>? directoryExists = null)
     {
+        _releasePage = releasePage ?? new ProcessReleasePageLauncher();
+        _folders = folders ?? new ProcessFolderLauncher();
+        _skuaPluginsPath = skuaPluginsPath ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Skua", "plugins");
+        _directoryExists = directoryExists ?? Directory.Exists;
         _phoneRegistry = phoneRegistry;
         _copyToClipboard = copyToClipboard;
         _isClipboardAvailable = isClipboardAvailable;
@@ -191,6 +209,35 @@ public partial class SettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             Log.Warning("Could not copy the pairing link: {ExceptionType}", ex.GetType().Name);
+        }
+    }
+
+    /// <summary>What the Skua plugin is doing, in words; set from the Skua bridge.</summary>
+    [ObservableProperty]
+    private string _skuaStatusText = AqwCompanion.Phone.Skua.SkuaStatusText.For(AqwCompanion.Phone.Skua.SkuaView.Empty);
+
+    public void SetSkuaStatus(string text) => SkuaStatusText = text;
+
+    /// <summary>Opens Skua's plugins folder when it exists. Never creates, writes or deletes anything there.</summary>
+    [RelayCommand]
+    private void OpenSkuaPluginsFolder()
+    {
+        if (!_directoryExists(_skuaPluginsPath))
+        {
+            SkuaStatusText = SkuaFolderNotFoundText;
+        }
+        else if (!_folders.Open(_skuaPluginsPath))
+        {
+            SkuaStatusText = SkuaFolderFailedText;
+        }
+    }
+
+    [RelayCommand]
+    private void OpenReleasePage()
+    {
+        if (!_releasePage.Open(ReleasePage.Url))
+        {
+            SkuaStatusText = ReleasePageFailedText;
         }
     }
 

@@ -217,4 +217,20 @@ public class SettingsWindowTests
 
         Assert.True(closed);
     }
+
+    [AvaloniaFact]
+    public void The_skua_block_shows_the_texts_the_status_and_two_named_buttons()
+    {
+        var (window, vm, _, _) = Open();
+        vm.SetSkuaStatus("Skua is connecting...");
+
+        Assert.Equal(SettingsViewModel.SkuaStepsText, window.FindControl<TextBlock>("SettingsSkuaSteps")!.Text);
+        Assert.Equal("Skua is connecting...", window.FindControl<TextBlock>("SettingsSkuaStatus")!.Text);
+        foreach (var name in new[] { "SettingsSkuaOpenFolder", "SettingsSkuaOpenRelease" })
+        {
+            var button = window.FindControl<Button>(name)!;
+            Assert.True(button.IsEffectivelyEnabled);
+            Assert.False(string.IsNullOrEmpty(Avalonia.Automation.AutomationProperties.GetName(button)));
+        }
+    }
 }

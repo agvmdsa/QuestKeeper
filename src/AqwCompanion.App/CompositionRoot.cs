@@ -118,6 +118,8 @@ public static class CompositionRoot
         services.AddSingleton<ISkuaFeed>(sp => sp.GetRequiredService<SkuaBridge>());
         services.AddSingleton(sp => new SkuaBridgeHost(
             sp.GetRequiredService<SkuaBridge>(), ex => Log.Warning("Skua pipe failed: {ExceptionType}", ex.GetType().Name)));
+        services.AddSingleton(sp => new SkuaSettingsPresenter(
+            sp.GetRequiredService<ISkuaFeed>(), sp.GetRequiredService<SettingsViewModel>(), OnUiThread));
         services.AddSingleton<IAssetSource, EmbeddedAssetSource>();
         services.AddSingleton<ITailscaleProcess, TailscaleProcess>();
         services.AddSingleton<IServeMarker>(sp => new FileServeMarker(sp.GetRequiredService<AppPaths>().PhoneServeMarkerPath));

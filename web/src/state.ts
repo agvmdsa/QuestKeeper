@@ -69,6 +69,33 @@ export function parseNotice(text: string): Notice | null {
   }
 }
 
+/** The one-time token the PC makes: 32 random bytes in URL-safe base64 without padding. */
+const TOKEN = /^[A-Za-z0-9_-]{43}$/;
+const MAX_PASTE = 512;
+
+export const PASTE_REJECTED = 'That is not a pairing link. Copy the whole link from Questkeeper on your PC and paste it here.';
+
+/**
+ * The token from a pasted pairing link: the whole link (https, a bare name, no path, query, port or user), its "#t=" part, or the
+ * token alone. Anything else is null. The text is only read here; it is never logged or put in the address bar.
+ */
+export function parsePairingInput(text: string): string | null {
+  if (text.length > MAX_PASTE) return null;
+  const value = text.trim();
+  if (TOKEN.test(value)) return value;
+  if (value.startsWith('#t=')) return TOKEN.test(value.slice(3)) ? value.slice(3) : null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' || url.username || url.password || url.port || url.pathname !== '/' || url.search) return null;
+  if (!url.hash.startsWith('#t=')) return null;
+  const token = url.hash.slice(3);
+  return TOKEN.test(token) ? token : null;
+}
+
 /** A pairing link puts a one-time token in the hash; the caller removes it from the URL before using it. */
 export function takePairingToken(hash: string): { token: string; cleanHash: string } | null {
   return hash.startsWith('#t=') ? { token: hash.slice(3), cleanHash: '' } : null;
@@ -184,9 +211,13 @@ export function relativeTime(iso: string, nowMs: number): string {
   return `${Math.floor(hours / 24)} d ago`;
 }
 
-/** Nothing while the event stream is open; otherwise the shown data is old, and the banner says how old when the time is known. */
-export function linkBanner(sseOpen: boolean, lastUpdateMs: number | null, nowMs: number): Banner | null {
+/**
+ * Nothing while the event stream is open, nor on a first visit when no data was ever shown (there is nothing old to warn about);
+ * otherwise the shown data is old, and the banner says how old when the time is known.
+ */
+export function linkBanner(sseOpen: boolean, lastUpdateMs: number | null, nowMs: number, hasData = true): Banner | null {
   if (sseOpen) return null;
+  if (!hasData && lastUpdateMs === null) return null;
   const age = lastUpdateMs === null || !Number.isFinite(lastUpdateMs) ? '' : relativeTime(new Date(lastUpdateMs).toISOString(), nowMs);
   return { tone: 'warn', text: age ? `Old data - last update ${age}. Reconnecting...` : 'Old data - reconnecting...' };
 }
@@ -264,9 +295,13 @@ export function parseRoute(hash: string): Route {
 
 const IOS = /iPhone|iPad/;
 
-/** iPhone and iPad Safari never offer to install a page, so the page says how; not once it runs from the Home Screen. */
-export function iosInstallHint(userAgent: string, standalone: boolean): string | null {
-  return IOS.test(userAgent) && !standalone ? 'Install: tap Share, then Add to Home Screen.' : null;
+/**
+ * iPhone and iPad Safari never offer to install a page, so the page says how; not once it runs from the Home Screen. An iPad on
+ * iPadOS 13 or later reports itself as a Mac: a "Macintosh" with a touch screen (more than one touch point) counts as an iPad.
+ */
+export function iosInstallHint(userAgent: string, standalone: boolean, maxTouchPoints = 0): string | null {
+  const ios = IOS.test(userAgent) || (/Macintosh/.test(userAgent) && maxTouchPoints > 1);
+  return ios && !standalone ? 'Install: tap Share, then Add to Home Screen.' : null;
 }
 
 export function deviceName(userAgent: string): string {

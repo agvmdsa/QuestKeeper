@@ -50,6 +50,10 @@ main > div { display: grid; gap: 1rem; }
 .notices .muted { overflow-wrap: anywhere; }
 .reason { margin-bottom: 0.5rem; font-weight: 600; }
 .hint { margin-top: 0.5rem; }
+.paste { display: grid; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--raised); }
+.paste label { font-weight: 600; }
+.paste input { min-height: 3rem; width: 100%; padding: 0 0.75rem; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem; }
+.paste button { justify-self: start; margin-top: 0; }
 
 .back { display: inline-flex; align-items: center; min-height: 3rem; }
 summary { display: flex; align-items: center; min-height: 3rem; cursor: pointer; font-weight: 600; }

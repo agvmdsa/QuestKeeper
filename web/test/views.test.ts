@@ -107,7 +107,7 @@ describe('character view', () => {
 
 describe('pairing view', () => {
   it('tells the player how to pair', () => {
-    expect(texts(pairNeededView())).toContain('On your PC, open Questkeeper, then Settings, Phone access, "Pair a phone...", and scan the code or open the link here.');
+    expect(texts(pairNeededView())).toContain('On your PC, open Questkeeper, then Settings, "Watch my characters from my phone", "Pair a phone...", and scan the code or open the link here.');
   });
 });
 

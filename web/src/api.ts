@@ -1,5 +1,18 @@
 export class UnpairedError extends Error {}
 
+/** How long the page waits for /api/state before it counts as no answer, so a stalled path cannot hold up the first load or the redraws. */
+export const STATE_TIMEOUT_MS = 10_000;
+
+/** What a failed /api/state says: only a 401 means this browser is not paired; a timeout or any other failure is no answer. */
+export function probeOf(error: unknown): 'unpaired' | 'failed' {
+  return error instanceof UnpairedError ? 'unpaired' : 'failed';
+}
+
+// AbortSignal.timeout arrived in Safari 16; an older browser waits as long as the network does.
+function timeoutSignal(ms: number): AbortSignal | undefined {
+  return typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(ms) : undefined;
+}
+
 export type PairOutcome = 'paired' | 'invalid' | 'locked' | 'failed';
 
 export interface EventHandlers {
@@ -18,8 +31,9 @@ async function send(path: string, init: RequestInit = {}): Promise<Response> {
   return fetch(path, { ...init, headers, cache: 'no-store', credentials: 'same-origin' });
 }
 
-export async function getState(): Promise<string> {
-  const response = await send('/api/state');
+export async function getState(timeoutMs = STATE_TIMEOUT_MS): Promise<string> {
+  const signal = timeoutSignal(timeoutMs);
+  const response = await send('/api/state', signal ? { signal } : {});
   if (response.status === 401) throw new UnpairedError();
   if (!response.ok) throw new Error(`state ${response.status}`);
   return response.text();

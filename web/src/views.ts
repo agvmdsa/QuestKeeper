@@ -210,8 +210,19 @@ export function pairNeededView(reason: string | null = null, installHint: string
     h('h2', { text: 'Not paired' }),
     reason ? h('p', { className: 'reason', text: reason }) : null,
     h('p', {
-      text: 'On your PC, open Questkeeper, then Settings, Phone access, "Pair a phone...", and scan the code or open the link here.',
+      text: 'On your PC, open Questkeeper, then Settings, "Watch my characters from my phone", "Pair a phone...", and scan the code or open the link here.',
     }),
+    h(
+      'div',
+      { className: 'paste' },
+      h('p', {
+        className: 'muted',
+        text: 'Using Questkeeper from your Home Screen? The code opens the browser instead. Copy the pairing link (Copy link in Questkeeper on your PC) and paste it here.',
+      }),
+      h('label', { text: 'Pairing link', attrs: { for: 'pair-link' } }),
+      h('input', { attrs: { id: 'pair-link', type: 'text', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', enterkeyhint: 'go' } }),
+      h('button', { text: 'Pair', attrs: { type: 'button', 'data-action': 'pair-paste' } }),
+    ),
     installHint ? h('p', { className: 'muted hint', text: installHint }) : null,
   );
 }

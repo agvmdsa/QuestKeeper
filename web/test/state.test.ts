@@ -62,6 +62,10 @@ describe('linkBanner', () => {
   it('leaves the age out when no update time is known', () => {
     expect(linkBanner(false, null, NOW)).toEqual({ tone: 'warn', text: 'Old data - reconnecting...' });
     expect(linkBanner(false, Number.NaN, NOW)).toEqual({ tone: 'warn', text: 'Old data - reconnecting...' });
+    expect(linkBanner(false, null, NOW, true)).toEqual({ tone: 'warn', text: 'Old data - reconnecting...' });
+  });
+  it('says nothing on a first visit, when no data was ever shown', () => {
+    expect(linkBanner(false, null, NOW, false)).toBeNull();
   });
 });
 
@@ -72,6 +76,14 @@ describe('iosInstallHint', () => {
   it('tells iPhone and iPad users how to install the page', () => {
     expect(iosInstallHint(IPHONE, false)).toBe(HINT);
     expect(iosInstallHint(IPAD, false)).toBe(HINT);
+  });
+  it('counts an iPad that reports itself as a Mac (iPadOS 13 and later) by its touch screen', () => {
+    const MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
+    expect(iosInstallHint(MAC, false, 5)).toBe(HINT);
+    expect(iosInstallHint(MAC, true, 5)).toBeNull();
+    expect(iosInstallHint(MAC, false, 1)).toBeNull();
+    expect(iosInstallHint(MAC, false, 0)).toBeNull();
+    expect(iosInstallHint(MAC, false)).toBeNull();
   });
   it('says nothing once the page runs from the Home Screen', () => {
     expect(iosInstallHint(IPHONE, true)).toBeNull();

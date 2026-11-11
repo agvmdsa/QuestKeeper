@@ -1,8 +1,9 @@
 import './styles/tokens.css';
 import './styles/app.css';
-import { getState, openEvents, pair, UnpairedError, type PairOutcome } from './api';
+import { getState, openEvents, pair, probeOf, type PairOutcome } from './api';
 import {
-  afterStreamCheck, deviceName, focusKey, iosInstallHint, keepState, KEPT_KEY, linkBanner, pairFailureText, pairingStep, parseNotice, parseRoute, parseState,
+  afterStreamCheck, deviceName, focusKey, iosInstallHint, keepState, KEPT_KEY, linkBanner, pairFailureText, pairingStep, parseNotice, parsePairingInput, parseRoute,
+  parseState, PASTE_REJECTED,
   recallKept, reconnectDelay, streamErrorStep, takePairingToken, type PairProbe,
 } from './state';
 import type { Notice, RemoteState } from './types';
@@ -13,7 +14,8 @@ const banner = document.getElementById('banner')!;
 // What an earlier page on this address may have left: removed, never read.
 const OLD_KEYS = ['qkr-last-state', 'qkr-last-state-v1'];
 const standalone = (navigator as Navigator & { standalone?: boolean }).standalone === true || matchMedia('(display-mode: standalone)').matches;
-const installHint = iosInstallHint(navigator.userAgent, standalone);
+// iPadOS 13 and later report a Mac; the touch points tell an iPad apart.
+const installHint = iosInstallHint(navigator.userAgent, standalone, navigator.maxTouchPoints ?? 0);
 
 let state: RemoteState | null = null;
 let notices: Notice[] = [];
@@ -60,7 +62,7 @@ function recall(): ReturnType<typeof recallKept> {
 }
 
 function drawBanner(): void {
-  const note = unpaired ? null : linkBanner(sseOpen, lastUpdateMs, Date.now());
+  const note = unpaired ? null : linkBanner(sseOpen, lastUpdateMs, Date.now(), state !== null);
   const key = note ? `${note.tone}|${note.text}` : '';
   if (key === lastBanner) return;
   lastBanner = key;
@@ -186,7 +188,7 @@ function openStream(): void {
           setState(text);
         })
         .catch((error: unknown) => {
-          if (error instanceof UnpairedError) probe = 'unpaired';
+          probe = probeOf(error);
         })
         .finally(() => {
           if (afterStreamCheck(probe) === 'unpaired') becomeUnpaired();
@@ -205,7 +207,7 @@ async function connect(): Promise<void> {
     pairReason = null;
     setState(text);
   } catch (error) {
-    if (error instanceof UnpairedError) {
+    if (probeOf(error) === 'unpaired') {
       becomeUnpaired();
       return;
     }
@@ -213,24 +215,20 @@ async function connect(): Promise<void> {
   if (!source) openStream();
 }
 
-/** Pairs from a `#t=` link, at load or when the link is opened in a tab that already shows the page. */
-async function tryPairFromHash(): Promise<boolean> {
-  const taken = takePairingToken(location.hash);
-  if (!taken) return false;
-  // The token is single-use: take it out of the address bar and history before anything can fail.
-  history.replaceState(null, '', location.pathname + location.search + taken.cleanHash);
+/** Spends a one-time token unless this browser is already paired, then connects. Shared by a `#t=` link and a pasted link. */
+async function pairWith(token: string): Promise<void> {
   // A browser that is already paired keeps its pairing: the token is not spent and no second device entry is made.
   let probe: PairProbe;
   try {
     await getState();
     probe = 'paired';
   } catch (error) {
-    probe = error instanceof UnpairedError ? 'unpaired' : 'failed';
+    probe = probeOf(error);
   }
   if (pairingStep(probe) === 'pair') {
     let outcome: PairOutcome = 'failed';
     try {
-      outcome = await pair(taken.token, deviceName(navigator.userAgent));
+      outcome = await pair(token, deviceName(navigator.userAgent));
     } catch {
       outcome = 'failed';
     }
@@ -239,10 +237,44 @@ async function tryPairFromHash(): Promise<boolean> {
     draw();
   }
   await connect();
+}
+
+/** Pairs from a `#t=` link, at load or when the link is opened in a tab that already shows the page. */
+async function tryPairFromHash(): Promise<boolean> {
+  const taken = takePairingToken(location.hash);
+  if (!taken) return false;
+  // The token is single-use: take it out of the address bar and history before anything can fail.
+  history.replaceState(null, '', location.pathname + location.search + taken.cleanHash);
+  await pairWith(taken.token);
   return true;
 }
 
+let pasting = false;
+
+/**
+ * Pairs from the link pasted in the Not paired card: a Home Screen app has storage of its own and a scanned code opens the browser,
+ * so pasting is the only way in for it. The text is read once and cleared; it is never logged or put in the address bar.
+ */
+function pairFromPaste(): void {
+  const input = document.getElementById('pair-link');
+  if (!(input instanceof HTMLInputElement) || pasting) return;
+  const token = parsePairingInput(input.value);
+  input.value = '';
+  if (!token) {
+    pairReason = PASTE_REJECTED;
+    draw();
+    return;
+  }
+  pasting = true;
+  pairWith(token)
+    .catch(() => undefined)
+    .finally(() => {
+      pasting = false;
+    });
+}
+
 async function start(): Promise<void> {
+  setInterval(draw, 15_000);
   const kept = recall();
   if (kept) {
     state = kept.state;
@@ -255,14 +287,23 @@ async function start(): Promise<void> {
   } catch {
     // connect and tryPairFromHash handle their own failures; nothing is left to report.
   }
-  setInterval(draw, 15_000);
 }
 
 app.addEventListener('click', (event) => {
+  if ((event.target as HTMLElement).closest('[data-action="pair-paste"]')) {
+    pairFromPaste();
+    return;
+  }
   if ((event.target as HTMLElement).closest('[data-action="toggle-all"]')) {
     showAll = !showAll;
     hfOpen = true;
     draw();
+  }
+});
+app.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && (event.target as HTMLElement).id === 'pair-link') {
+    event.preventDefault();
+    pairFromPaste();
   }
 });
 app.addEventListener('toggle', (event) => {

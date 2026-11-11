@@ -183,7 +183,7 @@ describe('fallback views', () => {
     const t = texts(pairNeededView('Too many attempts. Wait a minute and open the pairing link again.'));
     expect(t).toContain('Too many attempts. Wait a minute and open the pairing link again.');
     expect(t.some((x) => x.startsWith('On your PC, open Questkeeper'))).toBe(true);
-    expect(texts(pairNeededView())).toHaveLength(2);
+    expect(texts(pairNeededView())).not.toContain('Too many attempts. Wait a minute and open the pairing link again.');
   });
   it('adds the install hint to the "Not paired" card when there is one', () => {
     expect(texts(pairNeededView(null, 'Install: tap Share, then Add to Home Screen.'))).toContain('Install: tap Share, then Add to Home Screen.');

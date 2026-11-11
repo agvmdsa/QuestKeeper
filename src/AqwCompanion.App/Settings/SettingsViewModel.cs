@@ -37,8 +37,9 @@ public partial class SettingsViewModel : ObservableObject
         "Questkeeper reads, on this computer only, the data the game sends your own computer when you log in, and a few of your own events while you play: " +
         "character name and level, gold, experience, AC, class points, days played, membership days, faction reputation, and your items. " +
         "It never reads or keeps your e-mail address, IP address, password, user or character ids, or anything about other players. " +
-        "It never sends anything to the game and never acts for you. Nothing leaves this computer; the only network access is to the AQW Wiki, " +
-        "when you ask for the Hard Farms list. The data is saved locally so the app opens with it, and Forget my data removes it.";
+        "It never sends anything to the game and never acts for you. Only two things go beyond this computer, and only when you ask for them: the AQW Wiki is contacted when you ask for the Hard Farms list, " +
+        "and with Phone access on the app serves the character numbers it already shows to the phones you paired, over your own Tailscale network. " +
+        "The data is saved locally so the app opens with it, and Forget my data removes it.";
 
     public const string CreditsText =
         "Unofficial fan project, not made by, endorsed by or connected to Artix Entertainment. AdventureQuest Worlds belongs to its owners. " +

@@ -66,6 +66,9 @@ public class SettingsViewModelTests
         Assert.Contains("never", SettingsViewModel.PrivacyText);
         Assert.Contains("e-mail", SettingsViewModel.PrivacyText);
         Assert.Contains("other players", SettingsViewModel.PrivacyText);
+        Assert.Contains("Phone access", SettingsViewModel.PrivacyText);
+        Assert.Contains("Tailscale", SettingsViewModel.PrivacyText);
+        Assert.DoesNotContain("Nothing leaves this computer", SettingsViewModel.PrivacyText);
         Assert.Contains("Artix Entertainment", SettingsViewModel.CreditsText);
         Assert.Contains("CC BY-SA", SettingsViewModel.CreditsText);
         Assert.Equal(SettingsViewModel.DisplayVersion(AppInfo.Version), Build().Version);

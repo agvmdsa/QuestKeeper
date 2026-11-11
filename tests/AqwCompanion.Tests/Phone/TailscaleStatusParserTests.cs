@@ -178,4 +178,68 @@ public sealed class TailscaleStatusParserTests
         Assert.False(TailscaleStatusParser.IsValidDnsName(ok + "d"));
         Assert.False(TailscaleStatusParser.IsValidDnsName(new string('a', 127) + "." + new string('b', 126)));
     }
+
+    // Redacted copy of the shape a real Tailscale 1.104.6 on Windows printed.
+    private static string RealStatus() => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Phone", "tailscale-status-1.104.6.json"));
+
+    [Fact]
+    public void A_real_Tailscale_1_104_6_status_is_ready_and_ignores_the_peers_and_unknown_fields()
+    {
+        var state = TailscaleStatusParser.Parse(RealStatus());
+
+        Assert.Equal(TailscaleStateKind.Ready, state.Kind);
+        Assert.Equal("my-pc.tail1234.ts.net", state.DnsName);
+        Assert.Equal("Tailscale is ready.", state.Text);
+    }
+
+    [Fact]
+    public void A_real_status_without_certificate_domains_needs_https()
+    {
+        var json = RealStatus().Replace("\"CertDomains\": [\"my-pc.tail1234.ts.net\"]", "\"CertDomains\": null");
+        Assert.NotEqual(RealStatus(), json);
+
+        Assert.Equal(TailscaleStateKind.HttpsNotEnabled, TailscaleStatusParser.Parse(json).Kind);
+    }
+
+    [Fact]
+    public void A_real_status_with_MagicDNS_off_needs_https()
+    {
+        var json = RealStatus().Replace("\"MagicDNSEnabled\": true", "\"MagicDNSEnabled\": false");
+        Assert.NotEqual(RealStatus(), json);
+
+        Assert.Equal(TailscaleStateKind.HttpsNotEnabled, TailscaleStatusParser.Parse(json).Kind);
+    }
+
+    [Fact]
+    public void A_real_status_that_needs_login_is_not_signed_in()
+    {
+        var json = RealStatus().Replace("\"BackendState\": \"Running\"", "\"BackendState\": \"NeedsLogin\"");
+        Assert.NotEqual(RealStatus(), json);
+
+        var state = TailscaleStatusParser.Parse(json);
+
+        Assert.Equal(TailscaleStateKind.NotSignedIn, state.Kind);
+        Assert.Equal(TailscaleService.NotSignedInText, state.Text);
+    }
+
+    [Fact]
+    public void A_real_status_that_is_stopped_says_tailscale_is_turned_off()
+    {
+        var json = RealStatus().Replace("\"BackendState\": \"Running\"", "\"BackendState\": \"Stopped\"");
+        Assert.NotEqual(RealStatus(), json);
+
+        var state = TailscaleStatusParser.Parse(json);
+
+        Assert.Equal(TailscaleStateKind.NotSignedIn, state.Kind);
+        Assert.Equal(TailscaleService.StoppedText, state.Text);
+    }
+
+    [Fact]
+    public void A_real_status_without_Self_is_an_error()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(RealStatus())!.AsObject();
+        Assert.True(node.Remove("Self"));
+
+        Assert.Equal(TailscaleStateKind.Error, TailscaleStatusParser.Parse(node.ToJsonString()).Kind);
+    }
 }

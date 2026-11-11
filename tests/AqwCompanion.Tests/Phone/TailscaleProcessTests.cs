@@ -66,4 +66,23 @@ public sealed class TailscaleProcessTests
         await Assert.ThrowsAnyAsync<Exception>(() =>
             new TailscaleProcess().RunAsync(Path.Combine(Path.GetTempPath(), "no-such-program-xyz"), [], TimeSpan.FromSeconds(1), 1024, CancellationToken.None));
     }
+
+    // A program that reads input until it ends: it only finishes when the runner has closed its input. (Windows branch runs on Windows CI / the owner's PC only.)
+    [Fact]
+    public async Task A_program_that_reads_input_until_the_end_finishes_because_its_input_is_closed()
+    {
+        var (exe, args) = OperatingSystem.IsWindows()
+            ? (Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "sort.exe"), Array.Empty<string>())
+            : ("/bin/cat", Array.Empty<string>());
+        if (!File.Exists(exe))
+        {
+            return;
+        }
+
+        var result = await new TailscaleProcess().RunAsync(exe, args, TimeSpan.FromSeconds(8), 1024, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.False(result.TimedOut);
+        Assert.Equal(0, result.ExitCode);
+    }
 }

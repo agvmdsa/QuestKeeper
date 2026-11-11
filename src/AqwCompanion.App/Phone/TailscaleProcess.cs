@@ -17,6 +17,7 @@ public sealed class TailscaleProcess : ITailscaleProcess
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = true,
             WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.System),
         };
         foreach (var arg in args)
@@ -28,6 +29,16 @@ public sealed class TailscaleProcess : ITailscaleProcess
         if (process is null)
         {
             return new ProcessResult(-1, "", false, false);
+        }
+
+        // The program must never wait for input: close its standard input at once.
+        try
+        {
+            process.StandardInput.Close();
+        }
+        catch (Exception)
+        {
+            // Already closed or gone.
         }
 
         using var limit = new CancellationTokenSource(timeout);

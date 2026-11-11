@@ -2,6 +2,7 @@ using AqwCompanion.App.Settings;
 using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Phone.Devices;
 using AqwCompanion.Phone.Hub;
+using System.Runtime.ExceptionServices;
 using Serilog;
 
 namespace AqwCompanion.App.Phone;
@@ -25,6 +26,7 @@ public sealed class PhoneController : IForgettable, IDisposable, IPairingLinkSou
     private readonly int _port;
     private readonly Func<TimeSpan, Action, IDisposable> _timerFactory;
     private readonly Action _tick;
+    private readonly Action _resetHub;
     private readonly ITailscale _tailscale;
     private readonly IServeMarker _marker;
     private readonly Action<Action> _onUiThread;
@@ -45,11 +47,12 @@ public sealed class PhoneController : IForgettable, IDisposable, IPairingLinkSou
     private volatile string? _servedName;
 
     /// <param name="onUiThread">Runs a change of the Settings view model on the UI thread (inline by default).</param>
+    /// <param name="resetHub">Clears the hub during Forget (<see cref="PhoneHub.Reset"/> by default; a seam for tests).</param>
     /// <param name="run">Starts the Tailscale work off the UI thread (<see cref="Task.Run(Func{Task})"/> by default).</param>
     public PhoneController(
         SettingsViewModel settings, IPhoneHost host, PhoneHub hub, PhoneRegistry registry, ITailscale tailscale, IServeMarker marker, int port = PhoneHost.DefaultPort,
         Func<TimeSpan, Action, IDisposable>? timerFactory = null, Action? tick = null,
-        Action<Action>? onUiThread = null, Func<Func<Task>, Task>? run = null)
+        Action<Action>? onUiThread = null, Func<Func<Task>, Task>? run = null, Action? resetHub = null)
     {
         _tailscale = tailscale;
         _marker = marker;
@@ -64,6 +67,7 @@ public sealed class PhoneController : IForgettable, IDisposable, IPairingLinkSou
         _port = port;
         _timerFactory = timerFactory ?? CreateTimer;
         _tick = tick ?? hub.Tick;
+        _resetHub = resetHub ?? hub.Reset;
         settings.PhoneAccessChanged += (_, _) => Apply();
         settings.PhoneRefreshRequested += (_, _) => Reconcile();
         settings.SetPhoneStatus(OffText);
@@ -187,27 +191,44 @@ public sealed class PhoneController : IForgettable, IDisposable, IPairingLinkSou
     /// Revokes every device and clears the hub, then brings the host back as the saved switch says (with no devices every request is refused).
     /// The coordinator calls <see cref="Resume"/> only when the removal failed, so this must end the quiesced state itself.
     /// </summary>
+    /// <remarks>
+    /// The registry and the hub are forgotten separately, so one failing does not skip the other, and the host is always brought back.
+    /// The first failure is then rethrown: the coordinator reports "Phone access" as not forgotten (phone.json may still be on disk).
+    /// </remarks>
     public void Forget()
     {
+        Exception? first = null;
         try
         {
             _registry.Forget();
-            _hub.Reset();
         }
         catch (Exception ex)
         {
-            // The switch must keep working: a throw here would leave the host stopped until the next start.
+            first = ex;
             Log.Warning("Phone forget failed: {ExceptionType}", ex.GetType().Name);
         }
-        finally
+
+        try
         {
-            lock (_lock)
-            {
-                _quiesced = false;
-                _servedName = null;
-                _stopPending = _published;
-                Apply();
-            }
+            _resetHub();
+        }
+        catch (Exception ex)
+        {
+            first ??= ex;
+            Log.Warning("Phone hub reset failed: {ExceptionType}", ex.GetType().Name);
+        }
+
+        lock (_lock)
+        {
+            _quiesced = false;
+            _servedName = null;
+            _stopPending = _published;
+            Apply();
+        }
+
+        if (first is not null)
+        {
+            ExceptionDispatchInfo.Capture(first).Throw();
         }
     }
 
@@ -477,10 +498,15 @@ public sealed class PhoneController : IForgettable, IDisposable, IPairingLinkSou
 
             lock (_lock)
             {
+                // While Tailscale is not ready its own sentence says what to do (start it, sign in); the failed removal is retried
+                // on the next Refresh or Apply. Once it is ready, a removal that still failed is what Settings must say.
                 if (_stopFailed)
                 {
-                    text = StopFailedText;
                     canPair = false;
+                    if (name is not null)
+                    {
+                        text = StopFailedText;
+                    }
                 }
             }
 

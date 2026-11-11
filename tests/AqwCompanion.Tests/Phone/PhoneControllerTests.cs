@@ -40,7 +40,7 @@ public class PhoneControllerTests
         public FakeTimer? Live => Timers.LastOrDefault(t => !t.Disposed);
     }
 
-    private static Rig Build(bool saved = false, bool canStart = true, Action<Exception>? onError = null, Action? tickThrows = null, FeedSnapshot? initial = null, FakeTailscale? tailscale = null, FakeServeMarker? marker = null, Action<Action>? onUi = null)
+    private static Rig Build(bool saved = false, bool canStart = true, Action<Exception>? onError = null, Action? tickThrows = null, FeedSnapshot? initial = null, FakeTailscale? tailscale = null, FakeServeMarker? marker = null, Action<Action>? onUi = null, Action? resetHub = null)
     {
         marker ??= new FakeServeMarker();
         tailscale ??= new FakeTailscale();
@@ -61,7 +61,7 @@ public class PhoneControllerTests
             return timer;
         }
 
-        var controller = new PhoneController(settings, host, hub, registry, tailscale, marker, timerFactory: Factory, tick: tickThrows, run: work => work(), onUiThread: onUi);
+        var controller = new PhoneController(settings, host, hub, registry, tailscale, marker, timerFactory: Factory, tick: tickThrows, run: work => work(), onUiThread: onUi, resetHub: resetHub);
         tailscale.HostRunning = () => host.IsRunning;
         PhoneController? self = controller;
         ForgetCoordinator coordinator = new(() => rig!.RemovalSucceeds, () => [self]);
@@ -199,11 +199,11 @@ public class PhoneControllerTests
         rig.Controller.Start();
         rig.Registry.TryPair(rig.Registry.CreatePairingToken(), "Phone");
 
-        rig.Coordinator.Forget();
+        var result = rig.Coordinator.Forget();
 
+        Assert.True(result.IsComplete);
         Assert.True(rig.Host.IsRunning);
         Assert.NotNull(rig.Live);
-        Assert.Equal("Listening on 127.0.0.1:47822", rig.Settings.PhoneStatusText);
         Assert.Equal("Listening on 127.0.0.1:47822", rig.Settings.PhoneStatusText);
         Assert.Empty(rig.Registry.List());
         Assert.Empty(rig.Hub.Current.Notices);
@@ -790,7 +790,7 @@ public class PhoneControllerTests
     }
 
     [Fact]
-    public void A_failed_stale_route_stop_with_the_switch_on_says_so_and_a_refresh_retries()
+    public void A_failed_stale_route_stop_with_the_switch_on_shows_the_tailscale_sentence_and_a_refresh_retries()
     {
         var rig = Build();
         rig.Settings.PhoneAccessEnabled = true;
@@ -799,9 +799,10 @@ public class PhoneControllerTests
 
         rig.Settings.Refresh();
 
+        // Tailscale's own sentence says what to do; the failed removal is kept and retried.
         Assert.Equal(1, rig.Tailscale.Stops);
         Assert.True(rig.Marker.Present);
-        Assert.Equal(PhoneController.StopFailedText, rig.Settings.PhoneTailscaleText);
+        Assert.Equal("sign in", rig.Settings.PhoneTailscaleText);
         Assert.False(rig.Settings.CanPair);
 
         rig.Tailscale.StopResult = true;
@@ -813,36 +814,80 @@ public class PhoneControllerTests
     }
 
     [Fact]
-    public void A_throwing_registry_forget_still_brings_the_host_back_and_never_escapes()
+    public void A_throwing_registry_forget_escapes_after_the_host_is_back_and_the_hub_was_still_reset()
     {
-        var rig = Build(saved: true);
+        var resets = 0;
+        var rig = Build(saved: true, resetHub: () => resets++);
         rig.Controller.Start();
-        rig.Store.DeleteThrows = new IOException("disk gone");
+        var thrown = new IOException("disk gone");
+        rig.Store.DeleteThrows = thrown;
         rig.Controller.Quiesce();
         Assert.False(rig.Host.IsRunning);
 
         var ex = Record.Exception(rig.Controller.Forget);
 
-        Assert.Null(ex);
+        Assert.Same(thrown, ex);
+        Assert.Equal(1, resets);
         Assert.True(rig.Host.IsRunning);
         Assert.Equal("Listening on 127.0.0.1:47822", rig.Settings.PhoneStatusText);
-        Assert.Empty(rig.Hub.Current.Notices);
 
         rig.Settings.PhoneAccessEnabled = false;
         Assert.False(rig.Host.IsRunning);
+        rig.Settings.PhoneAccessEnabled = true;
+        Assert.True(rig.Host.IsRunning);
     }
 
     [Fact]
-    public void A_throwing_registry_forget_through_the_coordinator_leaves_the_switch_working()
+    public void A_throwing_registry_forget_through_the_coordinator_is_reported_and_leaves_the_switch_working()
     {
         var rig = Build(saved: true);
         rig.Controller.Start();
         rig.Store.DeleteThrows = new IOException("disk gone");
 
-        rig.Coordinator.Forget();
+        var result = rig.Coordinator.Forget();
 
+        Assert.False(result.IsComplete);
+        Assert.Contains("Phone access", result.NotForgotten);
         Assert.True(rig.Host.IsRunning);
         Assert.NotNull(rig.Live);
         Assert.Equal("Listening on 127.0.0.1:47822", rig.Settings.PhoneStatusText);
+    }
+
+    [Fact]
+    public void A_throwing_hub_reset_escapes_after_the_devices_are_gone_and_the_host_is_back()
+    {
+        var thrown = new InvalidOperationException("hub broke");
+        var rig = Build(saved: true, resetHub: () => throw thrown);
+        rig.Controller.Start();
+        rig.Registry.TryPair(rig.Registry.CreatePairingToken(), "Phone");
+
+        var result = rig.Coordinator.Forget();
+
+        Assert.False(result.IsComplete);
+        Assert.Contains("Phone access", result.NotForgotten);
+        Assert.Empty(rig.Registry.List());
+        Assert.Equal(1, rig.Store.Deletes);
+        Assert.True(rig.Host.IsRunning);
+        Assert.Same(thrown, Record.Exception(rig.Controller.Forget));
+        Assert.True(rig.Host.IsRunning);
+    }
+
+    [Fact]
+    public void While_tailscale_is_not_running_a_failed_stale_stop_shows_that_sentence_not_could_not_remove()
+    {
+        var rig = Build();
+        rig.Settings.PhoneAccessEnabled = true;
+        rig.Tailscale.State = new TailscaleState(TailscaleStateKind.Error, null, TailscaleService.NotRunningText);
+        rig.Tailscale.StopResult = false;
+
+        rig.Settings.Refresh();
+
+        Assert.Equal(TailscaleService.NotRunningText, rig.Settings.PhoneTailscaleText);
+        Assert.True(rig.Marker.Present);
+
+        // Back up and ready: the route is served again, which also ends the failed-removal state.
+        rig.Tailscale.State = FakeTailscale.Ready();
+        rig.Settings.Refresh();
+        Assert.True(rig.Settings.CanPair);
     }
 }

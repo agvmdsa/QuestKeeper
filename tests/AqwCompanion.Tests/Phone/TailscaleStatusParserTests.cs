@@ -105,7 +105,7 @@ public sealed class TailscaleStatusParserTests
         Assert.Equal(TailscaleStateKind.Error, state.Kind);
         Assert.Null(state.DnsName);
         Assert.Equal(TailscaleService.NotRunningText, state.Text);
-        Assert.Equal("Tailscale does not seem to be running. Start Tailscale from its icon in the notification area, then try again.", TailscaleService.NotRunningText);
+        Assert.Equal("Tailscale does not seem to be running. Start Tailscale from the Start menu, then try again.", TailscaleService.NotRunningText);
     }
 
     [Theory]

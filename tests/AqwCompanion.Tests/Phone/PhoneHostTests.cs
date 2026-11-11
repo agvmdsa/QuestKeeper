@@ -682,10 +682,9 @@ public sealed class PhoneHostTests : IDisposable
         }
 
         using var host = NewHostAllowing(h => false, out var port);
-        if (!host.TryStart())
-        {
-            return;
-        }
+
+        // On Windows the port must open: a skipped run would be no evidence about http.sys.
+        Assert.True(host.TryStart());
 
         var reply = await RawAsync(port, $"GET /api/ping HTTP/1.1\r\nHost: {TailnetName}\r\nConnection: close\r\n\r\n");
 
@@ -702,10 +701,9 @@ public sealed class PhoneHostTests : IDisposable
         }
 
         using var host = NewHostAllowing(h => h == TailnetName || h.StartsWith("127.0.0.1:", StringComparison.Ordinal), out var port);
-        if (!host.TryStart())
-        {
-            return;
-        }
+
+        // On Windows the port must open: a skipped run would be no evidence about http.sys.
+        Assert.True(host.TryStart());
 
         var token = _registry.CreatePairingToken();
         using var pair = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{port}/api/pair")

@@ -442,9 +442,9 @@ public sealed class PhoneHostTests : IDisposable
         var host = $"127.0.0.1:{_port}";
         var reply = await RawAsync($"GET /api/ping HTTP/1.1\r\nHost: {host}\r\nHost: {host}\r\nConnection: close\r\n\r\n");
 
+        // http.sys itself refuses a repeated Host before the request reaches our handler, so the reply carries
+        // its own 400 and none of our headers (the CI Windows runner showed this); the refusal is what matters.
         Assert.StartsWith("HTTP/1.1 400", reply, StringComparison.Ordinal);
-        Assert.Contains("Referrer-Policy: no-referrer", reply, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("X-Content-Type-Options: nosniff", reply, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

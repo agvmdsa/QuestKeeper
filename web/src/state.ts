@@ -1,4 +1,5 @@
 import type { PairOutcome } from './api';
+import { parseSkua } from './skua';
 import type { Character, Figures, HardFarms, Notice, RemoteState } from './types';
 
 export interface Banner {
@@ -22,7 +23,7 @@ export interface HardFarmsView {
   hidden: number;
 }
 
-export type Route = { view: 'list' } | { view: 'character'; name: string } | { view: 'pair'; token: string };
+export type Route = { view: 'list' } | { view: 'skua' } | { view: 'character'; name: string } | { view: 'pair'; token: string };
 
 /** The localStorage key of the last state shown; a new shape gets a new version. */
 export const KEPT_KEY = 'qkp-last-state-v1';
@@ -44,6 +45,8 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 
 /** True when the snapshot has every part the views read: an unknown or broken shape is refused before it is drawn or stored. */
 export function isUsableState(s: RemoteState): boolean {
+  const skua: unknown = s.skua;
+  if (skua !== undefined && skua !== null && !isObject(skua)) return false;
   const snap: unknown = s.snapshot;
   if (snap === null) return true;
   if (!isObject(snap) || snap.contract !== 1) return false;
@@ -150,8 +153,10 @@ export function focusKey(t: FocusTarget): string | null {
 function toState(value: unknown): RemoteState | null {
   if (!isObject(value) || !('snapshot' in value)) return null;
   const notices: unknown[] = Array.isArray(value.notices) ? value.notices : [];
-  const state = { snapshot: value.snapshot ?? null, notices: notices.filter(isNotice) } as RemoteState;
-  return isUsableState(state) ? state : null;
+  const state = { snapshot: value.snapshot ?? null, notices: notices.filter(isNotice), skua: value.skua ?? null } as RemoteState;
+  if (!isUsableState(state)) return null;
+  state.skua = parseSkua(state.skua);
+  return state;
 }
 
 export function parseState(text: string): RemoteState | null {
@@ -285,6 +290,7 @@ export function characterHref(name: string): string {
 
 export function parseRoute(hash: string): Route {
   if (hash.startsWith('#t=')) return { view: 'pair', token: hash.slice(3) };
+  if (hash === '#/skua') return { view: 'skua' };
   if (hash.startsWith('#/c/')) {
     try {
       return { view: 'character', name: decodeURIComponent(hash.slice(4)) };

@@ -58,8 +58,35 @@ export interface Notice {
   atUtc: string;
 }
 
+export type SkuaConnection = 'NotConnected' | 'Connected' | 'VersionMismatch';
+
+export interface SkuaStatus {
+  loggedIn: boolean;
+  character: string | null;
+  server: string | null;
+  map: string | null;
+  script: string | null;
+  scriptRunning: boolean;
+  runningSince: string | null;
+}
+
+export interface SkuaLogEntry {
+  at: string;
+  kind: string;
+  text: string;
+}
+
+export interface SkuaState {
+  connection: SkuaConnection;
+  hello: { pluginVersion: string; skuaVersion: string } | null;
+  status: SkuaStatus | null;
+  log: SkuaLogEntry[];
+}
+
 /** What /api/state and the "state" event carry: the last snapshot of the PC and its recent notices. */
 export interface RemoteState {
   snapshot: Snapshot | null;
   notices: Notice[];
+  /** The Skua part; an older app sends none, which means null. */
+  skua?: SkuaState | null;
 }

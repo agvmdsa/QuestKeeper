@@ -26,7 +26,7 @@ describe('parseState', () => {
   it('parses a state and defaults missing notices', () => {
     expect(parseState('{"snapshot":null}')?.notices).toEqual([]);
   });
-  it('no longer needs the link of the Remote', () => expect(parseState('{"snapshot":null,"notices":[]}')).toEqual({ snapshot: null, notices: [] }));
+  it('no longer needs the link of the Remote', () => expect(parseState('{"snapshot":null,"notices":[]}')).toEqual({ snapshot: null, notices: [], skua: null }));
   it.each(['{', '[]', 'null', '"text"', '{}', '{"notices":[]}'])('rejects %s', (text) => expect(parseState(text)).toBeNull());
 });
 

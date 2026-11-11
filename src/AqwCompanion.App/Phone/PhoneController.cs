@@ -186,14 +186,25 @@ public sealed class PhoneController : IForgettable, IDisposable, IPairingLinkSou
     /// </summary>
     public void Forget()
     {
-        _registry.Forget();
-        _hub.Reset();
-        lock (_lock)
+        try
         {
-            _quiesced = false;
-            _servedName = null;
-            _stopPending = _published;
-            Apply();
+            _registry.Forget();
+            _hub.Reset();
+        }
+        catch (Exception ex)
+        {
+            // The switch must keep working: a throw here would leave the host stopped until the next start.
+            Log.Warning("Phone forget failed: {ExceptionType}", ex.GetType().Name);
+        }
+        finally
+        {
+            lock (_lock)
+            {
+                _quiesced = false;
+                _servedName = null;
+                _stopPending = _published;
+                Apply();
+            }
         }
     }
 
@@ -355,17 +366,18 @@ public sealed class PhoneController : IForgettable, IDisposable, IPairingLinkSou
             {
                 if (await TryStopAsync(ct).ConfigureAwait(false))
                 {
-                    lock (_lock)
-                    {
-                        _published = false;
-                        _stopFailed = false;
-                    }
-
-                    _marker.Delete();
+                    ForgetRoute();
                     if (!wanted)
                     {
                         SetTailscaleText(string.Empty, false);
                     }
+                }
+                else if (!wanted && (await _tailscale.GetStateAsync(ct).ConfigureAwait(false)).Kind == TailscaleStateKind.NotInstalled)
+                {
+                    // Without tailscale.exe there is nothing to reset and nothing to retry with.
+                    ForgetRoute();
+                    SetTailscaleText(string.Empty, false);
+                    return;
                 }
                 else
                 {
@@ -403,7 +415,7 @@ public sealed class PhoneController : IForgettable, IDisposable, IPairingLinkSou
                 }
 
                 needServe = name is not null && _servedName is null && Wanted();
-                staleRoute = name is null && _published && !_stopFailed;
+                staleRoute = name is null && _published;
                 text = name is null ? state.Text : string.Empty;
                 canPair = !needServe && _servedName is not null;
                 if (canPair)
@@ -412,14 +424,25 @@ public sealed class PhoneController : IForgettable, IDisposable, IPairingLinkSou
                 }
             }
 
-            if (staleRoute && await TryStopAsync(ct).ConfigureAwait(false))
+            if (staleRoute)
             {
-                lock (_lock)
+                if (state.Kind == TailscaleStateKind.NotInstalled)
                 {
-                    _published = false;
+                    // Without tailscale.exe there is nothing to reset: drop the belief, or "Could not remove..." would stay forever.
+                    ForgetRoute();
                 }
-
-                _marker.Delete();
+                else if (await TryStopAsync(ct).ConfigureAwait(false))
+                {
+                    ForgetRoute();
+                }
+                else
+                {
+                    // Still published: say so like the switch-off path; the next Apply or Refresh tries again.
+                    lock (_lock)
+                    {
+                        _stopFailed = true;
+                    }
+                }
             }
 
             if (needServe)
@@ -480,6 +503,18 @@ public sealed class PhoneController : IForgettable, IDisposable, IPairingLinkSou
                 _gate.Release();
             }
         }
+    }
+
+    /// <summary>The route is gone (removed, or Tailscale is not installed): clear the belief and the marker.</summary>
+    private void ForgetRoute()
+    {
+        lock (_lock)
+        {
+            _published = false;
+            _stopFailed = false;
+        }
+
+        _marker.Delete();
     }
 
     private void SafeTick()

@@ -133,13 +133,7 @@ public static class CompositionRoot
         services.AddSingleton<DebugModeController>();
         services.AddSingleton(sp => new ForgetCoordinator(
             () => sp.GetRequiredService<StoredData>().Clear(),
-            () =>
-            [
-                sp.GetRequiredService<HardFarmsViewModel>(),
-                new LegacyReputationFolder(sp.GetRequiredService<AppPaths>()),
-                sp.GetRequiredService<CaptureSession>(),
-                sp.GetRequiredService<PhoneController>(),
-            ]));
+            () => ForgetParticipants(sp)));
         services.AddSingleton<DiagnosticsViewModel>();
         services.AddSingleton<MainViewModel>();
 
@@ -149,6 +143,18 @@ public static class CompositionRoot
             ValidateScopes = true,
         });
     }
+
+    /// <summary>The participants of "Forget my data", in the order the coordinator runs them.</summary>
+    internal static IEnumerable<IForgettable> ForgetParticipants(IServiceProvider sp) =>
+    [
+        sp.GetRequiredService<HardFarmsViewModel>(),
+        new LegacyReputationFolder(sp.GetRequiredService<AppPaths>()),
+        sp.GetRequiredService<CaptureSession>(),
+        // PhoneController MUST stay the LAST participant: its Forget resets the phone hub, which reads the feed, and then brings
+        // the phone host back. Every other participant has to have forgotten first, or the host returns serving data from before
+        // the Forget. CompositionRootTests.The_phone_controller_is_the_last_forget_participant guards this order.
+        sp.GetRequiredService<PhoneController>(),
+    ];
 
     private static IClipboard? FindClipboard() =>
         Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop

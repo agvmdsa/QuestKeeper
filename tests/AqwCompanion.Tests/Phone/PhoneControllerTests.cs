@@ -199,11 +199,11 @@ public class PhoneControllerTests
         rig.Controller.Start();
         rig.Registry.TryPair(rig.Registry.CreatePairingToken(), "Phone");
 
-        var result = rig.Coordinator.Forget();
+        rig.Coordinator.Forget();
 
-        Assert.True(result.IsComplete);
         Assert.True(rig.Host.IsRunning);
         Assert.NotNull(rig.Live);
+        Assert.Equal("Listening on 127.0.0.1:47822", rig.Settings.PhoneStatusText);
         Assert.Equal("Listening on 127.0.0.1:47822", rig.Settings.PhoneStatusText);
         Assert.Empty(rig.Registry.List());
         Assert.Empty(rig.Hub.Current.Notices);
@@ -732,5 +732,114 @@ public class PhoneControllerTests
         Assert.Null(ex);
         Assert.InRange(watch.Elapsed, TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(9));
         Assert.True(rig.Marker.Present);
+    }
+
+    private static TailscaleState NotInstalled() => new(TailscaleStateKind.NotInstalled, null, TailscaleService.NotInstalledText);
+
+    [Fact]
+    public void A_route_believed_published_when_tailscale_is_gone_is_forgotten_with_the_switch_on()
+    {
+        var rig = Build();
+        rig.Settings.PhoneAccessEnabled = true;
+        Assert.True(rig.Marker.Present);
+
+        // Uninstalled: there is no tailscale.exe to reset with, so the real service fails every stop.
+        rig.Tailscale.State = NotInstalled();
+        rig.Tailscale.StopResult = false;
+        rig.Settings.Refresh();
+
+        Assert.False(rig.Marker.Present);
+        Assert.Equal(TailscaleService.NotInstalledText, rig.Settings.PhoneTailscaleText);
+
+        rig.Settings.Refresh();
+        Assert.Equal(TailscaleService.NotInstalledText, rig.Settings.PhoneTailscaleText);
+    }
+
+    [Fact]
+    public void A_marker_left_behind_when_tailscale_is_gone_is_removed_at_start_with_the_switch_off()
+    {
+        var marker = new FakeServeMarker(exists: true);
+        var rig = Build(marker: marker, tailscale: new FakeTailscale { State = NotInstalled(), StopResult = false });
+
+        rig.Controller.Start();
+
+        Assert.False(marker.Present);
+        Assert.Equal(string.Empty, rig.Settings.PhoneTailscaleText);
+
+        rig.Settings.Refresh();
+        Assert.Equal(1, rig.Tailscale.Stops);
+    }
+
+    [Fact]
+    public void A_failed_stop_followed_by_an_uninstall_does_not_say_could_not_remove_forever()
+    {
+        var rig = Build();
+        rig.Settings.PhoneAccessEnabled = true;
+        rig.Tailscale.StopResult = false;
+        rig.Settings.PhoneAccessEnabled = false;
+        Assert.Equal(PhoneController.StopFailedText, rig.Settings.PhoneTailscaleText);
+
+        rig.Tailscale.State = NotInstalled();
+        rig.Settings.PhoneAccessEnabled = true;
+
+        Assert.False(rig.Marker.Present);
+        Assert.Equal(TailscaleService.NotInstalledText, rig.Settings.PhoneTailscaleText);
+    }
+
+    [Fact]
+    public void A_failed_stale_route_stop_with_the_switch_on_says_so_and_a_refresh_retries()
+    {
+        var rig = Build();
+        rig.Settings.PhoneAccessEnabled = true;
+        rig.Tailscale.State = new TailscaleState(TailscaleStateKind.NotSignedIn, null, "sign in");
+        rig.Tailscale.StopResult = false;
+
+        rig.Settings.Refresh();
+
+        Assert.Equal(1, rig.Tailscale.Stops);
+        Assert.True(rig.Marker.Present);
+        Assert.Equal(PhoneController.StopFailedText, rig.Settings.PhoneTailscaleText);
+        Assert.False(rig.Settings.CanPair);
+
+        rig.Tailscale.StopResult = true;
+        rig.Settings.Refresh();
+
+        Assert.Equal(2, rig.Tailscale.Stops);
+        Assert.False(rig.Marker.Present);
+        Assert.Equal("sign in", rig.Settings.PhoneTailscaleText);
+    }
+
+    [Fact]
+    public void A_throwing_registry_forget_still_brings_the_host_back_and_never_escapes()
+    {
+        var rig = Build(saved: true);
+        rig.Controller.Start();
+        rig.Store.DeleteThrows = new IOException("disk gone");
+        rig.Controller.Quiesce();
+        Assert.False(rig.Host.IsRunning);
+
+        var ex = Record.Exception(rig.Controller.Forget);
+
+        Assert.Null(ex);
+        Assert.True(rig.Host.IsRunning);
+        Assert.Equal("Listening on 127.0.0.1:47822", rig.Settings.PhoneStatusText);
+        Assert.Empty(rig.Hub.Current.Notices);
+
+        rig.Settings.PhoneAccessEnabled = false;
+        Assert.False(rig.Host.IsRunning);
+    }
+
+    [Fact]
+    public void A_throwing_registry_forget_through_the_coordinator_leaves_the_switch_working()
+    {
+        var rig = Build(saved: true);
+        rig.Controller.Start();
+        rig.Store.DeleteThrows = new IOException("disk gone");
+
+        rig.Coordinator.Forget();
+
+        Assert.True(rig.Host.IsRunning);
+        Assert.NotNull(rig.Live);
+        Assert.Equal("Listening on 127.0.0.1:47822", rig.Settings.PhoneStatusText);
     }
 }

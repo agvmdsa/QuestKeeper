@@ -125,6 +125,21 @@ public class CompositionRootTests
     }
 
     [Fact]
+    public void The_phone_controller_is_the_last_forget_participant()
+    {
+        // PhoneController.Forget resets the hub, which reads the feed: every other participant must have forgotten first,
+        // or the phone host comes back serving data from before the Forget.
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
+
+        using var services = CompositionRoot.Build(paths);
+
+        var participants = CompositionRoot.ForgetParticipants(services).ToList();
+        Assert.True(participants.Count > 1);
+        Assert.Same(services.GetRequiredService<PhoneController>(), participants[^1]);
+        Assert.Single(participants, p => p is PhoneController);
+    }
+
+    [Fact]
     public void Container_resolves_the_delay_seam()
     {
         var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));

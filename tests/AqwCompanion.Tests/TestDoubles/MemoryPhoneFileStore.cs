@@ -16,8 +16,15 @@ public sealed class MemoryPhoneFileStore(PhoneFile? initial = null) : IPhoneFile
         Saves++;
     }
 
+    public Exception? DeleteThrows { get; set; }
+
     public void Delete()
     {
+        if (DeleteThrows is not null)
+        {
+            throw DeleteThrows;
+        }
+
         Saved = PhoneFile.Empty;
         Deletes++;
     }

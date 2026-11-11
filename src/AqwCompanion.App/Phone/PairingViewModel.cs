@@ -79,7 +79,7 @@ public sealed partial class PairingViewModel : ObservableObject, IDisposable
 
     public bool HasNoDevices => Devices.Count == 0;
 
-    /// <summary>Makes a new one-time link (the old one stays valid until it expires or is used) and its QR code.</summary>
+    /// <summary>Cancels the current link in the registry (it no longer pairs), then makes a new one-time link and its QR code.</summary>
     [RelayCommand]
     public void Regenerate()
     {

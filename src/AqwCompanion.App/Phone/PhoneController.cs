@@ -73,7 +73,10 @@ public sealed class PhoneController : IForgettable, IDisposable, IPairingLinkSou
 
     public const string StopFailedText = "Could not remove the phone page from Tailscale. It will be tried again.";
 
-    public const string ServeFailedText = "Could not publish the phone page through Tailscale. Check that Tailscale is running and try again.";
+    /// <summary>Says what failed and what to try: running the same serve command by hand shows what Tailscale needs (an approval, HTTPS).</summary>
+    public static readonly string ServeFailedText =
+        $"Could not publish the phone page through Tailscale. If this keeps happening, run \"tailscale serve --bg http://127.0.0.1:{PhoneHost.DefaultPort}\" once in a terminal "
+        + "to see what Tailscale needs (it may ask you to approve Serve or HTTPS in your Tailscale admin console), then try again.";
 
     /// <summary>What Tailscale offered the last time it was asked; null before that.</summary>
     public TailscaleState? TailscaleState

@@ -94,10 +94,25 @@ public sealed class TailscaleStatusParserTests
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
+    [InlineData("\r\n")]
+    [InlineData("{\"BackendState\":\"Starting\"}")]
+    [InlineData("{\"BackendState\":\"NoState\"}")]
+    public void No_output_or_a_backend_that_is_not_up_yet_says_tailscale_is_not_running(string json)
+    {
+        // tailscale.exe prints nothing on stdout when tailscaled is not running (the complaint goes to stderr, which is not read).
+        var state = TailscaleStatusParser.Parse(json);
+
+        Assert.Equal(TailscaleStateKind.Error, state.Kind);
+        Assert.Null(state.DnsName);
+        Assert.Equal(TailscaleService.NotRunningText, state.Text);
+        Assert.Equal("Tailscale does not seem to be running. Start Tailscale from its icon in the notification area, then try again.", TailscaleService.NotRunningText);
+    }
+
+    [Theory]
     [InlineData("not json")]
     [InlineData("[]")]
     [InlineData("{}")]
-    [InlineData("{\"BackendState\":\"Starting\"}")]
+    [InlineData("{\"BackendState\":\"Unknown\"}")]
     [InlineData("{\"BackendState\":5}")]
     [InlineData("{\"BackendState\":\"Running\",\"Self\":{},\"CertDomains\":[\"x.ts.net\"]}")]
     [InlineData("{\"BackendState\":\"Running\",\"Self\":{\"DNSName\":\"evil.com/x.\"},\"CertDomains\":[\"x.ts.net\"]}")]

@@ -89,10 +89,12 @@ public sealed class PhoneHostTests : IDisposable
         return request;
     }
 
-    private async Task<string> RawAsync(string request)
+    private Task<string> RawAsync(string request) => RawAsync(_port, request);
+
+    private static async Task<string> RawAsync(int port, string request)
     {
         using var tcp = new TcpClient();
-        await tcp.ConnectAsync(IPAddress.Loopback, _port);
+        await tcp.ConnectAsync(IPAddress.Loopback, port);
         var stream = tcp.GetStream();
         await stream.WriteAsync(Encoding.ASCII.GetBytes(request));
         using var reader = new StreamReader(stream, Encoding.ASCII);
@@ -202,7 +204,7 @@ public sealed class PhoneHostTests : IDisposable
     }
 
     [Fact]
-    public async Task The_ninth_event_stream_gets_503_and_a_freed_slot_is_reusable()
+    public async Task The_ninth_event_stream_gets_503_with_the_safety_headers_and_a_freed_slot_is_reusable()
     {
         // Binding is denied in some sandboxes; then there is nothing to test here.
         if (!_host.TryStart())
@@ -210,25 +212,31 @@ public sealed class PhoneHostTests : IDisposable
             return;
         }
 
-        var cookie = await PairAsync();
+        // Three devices: 3 + 3 + 2 streams fill the 8 slots without hitting the cap of 3 per device.
+        var cookies = new[] { await PairAsync(), await PairAsync(), await PairAsync() };
         var open = new List<OpenStream>();
         try
         {
-            for (var i = 0; i < PhoneHost.MaxStreams; i++)
+            foreach (var (cookie, count) in new[] { (cookies[0], 3), (cookies[1], 3), (cookies[2], 2) })
             {
-                var stream = await OpenEventsAsync(cookie);
-                open.Add(stream);
-                Assert.Equal(HttpStatusCode.OK, stream.Response.StatusCode);
-                Assert.Equal("event: state", await stream.Reader.ReadLineAsync(Bounded()));
+                for (var i = 0; i < count; i++)
+                {
+                    var stream = await OpenEventsAsync(cookie);
+                    open.Add(stream);
+                    Assert.Equal(HttpStatusCode.OK, stream.Response.StatusCode);
+                    Assert.Equal("event: state", await stream.Reader.ReadLineAsync(Bounded()));
+                }
             }
 
-            using (var ninth = await _client.SendAsync(Get("/api/events", cookie), HttpCompletionOption.ResponseHeadersRead))
+            using (var ninth = await _client.SendAsync(Get("/api/events", cookies[2]), HttpCompletionOption.ResponseHeadersRead))
             {
                 Assert.Equal(HttpStatusCode.ServiceUnavailable, ninth.StatusCode);
+                Assert.Equal("no-referrer", Assert.Single(ninth.Headers.GetValues("Referrer-Policy")));
+                Assert.Equal("nosniff", Assert.Single(ninth.Headers.GetValues("X-Content-Type-Options")));
             }
 
-            open[0].Dispose();
-            open.RemoveAt(0);
+            open[^1].Dispose();
+            open.RemoveAt(open.Count - 1);
 
             // The server only learns that a client left when a write to it fails, so keep the hub changing until the slot is free.
             OpenStream? again = null;
@@ -239,7 +247,7 @@ public sealed class PhoneHostTests : IDisposable
                 _source.Current = FeedSnapshot.Empty with { Selected = $"Hero {n}" };
                 _source.Raise();
                 await Task.Delay(50);
-                var candidate = await OpenEventsAsync(cookie);
+                var candidate = await OpenEventsAsync(cookies[2]);
                 if (candidate.Response.StatusCode == HttpStatusCode.OK)
                 {
                     again = candidate;
@@ -252,6 +260,117 @@ public sealed class PhoneHostTests : IDisposable
             }
 
             open.Add(again);
+        }
+        finally
+        {
+            foreach (var stream in open)
+            {
+                stream.Dispose();
+            }
+        }
+    }
+
+    private static async Task<bool> EndsAsync(OpenStream stream, TimeSpan within)
+    {
+        using var cts = new CancellationTokenSource(within);
+        try
+        {
+            while (await stream.Reader.ReadLineAsync(cts.Token) is not null)
+            {
+            }
+
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        catch (Exception ex) when (ex is HttpIOException or IOException)
+        {
+            return true;
+        }
+    }
+
+    [Fact]
+    public async Task A_fourth_stream_of_one_device_ends_that_devices_oldest_stream_instead_of_being_refused()
+    {
+        // Binding is denied in some sandboxes; then there is nothing to test here.
+        if (!_host.TryStart())
+        {
+            return;
+        }
+
+        var cookie = await PairAsync();
+        var open = new List<OpenStream>();
+        try
+        {
+            for (var i = 0; i < PhoneHost.MaxStreamsPerDevice; i++)
+            {
+                var stream = await OpenEventsAsync(cookie);
+                open.Add(stream);
+                Assert.Equal("event: state", await stream.Reader.ReadLineAsync(Bounded()));
+            }
+
+            var fourth = await OpenEventsAsync(cookie);
+            open.Add(fourth);
+            Assert.Equal(HttpStatusCode.OK, fourth.Response.StatusCode);
+            Assert.Equal("event: state", await fourth.Reader.ReadLineAsync(Bounded()));
+
+            Assert.True(await EndsAsync(open[0], TimeSpan.FromSeconds(3)), "The oldest stream of the device was not ended.");
+
+            // The other three are still live: a change reaches them.
+            foreach (var stream in open.Skip(1))
+            {
+                await stream.Reader.ReadLineAsync(Bounded());
+                await stream.Reader.ReadLineAsync(Bounded());
+            }
+
+            _source.Current = FeedSnapshot.Empty with { Selected = "Fresh Hero" };
+            _source.Raise();
+            foreach (var stream in open.Skip(1))
+            {
+                Assert.StartsWith("event:", await stream.Reader.ReadLineAsync(Bounded()), StringComparison.Ordinal);
+            }
+        }
+        finally
+        {
+            foreach (var stream in open)
+            {
+                stream.Dispose();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task A_device_at_its_cap_still_gets_its_new_stream_when_every_slot_is_taken()
+    {
+        // Binding is denied in some sandboxes; then there is nothing to test here.
+        if (!_host.TryStart())
+        {
+            return;
+        }
+
+        var cookies = new[] { await PairAsync(), await PairAsync(), await PairAsync() };
+        var open = new List<OpenStream>();
+        try
+        {
+            foreach (var (cookie, count) in new[] { (cookies[0], 3), (cookies[1], 3), (cookies[2], 2) })
+            {
+                for (var i = 0; i < count; i++)
+                {
+                    var stream = await OpenEventsAsync(cookie);
+                    open.Add(stream);
+                    Assert.Equal("event: state", await stream.Reader.ReadLineAsync(Bounded()));
+                }
+            }
+
+            var replacement = await OpenEventsAsync(cookies[0]);
+            open.Add(replacement);
+            Assert.Equal(HttpStatusCode.OK, replacement.Response.StatusCode);
+            Assert.True(await EndsAsync(open[0], TimeSpan.FromSeconds(3)), "The oldest stream of the first device was not ended.");
+
+            using var ninth = await _client.SendAsync(Get("/api/events", cookies[2]), HttpCompletionOption.ResponseHeadersRead);
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, ninth.StatusCode);
         }
         finally
         {
@@ -305,6 +424,8 @@ public sealed class PhoneHostTests : IDisposable
         using var response = await _client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+        Assert.Equal("no-referrer", Assert.Single(response.Headers.GetValues("Referrer-Policy")));
+        Assert.Equal("nosniff", Assert.Single(response.Headers.GetValues("X-Content-Type-Options")));
     }
 
     [Fact]
@@ -322,6 +443,8 @@ public sealed class PhoneHostTests : IDisposable
         var reply = await RawAsync($"GET /api/ping HTTP/1.1\r\nHost: {host}\r\nHost: {host}\r\nConnection: close\r\n\r\n");
 
         Assert.StartsWith("HTTP/1.1 400", reply, StringComparison.Ordinal);
+        Assert.Contains("Referrer-Policy: no-referrer", reply, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("X-Content-Type-Options: nosniff", reply, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -543,6 +666,69 @@ public sealed class PhoneHostTests : IDisposable
         Assert.StartsWith("event:", await reader.ReadLineAsync(Bounded()), StringComparison.Ordinal);
     }
 
+    private const string TailnetName = "my-pc.tail1234.ts.net";
+
+    /// <summary>
+    /// Evidence for the Tailscale path: Serve forwards the tailnet name as Host to a listener registered only as 127.0.0.1. If http.sys
+    /// answered "400 Invalid Hostname" itself, these fail on Windows; the macOS/Linux managed listener routes by Host differently, so they
+    /// only count on Windows.
+    /// </summary>
+    [Fact]
+    public async Task On_windows_a_foreign_host_name_reaches_our_handler_and_gets_its_421()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var host = NewHostAllowing(h => false, out var port);
+        if (!host.TryStart())
+        {
+            return;
+        }
+
+        var reply = await RawAsync(port, $"GET /api/ping HTTP/1.1\r\nHost: {TailnetName}\r\nConnection: close\r\n\r\n");
+
+        Assert.StartsWith("HTTP/1.1 421", reply, StringComparison.Ordinal);
+        Assert.Contains("{\"error\":\"wrong host\"}", reply, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task On_windows_an_allowed_foreign_host_name_is_served()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var host = NewHostAllowing(h => h == TailnetName || h.StartsWith("127.0.0.1:", StringComparison.Ordinal), out var port);
+        if (!host.TryStart())
+        {
+            return;
+        }
+
+        var token = _registry.CreatePairingToken();
+        using var pair = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{port}/api/pair")
+        {
+            Content = new StringContent($"{{\"token\":\"{token}\",\"name\":\"Phone\"}}", Encoding.UTF8, "application/json"),
+        };
+        pair.Headers.Add("X-Remote", "1");
+        using var paired = await _client.SendAsync(pair);
+        var cookie = paired.Headers.GetValues("Set-Cookie").Single().Split(';')[0];
+
+        var reply = await RawAsync(port, $"GET /api/ping HTTP/1.1\r\nHost: {TailnetName}\r\nCookie: {cookie}\r\nConnection: close\r\n\r\n");
+
+        Assert.StartsWith("HTTP/1.1 200", reply, StringComparison.Ordinal);
+        Assert.Contains("\"app\":\"Questkeeper\"", reply, StringComparison.Ordinal);
+    }
+
+    private PhoneHost NewHostAllowing(Func<string, bool> allowed, out int port)
+    {
+        port = FreePort();
+        var handler = new PhoneHandler(_registry, _hub, new FakeAssets(), allowed, "9.9.9");
+        return new PhoneHost(handler, _hub, _registry, port);
+    }
+
     private PhoneHost NewHost(TimeSpan timeout, out int port)
     {
         port = FreePort();
@@ -580,5 +766,6 @@ public sealed class PhoneHostTests : IDisposable
     {
         Assert.Equal(47822, PhoneHost.DefaultPort);
         Assert.Equal(8, PhoneHost.MaxStreams);
+        Assert.Equal(3, PhoneHost.MaxStreamsPerDevice);
     }
 }

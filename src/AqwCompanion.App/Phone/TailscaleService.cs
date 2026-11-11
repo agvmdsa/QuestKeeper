@@ -15,6 +15,7 @@ public sealed class TailscaleService : ITailscale
     public const string HttpsNotEnabledText = "In the Tailscale admin console, turn on MagicDNS and HTTPS certificates (one time), then try again.";
     public const string StoppedText = "Tailscale is turned off. Turn it on in the Tailscale app on this PC.";
     public const string ReadyText = "Tailscale is ready.";
+    public const string NotRunningText = "Tailscale does not seem to be running. Start Tailscale from its icon in the notification area, then try again.";
     public const string ErrorText = "Could not read the Tailscale state.";
 
     public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);

@@ -10,33 +10,28 @@ namespace AqwCompanion.App.Phone;
 /// <summary>
 /// The sockets around <see cref="PhoneHandler"/>: an <see cref="HttpListener"/> on <c>http://127.0.0.1:{port}/</c> only. All the rules
 /// live in the handler; this class moves bytes, drops any peer that is not loopback, caps the body at 4096 characters, refuses a
-/// repeated Host or Origin header, allows at most <see cref="MaxStreams"/> event streams, gives an ordinary request 30 seconds and
-/// closes the streams of a revoked device. Event streams stay open until the client leaves, the device is revoked or <see cref="Stop"/>.
+/// repeated Host or Origin header, allows at most <see cref="MaxStreams"/> event streams (and <see cref="MaxStreamsPerDevice"/> per
+/// device: one more ends that device's oldest), gives an ordinary request 30 seconds and closes the streams of a revoked device. Event streams stay open until the client leaves, the device is revoked or <see cref="Stop"/>.
 /// </summary>
 public sealed class PhoneHost : IPhoneHost, IDisposable
 {
     public const int DefaultPort = 47822;
     public const int MaxStreams = 8;
+    public const int MaxStreamsPerDevice = 3;
     public const int MaxBody = 4096;
 
     private static readonly TimeSpan PingEvery = TimeSpan.FromSeconds(25);
     private static readonly TimeSpan DefaultRequestTimeout = TimeSpan.FromSeconds(30);
-
-    /// <summary>The count of open streams of one start; a new start gets a new one, so a stream of an old start cannot upset it.</summary>
-    private sealed class Slots
-    {
-        public int Open;
-    }
 
     private readonly PhoneHandler _handler;
     private readonly PhoneHub _hub;
     private readonly PhoneRegistry _registry;
     private readonly int _port;
     private readonly object _lock = new();
-    private readonly Dictionary<string, List<CancellationTokenSource>> _streams = new(StringComparer.Ordinal);
     private HttpListener? _listener;
     private CancellationTokenSource? _cts;
-    private Slots _slots = new();
+    // The streams of one start; a new start gets a new book, so a stream of an old start cannot upset it.
+    private PhoneStreamBook _book = NewBook();
     private readonly TimeSpan _requestTimeout;
     private int _disposed;
 
@@ -91,10 +86,10 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
 
             _listener = listener;
             _cts = new CancellationTokenSource();
-            _slots = new Slots();
+            _book = NewBook();
             var token = _cts.Token;
-            var slots = _slots;
-            _ = Task.Run(() => AcceptLoopAsync(listener, slots, token));
+            var book = _book;
+            _ = Task.Run(() => AcceptLoopAsync(listener, book, token));
             return true;
         }
     }
@@ -130,8 +125,7 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
             cts = _cts;
             _listener = null;
             _cts = null;
-            Interlocked.Exchange(ref _slots.Open, 0);
-            _streams.Clear();
+            _book = NewBook();
         }
 
         // Every stream token is linked to this one, so this ends them all.
@@ -170,25 +164,20 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
         return IPAddress.IsLoopback(address);
     }
 
+    private static PhoneStreamBook NewBook() => new(MaxStreams, MaxStreamsPerDevice);
+
     private void OnDevicesRevoked(IReadOnlyList<string> ids)
     {
+        PhoneStreamBook book;
         lock (_lock)
         {
-            foreach (var id in ids)
-            {
-                if (_streams.TryGetValue(id, out var list))
-                {
-                    // Cancelled under the lock: a stream is disposed only after it left the dictionary under the same lock.
-                    foreach (var cts in list.ToArray())
-                    {
-                        cts.Cancel();
-                    }
-                }
-            }
+            book = _book;
         }
+
+        book.CancelDevices(ids);
     }
 
-    private async Task AcceptLoopAsync(HttpListener listener, Slots slots, CancellationToken ct)
+    private async Task AcceptLoopAsync(HttpListener listener, PhoneStreamBook book, CancellationToken ct)
     {
         while (!ct.IsCancellationRequested && listener.IsListening)
         {
@@ -202,11 +191,11 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
                 return;
             }
 
-            _ = Task.Run(() => ServeAsync(context, slots, ct), ct);
+            _ = Task.Run(() => ServeAsync(context, book, ct), ct);
         }
     }
 
-    private async Task ServeAsync(HttpListenerContext context, Slots slots, CancellationToken ct)
+    private async Task ServeAsync(HttpListenerContext context, PhoneStreamBook book, CancellationToken ct)
     {
         // http.sys listens on every local address even for a 127.0.0.1 prefix; the prefix only routes. Only this machine may talk.
         if (!IsLoopbackPeer(context.Request.RemoteEndPoint))
@@ -215,7 +204,7 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
             return;
         }
 
-        var slotTaken = false;
+        PhoneStreamBook.Entry? stream = null;
         try
         {
             var http = context.Response;
@@ -248,15 +237,16 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
             var response = _handler.Handle(ToPhoneRequest(context.Request, body));
             if (response.IsEventStream)
             {
-                // The ninth stream is turned away before anything of the handler's answer is written.
-                if (Interlocked.Increment(ref slots.Open) > MaxStreams)
+                // Over the total the stream is turned away before anything of the handler's answer is written; a device at its own
+                // cap ends its oldest stream instead.
+                var streamCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                stream = book.TryOpen(response.DeviceId, streamCts);
+                if (stream is null)
                 {
-                    Interlocked.Decrement(ref slots.Open);
+                    streamCts.Dispose();
                     await WriteErrorAsync(http, 503, "too many streams", rct).ConfigureAwait(false);
                     return;
                 }
-
-                slotTaken = true;
             }
 
             http.StatusCode = response.Status;
@@ -278,7 +268,7 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
                 requestCts.CancelAfter(Timeout.InfiniteTimeSpan);
                 abortOnTimeout.Dispose();
                 http.SendChunked = true;
-                await RunStreamAsync(http, response.DeviceId, ct).ConfigureAwait(false);
+                await RunStreamAsync(http, stream!).ConfigureAwait(false);
             }
             else if (response.Status is 204 or 304)
             {
@@ -306,9 +296,11 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
         }
         finally
         {
-            if (slotTaken)
+            if (stream is not null)
             {
-                Interlocked.Decrement(ref slots.Open);
+                // Given back under the book's lock, so nobody cancels the token after it is disposed.
+                book.Close(stream);
+                stream.Cts.Dispose();
             }
 
             try
@@ -322,49 +314,15 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
         }
     }
 
-    private async Task RunStreamAsync(HttpListenerResponse http, string? deviceId, CancellationToken ct)
+    private async Task RunStreamAsync(HttpListenerResponse http, PhoneStreamBook.Entry stream)
     {
-        using var streamCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        if (deviceId is not null)
+        // Events are raised after the registry lock, so a revoke can be announced before this stream registered. Look again now.
+        if (stream.DeviceId is { } deviceId && !_registry.List().Any(d => d.Id == deviceId))
         {
-            lock (_lock)
-            {
-                if (!_streams.TryGetValue(deviceId, out var list))
-                {
-                    _streams[deviceId] = list = [];
-                }
-
-                list.Add(streamCts);
-            }
+            stream.Cts.Cancel();
         }
 
-        try
-        {
-            // Events are raised after the registry lock, so a revoke can be announced before this stream registered. Look again now.
-            if (deviceId is not null && !_registry.List().Any(d => d.Id == deviceId))
-            {
-                streamCts.Cancel();
-            }
-
-            await PhoneEventStream.RunAsync(http.OutputStream, _hub, PingEvery, streamCts.Token).ConfigureAwait(false);
-        }
-        finally
-        {
-            if (deviceId is not null)
-            {
-                lock (_lock)
-                {
-                    if (_streams.TryGetValue(deviceId, out var list))
-                    {
-                        list.Remove(streamCts);
-                        if (list.Count == 0)
-                        {
-                            _streams.Remove(deviceId);
-                        }
-                    }
-                }
-            }
-        }
+        await PhoneEventStream.RunAsync(http.OutputStream, _hub, PingEvery, stream.Cts.Token).ConfigureAwait(false);
     }
 
     private static void TryAbort(HttpListenerContext context)
@@ -423,6 +381,7 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
         http.KeepAlive = false;
         http.Headers.Set("Cache-Control", "no-store");
         http.Headers.Set("X-Content-Type-Options", "nosniff");
+        http.Headers.Set("Referrer-Policy", "no-referrer");
         http.ContentLength64 = bytes.Length;
         await http.OutputStream.WriteAsync(bytes, ct).ConfigureAwait(false);
     }

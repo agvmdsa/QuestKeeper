@@ -369,6 +369,9 @@ public class PhoneControllerTests
         Assert.False(rig.Controller.AllowedHost(Dns));
         Assert.False(rig.Settings.CanPair);
         Assert.Equal(PhoneController.ServeFailedText, rig.Settings.PhoneTailscaleText);
+        Assert.Equal(
+            "Could not publish the phone page through Tailscale. If this keeps happening, run \"tailscale serve --bg http://127.0.0.1:47822\" once in a terminal to see what Tailscale needs (it may ask you to approve Serve or HTTPS in your Tailscale admin console), then try again.",
+            PhoneController.ServeFailedText);
         Assert.StartsWith("Could not publish the phone page through Tailscale.", rig.Settings.PhoneTailscaleText);
         Assert.True(rig.Host.IsRunning);
         Assert.Null(rig.Controller.CreatePairingLink());

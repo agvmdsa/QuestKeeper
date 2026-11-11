@@ -14,9 +14,21 @@ public static class TailscaleStatusParser
 
     private static readonly TailscaleState Failed = new(TailscaleStateKind.Error, null, TailscaleService.ErrorText);
 
+    // Kind Error, not NotSignedIn: signing in does not help; the client has to be started (or finish starting).
+    private static readonly TailscaleState NotRunning = new(TailscaleStateKind.Error, null, TailscaleService.NotRunningText);
+
+    /// <remarks>
+    /// No output at all is what tailscale.exe gives on stdout when tailscaled is not running (its complaint goes to stderr, which is not
+    /// read), and "NoState" or "Starting" mean the client is not up yet: all three say Tailscale does not seem to be running.
+    /// </remarks>
     public static TailscaleState Parse(string statusJson)
     {
-        if (string.IsNullOrWhiteSpace(statusJson) || statusJson.Length > MaxJsonLength)
+        if (string.IsNullOrWhiteSpace(statusJson))
+        {
+            return NotRunning;
+        }
+
+        if (statusJson.Length > MaxJsonLength)
         {
             return Failed;
         }
@@ -37,6 +49,8 @@ public static class TailscaleStatusParser
                     return new TailscaleState(TailscaleStateKind.NotSignedIn, null, TailscaleService.StoppedText);
                 case "NeedsLogin" or "NeedsMachineAuth":
                     return new TailscaleState(TailscaleStateKind.NotSignedIn, null, TailscaleService.NotSignedInText);
+                case "NoState" or "Starting":
+                    return NotRunning;
                 case "Running":
                     return ParseRunning(root);
                 default:

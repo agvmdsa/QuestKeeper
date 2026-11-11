@@ -97,7 +97,7 @@ Every character logged in is its own entry, identified by its name. `factions` a
 
 ## Phone access (for your own phone)
 
-Off by default. **Settings, "Watch my characters from my phone"** serves a small page that shows your characters' numbers, factions and Hard Farms, with the same live updates as the app, on a phone you pair. It only watches: it never sends anything to the game or to Skua. The page works as an installed web app, and its notifications (for example "Activity stopped") appear inside the page only.
+Off by default. **Settings, "Watch my characters from my phone"** serves a small page that shows your characters' numbers, factions and Hard Farms, with the same live updates as the app, on a phone you pair. It only watches: it never sends anything to the game or to Skua (a third-party game client). The page works as an installed web app, and its notifications (for example "Activity stopped") appear inside the page only.
 
 **You need**
 
@@ -105,11 +105,13 @@ Off by default. **Settings, "Watch my characters from my phone"** serves a small
 - In the Tailscale admin console, **MagicDNS** and **HTTPS certificates** turned on, one time. The app tells you in words which step is missing.
 - Questkeeper running on the PC.
 
-**Steps:** Settings, **Phone access** on, **Pair a phone...**, scan the QR code with the phone camera, then add the page to the home screen. On an iPhone the page shows a hint: tap Share, then Add to Home Screen. A pairing link works once and for 5 minutes. Each paired phone can be revoked in the same window, and its open page falls back to "Not paired".
+**Steps:** open **Settings**, turn on **Watch my characters from my phone** (the switch of the Phone access section), press **Pair a phone...**, scan the QR code with the phone camera, then add the page to the home screen. On an iPhone the page shows a hint: tap Share, then Add to Home Screen. A pairing link works once (it is spent by the first phone that pairs with it) and for 5 minutes; making a new one or closing the window cancels the old one. Each paired phone can be revoked in the same window, and its open page falls back to "Not paired".
 
-**What is stored:** `%LOCALAPPDATA%\AqwCompanion\phone.json` holds a hash of each paired device's token, never the token itself, and a tiny marker file `phone-serve.flag` in the same folder records that the page was published through Tailscale, so it can be cleaned up. **Forget my data** revokes every device and deletes `phone.json`.
+**Installed to the Home Screen first?** An iPhone Home Screen web app keeps its own storage, apart from Safari, and a scanned code always opens Safari, so pairing in Safari does not pair the installed app. Open the installed app instead: its "Not paired" card has a **Pairing link** field. Copy the link (with **Copy link** in the pairing window, or from the scanned code) and paste it there, then press **Pair**.
 
-**Ports:** the local feed stays as described above on `127.0.0.1:47821`. The phone server listens on `127.0.0.1:47822` only; the phone reaches it through `tailscale serve`, which the app sets up and removes. Requests from other machines are dropped.
+**What is stored:** `%LOCALAPPDATA%\AqwCompanion\phone.json` holds a hash of each paired device's token, never the token itself, and a tiny marker file `phone-serve.flag` in the same folder records that the page was published through Tailscale, so it can be cleaned up. **Forget my data** revokes every device and deletes `phone.json`; it does not delete `phone-serve.flag`, which holds no data and is removed when the published page is removed.
+
+**Ports:** the local feed stays as described above on `127.0.0.1:47821`. The phone server listens on `127.0.0.1:47822` only and drops connections that do not come from this PC itself. The phone reaches it through `tailscale serve`, which the app sets up and removes. Through Tailscale Serve every device on your tailnet reaches the server as the PC itself, so anyone on your tailnet can **open** the page. Only a paired phone sees any data: it holds a 256-bit device cookie, and a phone gets one only with a one-time pairing link that is shown only on this PC.
 
 **Not there yet**
 

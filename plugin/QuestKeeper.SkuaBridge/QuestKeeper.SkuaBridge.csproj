@@ -17,4 +17,8 @@
       <Private>false</Private>
     </Reference>
   </ItemGroup>
+  <ItemGroup>
+    <!-- The protocol is compiled in as source, never referenced, so the plugin ships as one DLL. -->
+    <Compile Include="..\..\src\AqwCompanion.Skua\*.cs" LinkBase="Protocol" />
+  </ItemGroup>
 </Project>

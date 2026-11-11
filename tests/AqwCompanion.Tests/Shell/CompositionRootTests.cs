@@ -9,6 +9,7 @@ using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Inventory;
 using AqwCompanion.App.Phone;
 using AqwCompanion.App.Settings;
+using AqwCompanion.App.Skua;
 using AqwCompanion.App.Shell;
 using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Core.Inventory;
@@ -16,6 +17,7 @@ using AqwCompanion.Core.Persistence;
 using AqwCompanion.Core.Wiki;
 using AqwCompanion.Phone.Devices;
 using AqwCompanion.Phone.Hub;
+using AqwCompanion.Phone.Skua;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -137,6 +139,23 @@ public class CompositionRootTests
         Assert.True(participants.Count > 1);
         Assert.Same(services.GetRequiredService<PhoneController>(), participants[^1]);
         Assert.Single(participants, p => p is PhoneController);
+    }
+
+    [Fact]
+    public void The_skua_bridge_is_shared_with_the_feed_and_forgets_before_the_phone_controller()
+    {
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
+
+        using var services = CompositionRoot.Build(paths);
+
+        var bridge = services.GetRequiredService<SkuaBridge>();
+        Assert.Same(bridge, services.GetRequiredService<ISkuaFeed>());
+        Assert.NotNull(services.GetRequiredService<SkuaBridgeHost>());
+        var participants = CompositionRoot.ForgetParticipants(services).ToList();
+        var bridgeIndex = participants.FindIndex(p => ReferenceEquals(p, bridge));
+        Assert.True(bridgeIndex >= 0);
+        Assert.True(bridgeIndex < participants.FindIndex(p => p is PhoneController));
+        Assert.False(Directory.Exists(paths.Root));
     }
 
     [Fact]

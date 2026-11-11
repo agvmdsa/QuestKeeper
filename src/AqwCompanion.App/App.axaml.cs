@@ -3,6 +3,7 @@ using AqwCompanion.App.GameData;
 using AqwCompanion.App.Infrastructure.Elevation;
 using AqwCompanion.App.Phone;
 using AqwCompanion.App.Shell;
+using AqwCompanion.App.Skua;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -45,6 +46,8 @@ public partial class CompanionApp : Application
             main.Debug.Start();
             services.GetRequiredService<LocalFeedController>().Start();
             services.GetRequiredService<PhoneController>().Start();
+            services.GetRequiredService<SkuaBridgeHost>().Start();
+            services.GetRequiredService<SkuaSettingsPresenter>().Start();
             var capture = services.GetRequiredService<CaptureSession>();
             _ = capture.RestoreAsync();
             _ = capture.StartAsync();

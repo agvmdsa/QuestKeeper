@@ -10,6 +10,7 @@ public sealed record AppPaths(string Root)
     public string FeedTokenPath => Path.Combine(Root, "feed.token");
     public string SettingsPath => Path.Combine(Root, "settings.json");
     public string PhonePath => Path.Combine(Root, "phone.json");
+    public string SkuaLogPath => Path.Combine(Root, "skua-log.json");
 
     /// <summary>An empty flag file kept while the phone page is published through Tailscale; not character data.</summary>
     public string PhoneServeMarkerPath => Path.Combine(Root, "phone-serve.flag");

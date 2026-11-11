@@ -4,5 +4,9 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AqwCompanion.Core\AqwCompanion.Core.csproj" />
+    <ProjectReference Include="..\AqwCompanion.Skua\AqwCompanion.Skua.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AqwCompanion.Tests" />
   </ItemGroup>
 </Project>

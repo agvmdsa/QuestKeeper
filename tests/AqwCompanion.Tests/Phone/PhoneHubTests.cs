@@ -1,6 +1,8 @@
 using AqwCompanion.Core.Feed;
 using AqwCompanion.Phone.Hub;
 using AqwCompanion.Phone.Notices;
+using AqwCompanion.Phone.Skua;
+using AqwCompanion.Skua;
 using AqwCompanion.Tests.TestDoubles;
 
 namespace AqwCompanion.Tests.Phone;
@@ -240,5 +242,112 @@ public class PhoneHubTests
         Assert.Contains("\"selected\":null", json);
         Assert.Contains("\"kind\":\"RankUp\"", json);
         Assert.Contains("\"snapshot\":", json);
+    }
+
+    private sealed class FakeSkuaFeed : ISkuaFeed
+    {
+        private EventHandler? _changed;
+
+        public SkuaView Value { get; set; } = SkuaView.Empty;
+
+        public bool Throw { get; set; }
+
+        public int Handlers { get; private set; }
+
+        public SkuaView Current => Throw ? throw new InvalidOperationException("feed broke") : Value;
+
+        public event EventHandler? Changed
+        {
+            add { _changed += value; Handlers++; }
+            remove { _changed -= value; Handlers--; }
+        }
+
+        public void Raise() => _changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static SkuaView ViewWith(string text) => new(
+        SkuaConnection.Connected,
+        new SkuaHello("0.1.0", "1.4.5.0"),
+        new SkuaStatus(true, "Hero", "Artix", "battleon", "Farm.cs", true, T0),
+        [new SkuaLogEntry(T0, SkuaLogKind.Sold, text)]);
+
+    private static (PhoneHub Hub, FakeSkuaFeed Feed, List<Exception> Errors) NewSkuaHub()
+    {
+        var feed = new FakeSkuaFeed { Value = ViewWith("first") };
+        var errors = new List<Exception>();
+        var hub = new PhoneHub(new FakeFeedSource(Base()), new NoticeEngine(), new NoticeLog(50), () => T0, errors.Add, feed);
+        return (hub, feed, errors);
+    }
+
+    [Fact]
+    public void Without_a_skua_feed_the_skua_part_is_null_in_the_state_and_its_json()
+    {
+        var (hub, _, _) = NewHub();
+
+        Assert.Null(hub.Current.Skua);
+        Assert.Contains("\"skua\":null", hub.CurrentJson);
+    }
+
+    [Fact]
+    public void With_a_skua_feed_the_state_carries_its_current_view()
+    {
+        var (hub, feed, _) = NewSkuaHub();
+
+        Assert.Equal(feed.Current, hub.Current.Skua);
+    }
+
+    [Fact]
+    public void A_skua_change_publishes_exactly_one_state_message_and_no_notice()
+    {
+        var (hub, feed, _) = NewSkuaHub();
+        using var sub = hub.Subscribe();
+
+        feed.Value = ViewWith("Sold Dragon Scale");
+        feed.Raise();
+
+        var message = Assert.Single(Drain(sub));
+        Assert.Equal("state", message.Event);
+        Assert.Contains("Sold Dragon Scale", message.Json);
+    }
+
+    [Fact]
+    public void A_skua_feed_that_throws_is_reported_and_never_thrown_into_the_raiser()
+    {
+        var (hub, feed, errors) = NewSkuaHub();
+        using var sub = hub.Subscribe();
+
+        feed.Throw = true;
+        Assert.Null(Record.Exception(feed.Raise));
+
+        Assert.IsType<InvalidOperationException>(Assert.Single(errors));
+        Assert.Empty(Drain(sub));
+
+        feed.Throw = false;
+        feed.Value = ViewWith("after");
+        feed.Raise();
+        Assert.Contains("after", Assert.Single(Drain(sub)).Json);
+    }
+
+    [Fact]
+    public void Reset_keeps_the_skua_part()
+    {
+        var (hub, feed, _) = NewSkuaHub();
+        using var sub = hub.Subscribe();
+
+        hub.Reset();
+
+        Assert.Equal(feed.Current, hub.Current.Skua);
+        Assert.Contains("\"connection\":\"Connected\"", Assert.Single(Drain(sub)).Json);
+    }
+
+    [Fact]
+    public void Dispose_unsubscribes_from_the_skua_feed()
+    {
+        var (hub, feed, _) = NewSkuaHub();
+        Assert.Equal(1, feed.Handlers);
+
+        hub.Dispose();
+
+        Assert.Equal(0, feed.Handlers);
     }
 }

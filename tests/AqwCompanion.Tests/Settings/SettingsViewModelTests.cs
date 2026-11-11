@@ -2,6 +2,7 @@ using AqwCompanion.App;
 using AqwCompanion.App.Feed;
 using AqwCompanion.App.Infrastructure.AutoStart;
 using AqwCompanion.App.Settings;
+using AqwCompanion.App.Skua;
 using AqwCompanion.Core.Forgetting;
 using AqwCompanion.Phone.Devices;
 using AqwCompanion.Tests.TestDoubles;
@@ -394,5 +395,106 @@ public class SettingsViewModelTests
         var ex = await Record.ExceptionAsync(() => vm.CopyLocalPairingLinkCommand.ExecuteAsync(null));
 
         Assert.Null(ex);
+    }
+
+    private sealed class FakeFolders(bool result = true) : IFolderLauncher
+    {
+        public List<string> Opened { get; } = [];
+
+        public bool Open(string path)
+        {
+            Opened.Add(path);
+            return result;
+        }
+    }
+
+    private sealed class FakeRelease(bool result = true) : IReleasePageLauncher
+    {
+        public List<string> Opened { get; } = [];
+
+        public bool Open(string url)
+        {
+            Opened.Add(url);
+            return result;
+        }
+    }
+
+    private static SettingsViewModel BuildSkua(IReleasePageLauncher release, IFolderLauncher folders, bool exists) =>
+        new(new FakeAppSettingsStore(), Coordinator(() => true), null, null, null, null, null, release, folders, "/skua/plugins", _ => exists);
+
+    [Fact]
+    public void The_skua_status_can_be_set_and_raises_a_change()
+    {
+        var vm = Build();
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        vm.SetSkuaStatus("Skua is connecting...");
+
+        Assert.Equal("Skua is connecting...", vm.SkuaStatusText);
+        Assert.Contains(nameof(SettingsViewModel.SkuaStatusText), changed);
+    }
+
+    [Fact]
+    public void The_plugins_folder_is_opened_when_it_exists()
+    {
+        var folders = new FakeFolders();
+        var vm = BuildSkua(new FakeRelease(), folders, exists: true);
+        var before = vm.SkuaStatusText;
+
+        vm.OpenSkuaPluginsFolderCommand.Execute(null);
+
+        Assert.Equal(["/skua/plugins"], folders.Opened);
+        Assert.Equal(before, vm.SkuaStatusText);
+    }
+
+    [Fact]
+    public void A_missing_plugins_folder_is_not_opened_or_created()
+    {
+        var folders = new FakeFolders();
+        var vm = BuildSkua(new FakeRelease(), folders, exists: false);
+
+        vm.OpenSkuaPluginsFolderCommand.Execute(null);
+
+        Assert.Empty(folders.Opened);
+        Assert.Equal("Skua's plugins folder was not found. Open Skua once, then try again.", vm.SkuaStatusText);
+    }
+
+    [Fact]
+    public void A_failed_folder_launch_is_reported()
+    {
+        var vm = BuildSkua(new FakeRelease(), new FakeFolders(false), exists: true);
+
+        vm.OpenSkuaPluginsFolderCommand.Execute(null);
+
+        Assert.Equal(SettingsViewModel.SkuaFolderFailedText, vm.SkuaStatusText);
+    }
+
+    [Fact]
+    public void The_release_page_is_opened_with_the_fixed_url()
+    {
+        var release = new FakeRelease();
+        var vm = BuildSkua(release, new FakeFolders(), exists: true);
+
+        vm.OpenReleasePageCommand.Execute(null);
+
+        Assert.Equal(["https://github.com/agvmdsa/QuestKeeper/releases/latest"], release.Opened);
+    }
+
+    [Fact]
+    public void The_skua_texts_are_set_and_make_no_gold_or_inventory_claim()
+    {
+        string[] texts =
+        [
+            SettingsViewModel.SkuaTitleText, SettingsViewModel.SkuaDescriptionText, SettingsViewModel.SkuaStepsText,
+            SettingsViewModel.OpenSkuaPluginsFolderText, SettingsViewModel.OpenReleasePageText,
+        ];
+
+        Assert.All(texts, t =>
+        {
+            Assert.NotEmpty(t);
+            Assert.DoesNotContain("gold", t, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("inventory", t, StringComparison.OrdinalIgnoreCase);
+        });
     }
 }

@@ -1,4 +1,5 @@
 import { characterHref, characterRow, characterRows, expFraction, formatNumber, hardFarmsView, noticeLine } from './state';
+import { skuaEmptyText, skuaHeader, skuaLogRows, skuaSummary, SKUA_TITLE } from './skua';
 import type { Faction, RemoteState } from './types';
 
 export interface VNode {
@@ -91,6 +92,14 @@ export function listView(model: Model): VNode {
             ),
           ),
     ),
+    model.state?.skua
+      ? h(
+          'section',
+          { className: 'card' },
+          h('h2', { text: SKUA_TITLE }),
+          h('a', { className: 'row', attrs: { href: '#/skua' } }, h('span', { className: 'name', text: skuaSummary(model.state.skua) })),
+        )
+      : null,
     h(
       'section',
       { className: 'card' },
@@ -114,6 +123,27 @@ export function listView(model: Model): VNode {
     ),
     model.state?.snapshot ? h('p', { className: 'note', text: `Questkeeper: ${model.state.snapshot.capture.state}` }) : null,
     model.installHint ? h('p', { className: 'note', text: model.installHint }) : null,
+  );
+}
+
+export function skuaView(model: Model): VNode {
+  const skua = model.state?.skua ?? null;
+  const header = skua ? skuaHeader(skua, model.nowMs) : null;
+  const rows = skua && skua.connection === 'Connected' ? skuaLogRows(skua, model.nowMs) : [];
+  const emptyText = skuaEmptyText(skua);
+  return h(
+    'div',
+    {},
+    back(),
+    h('section', { className: 'card' }, h('h2', { text: header?.title ?? SKUA_TITLE }), ...(header?.lines ?? []).map((line) => h('p', { className: 'skua-line', text: line }))),
+    h(
+      'section',
+      { className: 'card' },
+      h('h2', { text: 'Log' }),
+      emptyText
+        ? empty(emptyText)
+        : h('ul', { className: 'skua-log' }, ...rows.map((r) => h('li', {}, h('p', { text: r.text }), r.when ? h('p', { className: 'muted', text: r.when }) : null))),
+    ),
   );
 }
 

@@ -49,6 +49,10 @@ main > div { display: grid; gap: 1rem; }
 .notices li + li { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--raised); }
 .notice-title { font-weight: 600; }
 .notices .muted { overflow-wrap: anywhere; }
+.skua-line { color: var(--muted); font-size: 0.9375rem; }
+.skua-line:first-of-type { margin-top: 0.25rem; }
+.skua-log li + li { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--raised); }
+.skua-log p { overflow-wrap: anywhere; }
 .reason { margin-bottom: 0.5rem; font-weight: 600; }
 .hint { margin-top: 0.5rem; }
 .paste { display: grid; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--raised); }

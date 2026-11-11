@@ -94,6 +94,22 @@
       </StackPanel>
     </Border>
 
+    <Border x:Name="SettingsSkuaSection" Classes="divider">
+      <StackPanel Spacing="4">
+        <TextBlock Classes="sectionTitle" Text="{x:Static st:SettingsViewModel.SkuaTitleText}" />
+        <TextBlock Classes="muted" TextWrapping="Wrap" Text="{x:Static st:SettingsViewModel.SkuaDescriptionText}" />
+        <TextBlock x:Name="SettingsSkuaSteps" Classes="muted" TextWrapping="Wrap" Text="{x:Static st:SettingsViewModel.SkuaStepsText}" />
+        <TextBlock x:Name="SettingsSkuaStatus" Text="{Binding SkuaStatusText}" FontWeight="SemiBold" TextWrapping="Wrap"
+                   AutomationProperties.Name="{Binding SkuaStatusText}" />
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <Button x:Name="SettingsSkuaOpenFolder" Content="{x:Static st:SettingsViewModel.OpenSkuaPluginsFolderText}"
+                  Command="{Binding OpenSkuaPluginsFolderCommand}" AutomationProperties.Name="Open Skua's plugins folder" />
+          <Button x:Name="SettingsSkuaOpenRelease" Content="{x:Static st:SettingsViewModel.OpenReleasePageText}"
+                  Command="{Binding OpenReleasePageCommand}" AutomationProperties.Name="Open the Questkeeper release page" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
     <Border Classes="divider">
       <Grid ColumnDefinitions="*,Auto">
         <StackPanel Spacing="2" Margin="0,0,16,0">

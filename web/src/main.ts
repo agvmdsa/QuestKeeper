@@ -7,7 +7,7 @@ import {
   recallKept, reconnectDelay, streamErrorStep, takePairingToken, type PairProbe,
 } from './state';
 import type { Notice, RemoteState } from './types';
-import { characterView, drawFailedView, listView, mount, pairNeededView, type Model, type VNode } from './views';
+import { characterView, drawFailedView, listView, mount, pairNeededView, skuaView, type Model, type VNode } from './views';
 
 const app = document.getElementById('app')!;
 const banner = document.getElementById('banner')!;
@@ -79,6 +79,7 @@ function tree(): VNode {
   if (unpaired) return pairNeededView(pairReason, installHint);
   const model: Model = { state: state && { ...state, notices }, nowMs: Date.now(), showAll, hfOpen, installHint };
   const route = parseRoute(location.hash);
+  if (route.view === 'skua') return skuaView(model);
   return route.view === 'character' ? characterView(model, route.name) : listView(model);
 }
 

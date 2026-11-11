@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using AqwCompanion.Core.Feed;
 using AqwCompanion.Phone.Notices;
+using AqwCompanion.Phone.Skua;
 
 namespace AqwCompanion.Phone.Hub;
 
@@ -33,18 +34,25 @@ public sealed class PhoneHub : IDisposable
     private readonly NoticeLog _log;
     private readonly Func<DateTimeOffset> _now;
     private readonly Action<Exception>? _onError;
+    private readonly ISkuaFeed? _skua;
     private readonly object _lock = new();
     private readonly List<HubSubscription> _subscribers = [];
     private FeedSnapshot _snapshot;
     private string _snapshotJson;
 
-    public PhoneHub(IFeedSource source, NoticeEngine engine, NoticeLog log, Func<DateTimeOffset> now, Action<Exception>? onError = null)
+    public PhoneHub(IFeedSource source, NoticeEngine engine, NoticeLog log, Func<DateTimeOffset> now, Action<Exception>? onError = null, ISkuaFeed? skua = null)
     {
         _source = source;
         _engine = engine;
         _log = log;
         _now = now;
         _onError = onError;
+        _skua = skua;
+        if (skua is not null)
+        {
+            skua.Changed += OnSkuaChanged;   // before any read of Current: a change in between is not lost
+        }
+
         source.Changed += OnSourceChanged;   // before the read: a change in between is not lost, an equal one is skipped
         lock (_lock)
         {
@@ -60,7 +68,7 @@ public sealed class PhoneHub : IDisposable
         {
             lock (_lock)
             {
-                return new PhoneState(_snapshot, _log.Recent);
+                return new PhoneState(_snapshot, _log.Recent, _skua?.Current);
             }
         }
     }
@@ -129,6 +137,11 @@ public sealed class PhoneHub : IDisposable
     public void Dispose()
     {
         _source.Changed -= OnSourceChanged;
+        if (_skua is not null)
+        {
+            _skua.Changed -= OnSkuaChanged;
+        }
+
         lock (_lock)
         {
             foreach (var subscriber in _subscribers.ToList())
@@ -173,6 +186,22 @@ public sealed class PhoneHub : IDisposable
         }
     }
 
+    private void OnSkuaChanged(object? sender, EventArgs e)
+    {
+        // Runs on the raiser's thread: nothing may escape. The state is rebuilt from the feed's current view.
+        try
+        {
+            lock (_lock)
+            {
+                PublishState();
+            }
+        }
+        catch (Exception ex)
+        {
+            Report(ex);
+        }
+    }
+
     private void Report(Exception ex)
     {
         try
@@ -194,7 +223,7 @@ public sealed class PhoneHub : IDisposable
         }
     }
 
-    private void PublishState() => Publish(new HubMessage("state", PhoneJson.Serialize(new PhoneState(_snapshot, _log.Recent))));
+    private void PublishState() => Publish(new HubMessage("state", PhoneJson.Serialize(new PhoneState(_snapshot, _log.Recent, _skua?.Current))));
 
     private void Publish(HubMessage message)
     {

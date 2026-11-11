@@ -16,7 +16,7 @@ const character = {
 const snapshot = { contract: 1, capture: { state: 'Listening.', listening: true }, selected: null, characters: [character], factions: [], hardFarms: null };
 const notice = { id: 'n1', kind: 'RankUp', character: 'Alpha', title: 'Rank up', body: 'Yokai reached rank 8.', atUtc: '2026-11-09T11:58:00Z' };
 const json = (value: unknown) => JSON.stringify(value);
-const asState = (snap: unknown) => ({ snapshot: snap, notices: [] }) as unknown as RemoteState;
+const asState = (snap: unknown) => ({ snapshot: snap, notices: [], skua: null }) as unknown as RemoteState;
 
 function texts(node: VNode): string[] {
   return [node.text, ...node.children.flatMap(texts)].filter((t): t is string => t !== undefined);

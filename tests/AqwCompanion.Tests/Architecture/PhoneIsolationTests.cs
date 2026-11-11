@@ -4,12 +4,17 @@ public class PhoneIsolationTests
 {
     private static readonly string[] Forbidden = ["Avalonia", "WebView", "SharpPcap", "PacketDotNet", "LiteDB", "AqwCompanion.App", "AqwCompanion.Capture"];
 
+    private static readonly string[] AllowedProjects = ["AqwCompanion.Core", "AqwCompanion.Skua"];
+
     [Fact]
-    public void The_phone_assembly_references_only_core_among_our_assemblies()
+    public void The_phone_assembly_references_only_core_and_skua_among_our_assemblies()
     {
         var referenced = typeof(AqwCompanion.Phone.PhoneAssembly).Assembly.GetReferencedAssemblies().Select(a => a.Name ?? string.Empty).ToList();
 
         Assert.Contains("AqwCompanion.Core", referenced);
+        Assert.Equal(
+            [],
+            referenced.Where(n => n.StartsWith("AqwCompanion", StringComparison.OrdinalIgnoreCase) && !AllowedProjects.Contains(n, StringComparer.Ordinal)).ToList());
         Assert.DoesNotContain(referenced, name => Forbidden.Any(f => name.Contains(f, StringComparison.OrdinalIgnoreCase)));
     }
 
@@ -18,11 +23,17 @@ public class PhoneIsolationTests
     {
         var csproj = File.ReadAllText(FindProject());
 
-        Assert.Contains("AqwCompanion.Core.csproj", csproj, StringComparison.Ordinal);
+        var projects = System.Text.RegularExpressions.Regex.Matches(csproj, "<ProjectReference\\s+Include=\"([^\"]+)\"")
+            .Select(m => Path.GetFileNameWithoutExtension(m.Groups[1].Value.Replace('\\', '/')))
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Equal(AllowedProjects, projects);
         Assert.DoesNotContain("PackageReference", csproj, StringComparison.Ordinal);
+        var rest = csproj.Replace("AqwCompanion.Core.csproj", "").Replace("AqwCompanion.Skua.csproj", "");
         foreach (var forbidden in Forbidden)
         {
-            Assert.DoesNotContain(forbidden, csproj.Replace("AqwCompanion.Core.csproj", ""), StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(forbidden, rest, StringComparison.OrdinalIgnoreCase);
         }
     }
 

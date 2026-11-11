@@ -4,6 +4,7 @@
     <Project Path="src/AqwCompanion.Capture/AqwCompanion.Capture.csproj" />
     <Project Path="src/AqwCompanion.Core/AqwCompanion.Core.csproj" />
     <Project Path="src/AqwCompanion.Phone/AqwCompanion.Phone.csproj" />
+    <Project Path="src/AqwCompanion.Skua/AqwCompanion.Skua.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AqwCompanion.Tests/AqwCompanion.Tests.csproj" />

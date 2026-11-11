@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>AqwCompanion.Skua</RootNamespace>
+  </PropertyGroup>
+</Project>

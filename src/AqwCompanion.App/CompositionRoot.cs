@@ -11,6 +11,7 @@ using AqwCompanion.App.Infrastructure.Persistence;
 using AqwCompanion.App.Phone;
 using AqwCompanion.App.Inventory;
 using AqwCompanion.App.Settings;
+using AqwCompanion.App.Skua;
 using AqwCompanion.App.Shell;
 using AqwCompanion.Capture;
 using AqwCompanion.Core.Diagnostics;
@@ -20,6 +21,7 @@ using AqwCompanion.Core.Persistence;
 using AqwCompanion.Phone.Devices;
 using AqwCompanion.Phone.Hub;
 using AqwCompanion.Phone.Notices;
+using AqwCompanion.Phone.Skua;
 using AqwCompanion.Phone.Web;
 using AqwCompanion.Core.Wiki;
 using Avalonia;
@@ -109,7 +111,13 @@ public static class CompositionRoot
         services.AddSingleton(sp => new PhoneRegistry(sp.GetRequiredService<IPhoneFileStore>(), () => DateTimeOffset.UtcNow));
         services.AddSingleton(sp => new PhoneHub(
             sp.GetRequiredService<IFeedSource>(), new NoticeEngine(), new NoticeLog(50), () => DateTimeOffset.UtcNow,
-            ex => Log.Warning("Phone hub failed: {ExceptionType}", ex.GetType().Name)));
+            ex => Log.Warning("Phone hub failed: {ExceptionType}", ex.GetType().Name),
+            skua: sp.GetRequiredService<ISkuaFeed>()));
+        services.AddSingleton<ISkuaLogStore>(sp => new SkuaLogStore(sp.GetRequiredService<AppPaths>().SkuaLogPath));
+        services.AddSingleton(sp => new SkuaBridge(sp.GetRequiredService<ISkuaLogStore>(), () => DateTimeOffset.UtcNow));
+        services.AddSingleton<ISkuaFeed>(sp => sp.GetRequiredService<SkuaBridge>());
+        services.AddSingleton(sp => new SkuaBridgeHost(
+            sp.GetRequiredService<SkuaBridge>(), ex => Log.Warning("Skua pipe failed: {ExceptionType}", ex.GetType().Name)));
         services.AddSingleton<IAssetSource, EmbeddedAssetSource>();
         services.AddSingleton<ITailscaleProcess, TailscaleProcess>();
         services.AddSingleton<IServeMarker>(sp => new FileServeMarker(sp.GetRequiredService<AppPaths>().PhoneServeMarkerPath));
@@ -150,6 +158,7 @@ public static class CompositionRoot
         sp.GetRequiredService<HardFarmsViewModel>(),
         new LegacyReputationFolder(sp.GetRequiredService<AppPaths>()),
         sp.GetRequiredService<CaptureSession>(),
+        sp.GetRequiredService<SkuaBridge>(),
         // PhoneController MUST stay the LAST participant: its Forget resets the phone hub, which reads the feed, and then brings
         // the phone host back. Every other participant has to have forgotten first, or the host returns serving data from before
         // the Forget. CompositionRootTests.The_phone_controller_is_the_last_forget_participant guards this order.

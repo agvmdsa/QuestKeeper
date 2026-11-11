@@ -127,7 +127,8 @@ public static class CompositionRoot
         services.AddSingleton<PhoneController>(sp => new PhoneController(
             sp.GetRequiredService<SettingsViewModel>(), sp.GetRequiredService<IPhoneHost>(), sp.GetRequiredService<PhoneHub>(), sp.GetRequiredService<PhoneRegistry>(),
             sp.GetRequiredService<ITailscale>(), sp.GetRequiredService<IServeMarker>(), onUiThread: OnUiThread));
-        services.AddSingleton<ISettingsDialog, AvaloniaSettingsDialog>();
+        services.AddSingleton<IPairingLinkSource>(sp => sp.GetRequiredService<PhoneController>());
+        services.AddSingleton<ISettingsDialog>(sp => new AvaloniaSettingsDialog(sp.GetRequiredService<IPairingLinkSource>(), sp.GetRequiredService<PhoneRegistry>()));
         services.AddSingleton<IDebugWindowHost, AvaloniaDebugWindowHost>();
         services.AddSingleton<DebugModeController>();
         services.AddSingleton(sp => new ForgetCoordinator(

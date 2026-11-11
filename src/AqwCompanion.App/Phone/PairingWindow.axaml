@@ -1,0 +1,81 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ph="using:AqwCompanion.App.Phone"
+        x:Class="AqwCompanion.App.Phone.PairingWindow"
+        x:DataType="ph:PairingViewModel"
+        Title="Pair a phone"
+        Icon="/Assets/app.png"
+        Width="480" SizeToContent="Height" CanResize="False" WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <Style Selector="Border.divider">
+      <Setter Property="BorderBrush" Value="{DynamicResource AqwBorder}" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="Padding" Value="20,12" />
+    </Style>
+    <Style Selector="TextBlock.sectionTitle">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource AqwTextBright}" />
+    </Style>
+    <Style Selector="TextBlock.muted">
+      <Setter Property="Foreground" Value="{DynamicResource AqwTextMuted}" />
+    </Style>
+  </Window.Styles>
+
+  <StackPanel Background="{DynamicResource AqwSurface}">
+    <Border Background="{DynamicResource AqwHeader}" Padding="20,12">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock x:Name="PairingTitle" Text="Pair a phone" FontSize="18" FontWeight="Bold"
+                   Foreground="{DynamicResource AqwTextBright}" VerticalAlignment="Center" />
+        <Button x:Name="PairingCloseButton" Grid.Column="1" Content="Close" Click="OnCloseClick"
+                AutomationProperties.Name="Close the pairing window" />
+      </Grid>
+    </Border>
+
+    <Border Classes="divider">
+      <StackPanel Spacing="10" HorizontalAlignment="Center" Width="400">
+        <TextBlock x:Name="PairingExplain" Classes="muted" TextWrapping="Wrap" Text="{x:Static ph:PairingViewModel.ExplainText}" />
+        <Border Background="White" HorizontalAlignment="Center" Width="240" Height="240" IsVisible="{Binding HasLink}">
+          <Image x:Name="PairingQrImage" Width="240" Height="240" Stretch="Uniform" RenderOptions.BitmapInterpolationMode="None"
+                 AutomationProperties.Name="QR code for pairing a phone" />
+        </Border>
+        <TextBlock x:Name="PairingMessage" TextWrapping="Wrap" Text="{Binding Message}" IsVisible="{Binding HasMessage}"
+                   Foreground="{DynamicResource AqwDangerText}" AutomationProperties.Name="{Binding Message}" />
+        <TextBlock x:Name="PairingExpires" Classes="muted" Text="{Binding ExpiresText}" HorizontalAlignment="Center"
+                   IsVisible="{Binding HasLink}" AutomationProperties.Name="{Binding ExpiresText}" />
+        <SelectableTextBlock x:Name="PairingLinkText" Classes="muted" TextWrapping="Wrap" Text="{Binding Link}" IsVisible="{Binding HasLink}"
+                             AutomationProperties.Name="Pairing link" />
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <Button x:Name="PairingCopyButton" Content="Copy link" Command="{Binding CopyLinkCommand}" AutomationProperties.Name="Copy the pairing link" />
+          <Button x:Name="PairingNewLinkButton" Content="Create a new link" Command="{Binding RegenerateCommand}"
+                  AutomationProperties.Name="Create a new pairing link" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
+    <Border Padding="20,12">
+      <StackPanel Spacing="8">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Classes="sectionTitle" Text="Paired phones" VerticalAlignment="Center" />
+          <Button x:Name="PairingRevokeAllButton" Grid.Column="1" Content="Revoke all" Command="{Binding RevokeAllCommand}"
+                  IsVisible="{Binding HasDevices}" AutomationProperties.Name="Revoke all paired phones" />
+        </Grid>
+        <TextBlock x:Name="PairingNoDevices" Classes="muted" Text="{x:Static ph:PairingViewModel.EmptyDevicesText}" IsVisible="{Binding HasNoDevices}" />
+        <ItemsControl x:Name="PairingDevices" ItemsSource="{Binding Devices}" IsVisible="{Binding HasDevices}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="ph:DeviceRow">
+              <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+                <StackPanel Spacing="1" Margin="0,0,12,0">
+                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="{DynamicResource AqwTextBright}" />
+                  <TextBlock Classes="muted" Text="{Binding Created}" />
+                  <TextBlock Classes="muted" Text="{Binding LastSeen}" />
+                </StackPanel>
+                <Button Grid.Column="1" Content="Revoke" Command="{Binding RevokeCommand}" VerticalAlignment="Center"
+                        AutomationProperties.Name="{Binding Name, StringFormat='Revoke {0}'}" />
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </Border>
+  </StackPanel>
+</Window>

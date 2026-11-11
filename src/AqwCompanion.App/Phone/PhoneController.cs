@@ -10,7 +10,7 @@ namespace AqwCompanion.App.Phone;
 /// Keeps the phone host, its notice tick and the pairing registry in step with the Settings switch, which lives in settings.json
 /// and so survives "Forget my data". Also takes part in Forgetting: it revokes every device and clears the hub.
 /// </summary>
-public sealed class PhoneController : IForgettable, IDisposable
+public sealed class PhoneController : IForgettable, IDisposable, IPairingLinkSource
 {
     public const string OffText = "Off";
 
@@ -113,6 +113,20 @@ public sealed class PhoneController : IForgettable, IDisposable
             return null;
         }
     }
+
+    /// <summary>The sentence to show instead of a QR code while no link can be made: what Tailscale last said, or a hint to turn the access on.</summary>
+    public string UnavailableText
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _tsText.Length > 0 ? _tsText : NotReadyText;
+            }
+        }
+    }
+
+    public const string NotReadyText = "Phone access is not ready. Turn it on in Settings and check Tailscale, then try again.";
 
     public string ListeningText => $"Listening on 127.0.0.1:{_port}";
 

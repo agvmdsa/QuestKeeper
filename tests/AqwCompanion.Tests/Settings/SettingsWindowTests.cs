@@ -120,6 +120,25 @@ public class SettingsWindowTests
     }
 
     [AvaloniaFact]
+    public void The_pair_button_is_enabled_only_when_a_pairing_link_can_be_made()
+    {
+        var window = OpenWithPhone(debug: false, out var vm, out _);
+        var button = window.FindControl<Button>("SettingsPhonePair")!;
+        Assert.Equal("Pair a phone...", button.Content);
+        Assert.False(button.IsEffectivelyEnabled);
+
+        vm.SetPhoneTailscale("Ready.", true);
+        Assert.True(button.IsEffectivelyEnabled);
+        var asked = 0;
+        vm.PairRequested += (_, _) => asked++;
+        button.Command!.Execute(null);
+        Assert.Equal(1, asked);
+
+        vm.SetPhoneTailscale("Tailscale is not installed.", false);
+        Assert.False(button.IsEffectivelyEnabled);
+    }
+
+    [AvaloniaFact]
     public void The_phone_section_shows_the_tailscale_sentence_only_when_there_is_one()
     {
         var window = OpenWithPhone(debug: false, out var vm, out _);

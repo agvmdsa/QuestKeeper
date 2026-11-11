@@ -22,6 +22,7 @@ public partial class SettingsViewModel : ObservableObject
     public const string FeedNewSecretWarningText = "Programs that use the old secret stop working until they read the new one.";
     public const string PhoneTitleText = "Watch my characters from my phone";
     public const string PhoneDescriptionText = "Shows your characters' numbers, factions and Hard Farms on a phone you pair, over your own Tailscale network. It only watches and never sends anything to the game.";
+    public const string PairPhoneText = "Pair a phone...";
     public const string PhoneCopyLinkText = "Copy local pairing link";
     public const string DebugTitleText = "Debug mode";
     public const string DebugDescriptionText = "Shows the capture and packet details in their own window. It also opens with Ctrl+Shift+D and from the tray icon menu.";
@@ -127,7 +128,14 @@ public partial class SettingsViewModel : ObservableObject
 
     /// <summary>Whether the phone page is published through Tailscale, so a pairing link can be made.</summary>
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(PairPhoneCommand))]
     private bool _canPair;
+
+    /// <summary>Raised when "Pair a phone..." is pressed; the dialog host opens the pairing window.</summary>
+    public event EventHandler? PairRequested;
+
+    [RelayCommand(CanExecute = nameof(CanPair))]
+    private void PairPhone() => PairRequested?.Invoke(this, EventArgs.Empty);
 
     public bool HasPhoneTailscaleText => PhoneTailscaleText.Length > 0;
 

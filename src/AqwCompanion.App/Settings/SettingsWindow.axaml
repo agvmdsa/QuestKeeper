@@ -86,6 +86,8 @@
                    AutomationProperties.Name="{Binding PhoneStatusText}" />
         <TextBlock x:Name="SettingsPhoneTailscale" Classes="muted" TextWrapping="Wrap" Text="{Binding PhoneTailscaleText}"
                    IsVisible="{Binding HasPhoneTailscaleText}" AutomationProperties.Name="{Binding PhoneTailscaleText}" />
+        <Button x:Name="SettingsPhonePair" HorizontalAlignment="Left" Content="{x:Static st:SettingsViewModel.PairPhoneText}"
+                Command="{Binding PairPhoneCommand}" AutomationProperties.Name="Pair a phone" />
         <Button x:Name="SettingsPhoneCopyLink" HorizontalAlignment="Left" Content="{x:Static st:SettingsViewModel.PhoneCopyLinkText}"
                 Command="{Binding CopyLocalPairingLinkCommand}" IsVisible="{Binding IsLocalPairingLinkVisible}"
                 AutomationProperties.Name="Copy a pairing link for this PC (debug)" />

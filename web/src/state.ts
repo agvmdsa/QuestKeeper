@@ -45,8 +45,6 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 
 /** True when the snapshot has every part the views read: an unknown or broken shape is refused before it is drawn or stored. */
 export function isUsableState(s: RemoteState): boolean {
-  const skua: unknown = s.skua;
-  if (skua !== undefined && skua !== null && !isObject(skua)) return false;
   const snap: unknown = s.snapshot;
   if (snap === null) return true;
   if (!isObject(snap) || snap.contract !== 1) return false;
@@ -153,10 +151,8 @@ export function focusKey(t: FocusTarget): string | null {
 function toState(value: unknown): RemoteState | null {
   if (!isObject(value) || !('snapshot' in value)) return null;
   const notices: unknown[] = Array.isArray(value.notices) ? value.notices : [];
-  const state = { snapshot: value.snapshot ?? null, notices: notices.filter(isNotice), skua: value.skua ?? null } as RemoteState;
-  if (!isUsableState(state)) return null;
-  state.skua = parseSkua(state.skua);
-  return state;
+  const state = { snapshot: value.snapshot ?? null, notices: notices.filter(isNotice), skua: parseSkua(value.skua) } as RemoteState;
+  return isUsableState(state) ? state : null;
 }
 
 export function parseState(text: string): RemoteState | null {

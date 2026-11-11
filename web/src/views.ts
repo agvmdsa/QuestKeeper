@@ -140,9 +140,9 @@ export function skuaView(model: Model): VNode {
       'section',
       { className: 'card' },
       h('h2', { text: 'Log' }),
-      emptyText || rows.length === 0
-        ? empty(emptyText || skuaEmptyText(null))
-        : h('ul', { className: 'skua-log' }, ...rows.map((r) => h('li', {}, h('p', { text: r.text }), h('p', { className: 'muted', text: r.when })))),
+      emptyText
+        ? empty(emptyText)
+        : h('ul', { className: 'skua-log' }, ...rows.map((r) => h('li', {}, h('p', { text: r.text }), r.when ? h('p', { className: 'muted', text: r.when }) : null))),
     ),
   );
 }

@@ -39,7 +39,7 @@ describe('parseSkua', () => {
 });
 
 describe('formatDuration', () => {
-  it.each([[0, 'just now'], [59_000, 'just now'], [180_000, '3 min'], [3_900_000, '1 h 5 min'], [7_200_000, '2 h'], [90_000_000, '1 d 1 h'], [Number.NaN, 'just now']])('%s -> %s', (ms, text) =>
+  it.each([[0, 'just now'], [59_000, 'just now'], [180_000, '3 min'], [3_900_000, '1 h 5 min'], [7_200_000, '2 h'], [90_000_000, '1 d 1 h'], [Number.NaN, 'just now'], [-5000, 'just now'], [Infinity, 'just now']])('%s -> %s', (ms, text) =>
     expect(formatDuration(ms)).toBe(text));
 });
 
@@ -68,16 +68,21 @@ describe('skua view model', () => {
 
 describe('state, route and storage', () => {
   const base = { snapshot: null, notices: [] };
-  it('treats a payload without skua as null and refuses a string skua', () => {
+  it('treats a payload without skua as null and degrades a string skua to null', () => {
     expect(parseState(JSON.stringify(base))!.skua).toBeNull();
-    expect(isUsableState({ ...base, skua: 'x' } as unknown as RemoteState)).toBe(false);
-    expect(parseState(JSON.stringify({ ...base, skua: 'x' }))).toBeNull();
+    expect(isUsableState({ ...base, skua: 'x' } as unknown as RemoteState)).toBe(true);
+    expect(parseState(JSON.stringify({ ...base, skua: 'x' }))).toEqual({ snapshot: null, notices: [], skua: null });
+    expect(parseState(JSON.stringify({ ...base, skua: [1] }))!.skua).toBeNull();
     expect(parseState(JSON.stringify({ ...base, skua: wire }))!.skua).toEqual(wire);
   });
   it('keeps skua through the stored round trip and loads an old stored value', () => {
     const state = parseState(JSON.stringify({ ...base, skua: wire }))!;
     expect(recallKept(keepState(state, NOW - 1000), NOW)!.state.skua).toEqual(wire);
     expect(recallKept(JSON.stringify({ receivedAtMs: NOW - 1000, state: base }), NOW)!.state.skua).toBeNull();
+  });
+  it('loads a stored value with a garbage skua as null', () => {
+    const text = JSON.stringify({ receivedAtMs: NOW - 1000, state: { ...base, skua: { connection: 7 } } });
+    expect(recallKept(text, NOW)!.state.skua).toBeNull();
   });
   it('routes #/skua only', () => {
     expect(parseRoute('#/skua')).toEqual({ view: 'skua' });
@@ -98,6 +103,13 @@ describe('views', () => {
     const t = texts(view);
     expect(t).toEqual(expect.arrayContaining(['Back to characters', 'Skua', 'Hero · Artix · battleon', 'Running Farm.cs for 12 min', 'Sold Blood Orb x50 for 2,500 gold', '11 min ago']));
     expect(all(view).find((n) => n.className === 'back')!.attrs).toEqual({ href: '#/' });
+  });
+  it('shows only the title when connected without a status, and no empty time line', () => {
+    expect(skuaHeader(skua({ status: null }), NOW)).toEqual({ title: 'Skua', lines: [] });
+    const s = skua({ log: [{ at: 'not a date', kind: 'x', text: 'odd' }] });
+    const view = skuaView(model(s));
+    expect(texts(view)).toContain('odd');
+    expect(all(view).some((n) => n.className === 'muted')).toBe(false);
   });
   it('shows the calm text for the other states', () => {
     expect(texts(skuaView(model(null)))).toContain('Skua is not connected.');

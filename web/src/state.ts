@@ -215,14 +215,26 @@ export function relativeTime(iso: string, nowMs: number): string {
   return t('time.daysAgo', { n: Math.floor(hours / 24) });
 }
 
+/** How long the stream may stay down before the banner says Questkeeper cannot be reached (the same as the state request's timeout). */
+export const UNREACHABLE_AFTER_MS = 10_000;
+
+/** What the page knows about the link: when the stream went down (null if unknown) and whether the last state request failed or timed out. */
+export interface LinkFacts {
+  downSinceMs: number | null;
+  requestFailed: boolean;
+}
+
 /**
- * Nothing while the event stream is open; a calm "Connecting..." on a first visit when no data was ever shown (nothing old to warn
- * about); otherwise the shown data is old, and the banner says how old when the time is known.
+ * Nothing while the event stream is open. Once the last state request failed or the stream has been down for more than 10 s, the
+ * calm "Can't reach Questkeeper" warning, with the age of the shown data when it is known. Before that, a first visit with no data
+ * shows "Connecting..."; otherwise the shown data is old, and the banner says how old when the time is known.
  */
-export function linkBanner(sseOpen: boolean, lastUpdateMs: number | null, nowMs: number, hasData = true): Banner | null {
+export function linkBanner(sseOpen: boolean, lastUpdateMs: number | null, nowMs: number, hasData = true, link?: LinkFacts): Banner | null {
   if (sseOpen) return null;
-  if (!hasData && lastUpdateMs === null) return { tone: 'neutral', text: t('banner.connecting') };
   const age = lastUpdateMs === null || !Number.isFinite(lastUpdateMs) ? '' : relativeTime(new Date(lastUpdateMs).toISOString(), nowMs);
+  const unreachable = !!link && (link.requestFailed || (link.downSinceMs !== null && nowMs - link.downSinceMs > UNREACHABLE_AFTER_MS));
+  if (unreachable) return { tone: 'warn', text: age ? t('banner.unreachableAge', { age }) : t('banner.unreachable') };
+  if (!hasData && lastUpdateMs === null) return { tone: 'neutral', text: t('banner.connecting') };
   return { tone: 'warn', text: age ? t('banner.oldWithAge', { age }) : t('banner.old') };
 }
 

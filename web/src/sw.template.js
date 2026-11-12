@@ -15,29 +15,64 @@ self.addEventListener('activate', (event) => {
 
 // Only the shell is kept: the page itself and files with these extensions, never /api/ and never other origins.
 const KEPT = /\.(js|css|png|webmanifest)$/;
+// How long the network may take for the shell before the cached copy is shown instead (the network keeps going in the background).
+const SHELL_WAIT_MS = 3000;
+// This script has no module system and cannot use the page's i18n catalog, so the texts of the page below are plain English constants.
+// They are not part of the catalog. The sentence must stay identical to the catalog's `banner.unreachable` (test/sw.test.ts checks it).
+const UNREACHABLE = "Can't reach Questkeeper. Check that your PC is on and Questkeeper is running.";
+const TRY_AGAIN = 'Try again';
 const offline = () => new Response('', { status: 503, statusText: 'Offline' });
+// No inline script or style, even though the site's CSP does not apply to a synthesized answer.
+const unreachablePage = () =>
+  new Response(
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Questkeeper</title></head><body><h1>Questkeeper</h1><p>${UNREACHABLE}</p><p><a href="/">${TRY_AGAIN}</a></p></body></html>`,
+    {
+      status: 503,
+      statusText: 'Unreachable',
+      headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' },
+    },
+  );
+
+const TIMED_OUT = Symbol('timed out');
+
+/** What to show when the network gave no usable answer: the cached copy, else the page for a navigation, else a plain failure. */
+async function fallback(request) {
+  const hit = await caches.match(request);
+  if (hit) return hit;
+  // A missing script or style must fail as such, not be answered with the page's HTML.
+  if (request.destination === 'script' || request.destination === 'style') return offline();
+  if (request.mode === 'navigate' || request.destination === 'document') return (await caches.match('/')) || unreachablePage();
+  return offline();
+}
 
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
   const keep = url.pathname === '/' || KEPT.test(url.pathname);
+  // The network request runs to its end even after the cache has answered, so the cache is refreshed for the next visit.
+  let stored = Promise.resolve();
+  const network = fetch(request).then((response) => {
+    if (keep && response.ok && response.type === 'basic') {
+      const copy = response.clone();
+      // Not awaited: the answer is not delayed by the cache write.
+      stored = caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => undefined);
+    }
+    return response;
+  });
+  event.waitUntil(network.then(() => stored, () => undefined));
+  if (!keep) {
+    event.respondWith(network.catch(() => fallback(request)));
+    return;
+  }
+  let timer;
+  const late = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(TIMED_OUT), SHELL_WAIT_MS);
+  });
   event.respondWith(
-    fetch(request)
-      .then((response) => {
-        if (keep && response.ok && response.type === 'basic') {
-          const copy = response.clone();
-          event.waitUntil(caches.open(CACHE).then((cache) => cache.put(request, copy)));
-        }
-        return response;
-      })
-      .catch(() =>
-        caches.match(request).then((hit) => {
-          if (hit) return hit;
-          // A missing script or style must fail as such, not be answered with the page's HTML.
-          if (request.destination === 'script' || request.destination === 'style') return offline();
-          return caches.match('/').then((page) => page || offline());
-        }),
-      ),
+    Promise.race([network, late])
+      .then((result) => (result === TIMED_OUT ? fallback(request) : result))
+      .catch(() => fallback(request))
+      .finally(() => clearTimeout(timer)),
   );
 });

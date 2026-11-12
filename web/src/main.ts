@@ -6,7 +6,7 @@ import { getState, openEvents, pair, probeOf, type PairOutcome } from './api';
 import {
   afterStreamCheck, deviceName, focusKey, iosInstallHint, keepState, KEPT_KEY, linkBanner, pairFailureText, pairingStep, parseNotice, parsePairingInput, parseRoute,
   parseState,
-  recallKept, reconnectDelay, streamErrorStep, takePairingToken, type PairProbe,
+  recallKept, reconnectDelay, streamErrorStep, takePairingToken, UNREACHABLE_AFTER_MS, type PairProbe,
 } from './state';
 import { parseLogFilter, type LogFilter } from './skua';
 import { detectLocale, setLocale, t } from './i18n';
@@ -40,6 +40,10 @@ let state: RemoteState | null = null;
 let notices: Notice[] = [];
 let lastUpdateMs: number | null = null;
 let sseOpen = false;
+// When the stream went down (the page starts without one) and whether the last state request failed: they decide "Can't reach Questkeeper".
+let downSinceMs: number | null = Date.now();
+let requestFailed = false;
+let unreachableTimer: ReturnType<typeof setTimeout> | undefined;
 let unpaired = false;
 let pairReason: string | null = null;
 let showAll = false;
@@ -82,8 +86,22 @@ function recall(): ReturnType<typeof recallKept> {
   }
 }
 
+/** Redraws just after the stream has been down for 10 s, so the banner changes without waiting for the 15 s tick or new data. */
+function armUnreachableTimer(): void {
+  clearTimeout(unreachableTimer);
+  if (sseOpen || downSinceMs === null) return;
+  const wait = downSinceMs + UNREACHABLE_AFTER_MS + 1 - Date.now();
+  if (wait > 0) unreachableTimer = setTimeout(draw, wait);
+}
+
+function markDown(): void {
+  sseOpen = false;
+  downSinceMs ??= Date.now();
+  armUnreachableTimer();
+}
+
 function drawBanner(): void {
-  const note = unpaired ? null : linkBanner(sseOpen, lastUpdateMs, Date.now(), state !== null);
+  const note = unpaired ? null : linkBanner(sseOpen, lastUpdateMs, Date.now(), state !== null, { downSinceMs, requestFailed });
   const key = note ? `${note.tone}|${note.text}` : '';
   if (key === lastBanner) return;
   lastBanner = key;
@@ -156,6 +174,7 @@ function setState(text: string): void {
   state = parsed;
   notices = parsed.notices;
   lastUpdateMs = Date.now();
+  requestFailed = false;
   // Kept only once it has been drawn, so data that breaks the page is never stored and replayed on the next load.
   if (draw()) remember(parsed, lastUpdateMs);
 }
@@ -171,7 +190,7 @@ function closeStream(): void {
   clearTimeout(retryTimer);
   source?.close();
   source = null;
-  sseOpen = false;
+  markDown();
 }
 
 /** A device the PC no longer knows keeps nothing: names and gold are dropped from memory and storage. */
@@ -197,12 +216,15 @@ function openStream(): void {
   source = openEvents({
     open: () => {
       sseOpen = true;
+      downSinceMs = null;
+      requestFailed = false;
+      clearTimeout(unreachableTimer);
       unpaired = false;
       attempts = 0;
       draw();
     },
     error: (closed) => {
-      sseOpen = false;
+      markDown();
       draw();
       if (streamErrorStep(closed) === 'wait') return; // EventSource retries by itself
       source?.close();
@@ -215,6 +237,10 @@ function openStream(): void {
         })
         .catch((error: unknown) => {
           probe = probeOf(error);
+          if (probe !== 'unpaired') {
+            requestFailed = true;
+            draw();
+          }
         })
         .finally(() => {
           if (afterStreamCheck(probe) === 'unpaired') becomeUnpaired();
@@ -237,6 +263,8 @@ async function connect(): Promise<void> {
       becomeUnpaired();
       return;
     }
+    requestFailed = true;
+    draw();
   }
   if (!source) openStream();
 }
@@ -308,6 +336,7 @@ async function start(): Promise<void> {
     lastUpdateMs = kept.receivedAtMs;
     draw();
   }
+  armUnreachableTimer();
   try {
     if (!(await tryPairFromHash())) await connect();
   } catch {

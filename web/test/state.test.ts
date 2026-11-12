@@ -70,6 +70,39 @@ describe('linkBanner', () => {
   });
 });
 
+describe('linkBanner when Questkeeper cannot be reached', () => {
+  const SENTENCE = "Can't reach Questkeeper. Check that your PC is on and Questkeeper is running.";
+  it('keeps the old wording for a short reconnect', () => {
+    expect(linkBanner(false, NOW - 180_000, NOW, true, { downSinceMs: NOW - 9_900, requestFailed: false })?.text).toBe('Old data - last update 3 min ago. Reconnecting...');
+    expect(linkBanner(false, NOW - 180_000, NOW, true, { downSinceMs: NOW - 10_000, requestFailed: false })?.text).toBe('Old data - last update 3 min ago. Reconnecting...');
+  });
+  it('turns to unreachable once the connection has been down for more than 10 s', () => {
+    expect(linkBanner(false, NOW - 180_000, NOW, true, { downSinceMs: NOW - 10_001, requestFailed: false })).toEqual({
+      tone: 'warn', text: "Can't reach Questkeeper. Last update 3 min ago. Check that your PC is on and Questkeeper is running.",
+    });
+  });
+  it('turns to unreachable at once when the last state request failed or timed out', () => {
+    expect(linkBanner(false, NOW - 7_200_000, NOW, true, { downSinceMs: NOW - 1_000, requestFailed: true })?.text).toBe(
+      "Can't reach Questkeeper. Last update 2 h ago. Check that your PC is on and Questkeeper is running.",
+    );
+  });
+  it('leaves the age out when stored data has no known time or there is none', () => {
+    expect(linkBanner(false, null, NOW, true, { downSinceMs: null, requestFailed: true })).toEqual({ tone: 'warn', text: SENTENCE });
+    expect(linkBanner(false, Number.NaN, NOW, true, { downSinceMs: null, requestFailed: true })?.text).toBe(SENTENCE);
+  });
+  it('replaces Connecting... on a first visit with no data once it has failed', () => {
+    expect(linkBanner(false, null, NOW, false, { downSinceMs: NOW - 2_000, requestFailed: false })).toEqual({ tone: 'neutral', text: 'Connecting...' });
+    expect(linkBanner(false, null, NOW, false, { downSinceMs: NOW - 11_000, requestFailed: false })).toEqual({ tone: 'warn', text: SENTENCE });
+    expect(linkBanner(false, null, NOW, false, { downSinceMs: NOW - 1_000, requestFailed: true })).toEqual({ tone: 'warn', text: SENTENCE });
+  });
+  it('clears when the stream is open again, whatever happened before', () => {
+    expect(linkBanner(true, NOW - 180_000, NOW, true, { downSinceMs: NOW - 60_000, requestFailed: true })).toBeNull();
+  });
+  it('is backward compatible without the link facts', () => {
+    expect(linkBanner(false, NOW - 180_000, NOW)?.text).toBe('Old data - last update 3 min ago. Reconnecting...');
+  });
+});
+
 describe('iosInstallHint', () => {
   const HINT = 'Install: tap Share, then Add to Home Screen.';
   const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';

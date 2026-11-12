@@ -27,6 +27,8 @@ export const en = {
   'banner.connecting': 'Connecting...',
   'banner.oldWithAge': 'Old data - last update {age}. Reconnecting...',
   'banner.old': 'Old data - reconnecting...',
+  'banner.unreachable': "Can't reach Questkeeper. Check that your PC is on and Questkeeper is running.",
+  'banner.unreachableAge': "Can't reach Questkeeper. Last update {age}. Check that your PC is on and Questkeeper is running.",
 
   'install.ios': 'Install: tap Share, then Add to Home Screen.',
 

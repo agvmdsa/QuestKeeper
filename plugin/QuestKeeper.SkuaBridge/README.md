@@ -39,10 +39,12 @@ throwaway project and read in the tag source.
    the plugin's and its value is the one Skua sees.
 6. **Script started/stopped come from `ScriptRunning` changes**, not from Skua's `ScriptStartedMessage` /
    `ScriptStoppedMessage` as the spec suggested, so `Skua.Core.dll` is not referenced.
-7. **Active quests (AQW-0076), read-only:** `IScriptInterface.Quests` -> `IScriptQuest.Active` (`List<Quest>`, never null
-   in 1.4.5.0: it is `Tree.FindAll(x => x.Active)`, and the `world.questTree` binding answers an empty dictionary when the
-   read fails) and `IScriptQuest.CanComplete(int)` (`Completed.Contains(q => q.ID == id)`, which reads `Tree` again and
-   checks `Status == "c"`; Skua's own remark: "can not always be right"), with `Quest.ID`, `Quest.Name`. The
+7. **Active quests (AQW-0076):** `IScriptInterface.Quests` -> `IScriptQuest.Active` (`List<Quest>`, never null in
+   1.4.5.0: it is `Tree.FindAll(x => x.Active)`, `Quest.Active` is `Status != null`, and the `world.questTree` binding
+   answers an empty dictionary when the read fails), with `Quest.ID`, `Quest.Name` and `Quest.Status`. "Ready" is
+   `Quest.Status == "c"` on the quests that one read returned: Skua's own `CanComplete(id)` is
+   `Completed.Contains(q => q.ID == id)` with `Completed = Tree.FindAll(x => x.Status == "c")`, so this is the same
+   check without a second tree read (Skua's remark on it: "can not always be right"). `CanComplete` is not called. The
    `QuestAccepted` and `QuestTurnedIn` subscriptions and the `IScriptQuest.Tree` name lookup were removed: the active
    list in the status replaces those two log lines.
 8. `IScriptInterface.Version` exists (Skua's version from its settings) but is not used: `hello` reports
@@ -54,7 +56,8 @@ throwaway project and read in the tag source.
 - `status` on every (re)connect and whenever it changes: logged in; character, server, map (only while logged in);
   script file name without folder or extension (no local path leaves the plugin); running; running since; the active
   quests (`quests`: id, name, ready to turn in; at most 30, in Skua's order, a blank name sent as `#id`; empty while
-  logged out). A change in the list or in a ready flag sends a new status; nothing changed sends nothing.
+  logged out; re-read at most every 15 s, see below). A change in the list or in a ready flag sends a new status;
+  nothing changed sends nothing.
 - `log`: bought (quantity = now minus snapshot when positive, else none), sold (name from the snapshot taken before the
   sale), dropped (`Drop: X` for an item offered in the drop list, Skua's `dropItem`, the usual farming case; `Received: X`
   for an item put straight into the inventory, Skua's `addItems`, such as a reward; accepting a drop-list item raises no
@@ -69,7 +72,7 @@ throwaway project and read in the tag source.
   A failed `Load` removes whatever it attached. Skua never sees an exception from the plugin.
 - Handlers run on Skua's threads (the UI thread for game packets, the script thread, a `Task.Run` for
   `ScriptStopping`) and only build a message and queue it. Every read that goes through Flash (inventory, quests,
-  logged in, map, user name, active quests, ready flags) runs on one background task, never on Skua's threads.
+  logged in, map, user name, active quests) runs on one background task, never on Skua's threads.
 - Queues are bounded (256, oldest dropped): the pipe client's line queue and the worker's queue.
 - While Questkeeper is not connected the plugin does no Flash reads at all: no status poll, no inventory snapshot, no
   quest read (log lines still queue, unnamed where a read would be needed). When the pipe connects, `hello` and
@@ -84,14 +87,15 @@ throwaway project and read in the tag source.
 ## Cost of the quest reads (unverified on a real Skua)
 
 `Quests.Active` deserializes the whole `world.questTree` (every quest loaded this session, not only the active ones) in
-one Flash call; it is read with every status read (the 3 s poll and the event-driven refreshes). `CanComplete(id)` reads
-`Tree` again (Skua keeps a 100 ms cache, so a burst of calls mostly reuses one read) and is called once per active quest,
-at most 30. To bound that cost the ready flags are read only when the set of active quest ids changed or 15 s have
-passed since the last read, whichever comes first; between reads the last flags are reused, so a quest can show "ready"
-up to 15 s late. If a list read fails, the last reported list stays; if one `CanComplete` fails, that quest keeps its last
-flag. **Reading `Active` and `CanComplete` is unverified on a real Skua**: neither the cost, nor whether `Active` is
-meaningful outside a running script, nor the accuracy of `CanComplete` has been checked inside Skua. The decision rules
-live in `src/AqwCompanion.Skua/SkuaQuestRefresh.cs` and are unit-tested without Skua.
+one Flash call, and every read rebuilds Skua's own shared tree cache (see the audit below). The plugin therefore reads it
+at most once every 15 s, and at once after the pipe connects and after a login or relogin. The 3 s poll and the
+event-driven status refreshes (map change, logout, script start or stop) never read it by themselves: in between, the
+status carries the last list read. One read gives both the list and the ready flags, so there is no per-quest read.
+Because the 15 s check runs on the 3 s poll, a quest accepted, turned in or made ready shows up to about 18 s late. If a
+read fails, the last reported list stays (nothing is reported when there never was one); while logged out the list is
+empty and the next login reads at once. **Reading `Active` is unverified on a real Skua**: neither the cost, nor whether
+`Active` is meaningful outside a running script, nor whether "ready" matches the game has been checked inside Skua. The
+decision rules live in `src/AqwCompanion.Skua/SkuaQuestRefresh.cs` and are unit-tested without Skua.
 
 ## Read-only audit: every Skua member the plugin touches
 
@@ -127,17 +131,23 @@ Generated from the compiled DLL's member references (System.Reflection.Metadata)
 | `ItemBase.Name` | read | item names |
 | `ItemBase.Quantity` | read | bought quantity |
 | `IScriptInterface.Quests` | read | |
-| `IScriptQuest.Active` | read | status quests |
-| `IScriptQuest.CanComplete(int)` | read (a check, changes nothing) | status quest ready flag (at most every 15 s or on a change of the active set) |
-| `Quest.ID`, `Quest.Name` | read | status quests |
+| `IScriptQuest.Active` | read (writes Skua's tree cache, see below; at most every 15 s) | status quests |
+| `Quest.ID`, `Quest.Name`, `Quest.Status` | read | status quests, ready flag (`Status == "c"`) |
 
 Removed in AQW-0076: the `IScriptEvent.QuestAccepted` and `IScriptEvent.QuestTurnedIn` subscriptions and the
-`IScriptQuest.Tree` read (it only named those two log lines). No other Skua member is referenced. In particular nothing calls `Send`, `Flash`, `Shops`, `Options`, `StartScript`,
-`StopScript`, `SetLoadedScript`, `Inventory.Sell` or any setter. Some getters above are implemented by Skua as Flash
-reads (`isLoggedIn`, `world.strMapName`, `world.myAvatar.items`, `world.questTree`, `loginInfo.strUsername`); they
-read game objects and change nothing. `IScriptQuest.Active` and `CanComplete` go through `IScriptQuest.Tree` inside
-Skua, which is not a pure getter: it writes Skua's own 100 ms cache of the quest tree it just read (`_cachedTree`,
-`_lastTreeUpdate`); that is read-only in effect (no game or script state changes) but it is a write inside Skua.
+`IScriptQuest.Tree` read (it only named those two log lines). No other Skua member is referenced. In particular
+nothing calls `Send`, `Flash`, `Shops`, `Options`, `StartScript`, `StopScript`, `SetLoadedScript`, `CanComplete`,
+`Inventory.Sell` or any setter. Some getters above are implemented by Skua as Flash reads (`isLoggedIn`,
+`world.strMapName`, `world.myAvatar.items`, `world.questTree`, `loginInfo.strUsername`); they read game objects and
+change nothing.
+
+The plugin is read-only with respect to game and script state: it never calls anything that sends a packet or changes
+game or script state. One side effect inside Skua remains: `IScriptQuest.Active` goes through `IScriptQuest.Tree`, which
+is not a pure getter. It writes Skua's own shared 100 ms cache of the quest tree it just read (`_cachedTree`,
+`_lastTreeUpdate`, no lock), and Skua clears that cache itself after accepting or turning in a quest. So a plugin read
+racing a script's own quest actions can, at most, make the script's immediately following tree read (for example its
+`CanComplete` check) be served from a cache filled a moment earlier, bounded by the 100 ms cache life. This is why the
+plugin reads `Active` at most every 15 s.
 
 ## Build
 
@@ -160,6 +170,9 @@ references are `Skua.Core.Interfaces` and `Skua.Core.Models`.
 - Bought quantity can be wrong or missing for back-to-back buys of the same item: the "before" comes from the last
   snapshot, which may already include an earlier buy, or not yet include it.
 - That the re-attach after `ClearHandlers` keeps the log working across several script runs.
-- Reading `Quests.Active` and `CanComplete` on the poll: the cost (see above), whether the list is right with no script
-  running, and whether "ready" matches the game.
+- Reading `Quests.Active` at most every 15 s: the cost (see above) and whether the list is right with no script running.
+- A script that registers quests (for example a `Bot.RegisterQuests` loop) keeps working normally with the plugin
+  connected.
+- The quest card updates within about 18 s of accepting or turning in a quest.
+- The ready flag appears when the game shows the quest as completable.
 - Only one Skua instance is reported at a time (Questkeeper serves one connection); a second Skua keeps retrying quietly.

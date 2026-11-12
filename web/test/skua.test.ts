@@ -36,6 +36,10 @@ describe('parseSkua', () => {
     expect(s.log[0]!.text).toHaveLength(300);
     expect(parseSkua({ ...wire, log: [{ at: 'x', kind: 'Sold' }] })!.log).toEqual([]);
   });
+  it('cuts a log text without splitting a surrogate pair', () => {
+    const s = parseSkua({ ...wire, log: [{ at: 'a', kind: 'k', text: 'a'.repeat(299) + '\u{1F600}tail' }] })!;
+    expect(s.log[0]!.text).toBe('a'.repeat(299));
+  });
 });
 
 describe('parseSkua quests', () => {

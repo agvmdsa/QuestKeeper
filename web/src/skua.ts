@@ -29,9 +29,8 @@ function parseStatus(v: unknown): SkuaStatus | null {
 /** Cut to the text cap without leaving half of a surrogate pair at the end. */
 function cut(text: string): string {
   if (text.length <= MAX_TEXT) return text;
-  const end = MAX_TEXT;
-  const last = text.charCodeAt(end - 1);
-  return text.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
+  const last = text.charCodeAt(MAX_TEXT - 1);
+  return text.slice(0, last >= 0xd800 && last <= 0xdbff ? MAX_TEXT - 1 : MAX_TEXT);
 }
 
 /** The active quests; anything but an array is "not reported" (null), and a damaged entry is left out on its own. */
@@ -59,7 +58,7 @@ export function parseSkua(value: unknown): SkuaState | null {
   for (const e of value.log as unknown[]) {
     if (log.length >= MAX_ENTRIES) break;
     if (!isObject(e) || typeof e.at !== 'string' || typeof e.text !== 'string') continue;
-    log.push({ at: e.at, kind: typeof e.kind === 'string' ? e.kind : '', text: e.text.slice(0, MAX_TEXT) });
+    log.push({ at: e.at, kind: typeof e.kind === 'string' ? e.kind : '', text: cut(e.text) });
   }
   return { connection: value.connection as SkuaConnection, hello: parseHello(value.hello), status: parseStatus(value.status), log };
 }

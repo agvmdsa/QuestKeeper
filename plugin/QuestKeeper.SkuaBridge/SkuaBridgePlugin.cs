@@ -46,9 +46,12 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
     private long _lastStatusStart = long.MinValue;
     private SkuaStatus? _lastStatus;
     private bool _wasLoggedIn;
-    private List<int>? _readyIds;
-    private Dictionary<int, bool> _ready = [];
-    private long _readyReadAt;
+    private IReadOnlyList<SkuaQuest>? _quests;
+    private bool _questsEverRead;
+    private long _questsReadAt;
+
+    // Set from any thread (pipe connect, relogin); read and cleared by the worker.
+    private volatile bool _questsForced;
 
     // Handlers kept in fields so Unload removes exactly what Load added.
     private readonly ItemBoughtHandler _onBought;
@@ -76,6 +79,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
         _onRelogin = kicked => Safe(() =>
         {
             Log(SkuaLogFormatter.Relogin(Now(), kicked));
+            _questsForced = true;
             RequestStatus();
         });
         _onScriptStopping = ScriptStopping;
@@ -111,6 +115,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
                 onConnected: () =>
                 {
                     // hello and the last known status are already written; read the current state now.
+                    _questsForced = true;
                     RequestStatus();
                     RequestSnapshot();
                 });
@@ -453,7 +458,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
             bot.Manager.LoadedScript,
             running,
             since,
-            ReadQuests(bot, loggedIn));
+            ReadQuests(bot, loggedIn, loggedIn && !_wasLoggedIn));
 
         // Sent only when something changed, quests and their ready flags included (SkuaStatus compares quest lists by content).
         if (status != _lastStatus)
@@ -497,60 +502,42 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
     }
 
     /// <summary>
-    /// The active quests with their ready flag, read on the worker only while Questkeeper is connected (PublishStatus
-    /// checks). Empty while logged out. <c>Quests.Active</c> is read on every status read; <c>CanComplete</c> (one read
-    /// per quest) only when the set of active quests changed or 15 s have passed, otherwise the last flags are reused.
-    /// If the list cannot be read, the last reported list stays.
+    /// The active quests with their ready flag, on the worker only while Questkeeper is connected (PublishStatus checks).
+    /// Every read of <c>Quests.Active</c> rebuilds Skua's own shared quest-tree cache (unlocked), so it is read at most every
+    /// 15 s, or at once after the pipe connects, a login or a relogin; between reads the last list is reported. One read
+    /// gives both the list and the ready flag (<c>Quest.Status == "c"</c>, exactly what Skua's <c>CanComplete</c> checks).
+    /// Empty while logged out, and the next login reads at once. A failed read keeps the last list.
     /// </summary>
-    private IReadOnlyList<SkuaQuest>? ReadQuests(IScriptInterface bot, bool loggedIn)
+    private IReadOnlyList<SkuaQuest>? ReadQuests(IScriptInterface bot, bool loggedIn, bool justLoggedIn)
     {
         if (!loggedIn)
         {
-            _readyIds = null;
-            _ready = [];
+            _quests = null;
+            _questsEverRead = false;
             return [];
         }
 
-        IReadOnlyList<(int Id, string Name)> active;
+        var forced = _questsForced || justLoggedIn;
+        if (!SkuaQuestRefresh.ReadDue(_questsEverRead, forced, Stopwatch.GetElapsedTime(_questsReadAt)))
+        {
+            return _quests;
+        }
+
+        _questsForced = false;
+        _questsEverRead = true;
+        _questsReadAt = Stopwatch.GetTimestamp();
+        List<(int Id, string? Name, string? Status)>? read;
         try
         {
-            // Skua builds a new list per read; copy anyway so nothing here holds a list Skua may reuse.
-            List<Quest> read = [.. bot.Quests.Active ?? []];
-            active = SkuaQuestRefresh.Active(read.Where(q => q is not null).Select(q => (q.ID, (string?)q.Name)));
+            read = bot.Quests.Active?.Where(q => q is not null).Select(q => (q.ID, (string?)q.Name, (string?)q.Status)).ToList();
         }
         catch (Exception)
         {
-            return _lastStatus?.Quests;
+            read = null;
         }
 
-        var ids = active.Select(q => q.Id).ToList();
-        if (SkuaQuestRefresh.ReadyDue(_readyIds, ids, Stopwatch.GetElapsedTime(_readyReadAt)))
-        {
-            var ready = new Dictionary<int, bool>();
-            foreach (var id in ids)
-            {
-                ready[id] = CanComplete(bot, id);
-            }
-
-            _ready = ready;
-            _readyIds = ids;
-            _readyReadAt = Stopwatch.GetTimestamp();
-        }
-
-        return SkuaQuestRefresh.Build(active, _ready);
-    }
-
-    /// <summary>Skua's own "can be turned in" check; a failed read keeps the last flag (not ready when there is none).</summary>
-    private bool CanComplete(IScriptInterface bot, int id)
-    {
-        try
-        {
-            return bot.Quests.CanComplete(id);
-        }
-        catch (Exception)
-        {
-            return _ready.TryGetValue(id, out var last) && last;
-        }
+        _quests = SkuaQuestRefresh.Next(_quests, read);
+        return _quests;
     }
 
     // ---- Helpers ---------------------------------------------------------------------------------------------------

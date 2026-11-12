@@ -236,7 +236,11 @@ public static class SkuaLine
         return new LogMessage(new SkuaLogEntry(time, kind, Cut(body)));
     }
 
-    /// <summary>A string value, or null when absent, not a string, or damaged (an escaped lone surrogate decodes to U+FFFD, which the plugin never sends).</summary>
+    /// <summary>
+    /// A string value, or null when absent, not a string, or containing U+FFFD (which the plugin never sends). An escaped
+    /// lone surrogate (<c>\ud800</c>) makes <c>GetString</c> throw <see cref="InvalidOperationException"/>: the caller
+    /// catches it (<see cref="Parse"/> for the whole line, <c>ParseQuest</c> for one quest entry).
+    /// </summary>
     private static string? Str(JsonElement root, string name)
     {
         if (!root.TryGetProperty(name, out var p) || p.ValueKind != JsonValueKind.String)

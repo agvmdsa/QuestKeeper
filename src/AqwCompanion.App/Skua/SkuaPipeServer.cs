@@ -23,6 +23,8 @@ public sealed class SkuaPipeServer(string pipeName, SkuaBridge bridge, Action<Ex
     private int _listeningCount;
     private readonly CancellationTokenSource _cancel = new();
     private NamedPipeServerStream? _current;
+    private NamedPipeServerStream? _serving;
+    private NamedPipeServerStream? _dropped;
     private Task? _loop;
     private bool _disposed;
 
@@ -41,7 +43,33 @@ public sealed class SkuaPipeServer(string pipeName, SkuaBridge bridge, Action<Ex
                 return;
             }
 
+            bridge.Forgotten += OnForgotten;
             _loop = Task.Run(() => RunAsync(_cancel.Token));
+        }
+    }
+
+    /// <summary>
+    /// After a Forget the bridge has no status, and the plugin re-sends one only when it changes. Closing the connection
+    /// (never writing to it) makes the plugin reconnect and send its hello and last status again: it notices at its next write,
+    /// at the latest its 10 s keep-alive, and retries 1 s later. A pipe that is still waiting for a client is left alone.
+    /// </summary>
+    private void OnForgotten(object? sender, EventArgs e)
+    {
+        lock (_lock)
+        {
+            if (_serving is { } pipe)
+            {
+                _dropped = pipe;
+                pipe.Dispose();
+            }
+        }
+    }
+
+    private bool WasDropped(NamedPipeServerStream? pipe)
+    {
+        lock (_lock)
+        {
+            return pipe is not null && ReferenceEquals(_dropped, pipe);
         }
     }
 
@@ -59,6 +87,7 @@ public sealed class SkuaPipeServer(string pipeName, SkuaBridge bridge, Action<Ex
             loop = _loop;
         }
 
+        bridge.Forgotten -= OnForgotten;
         await _cancel.CancelAsync().ConfigureAwait(false);
         lock (_lock)
         {
@@ -106,12 +135,21 @@ public sealed class SkuaPipeServer(string pipeName, SkuaBridge bridge, Action<Ex
                 Listening?.Invoke(this, EventArgs.Empty);
 
                 await pipe.WaitForConnectionAsync(ct).ConfigureAwait(false);
+                lock (_lock)
+                {
+                    _serving = pipe;
+                }
+
                 await ServeAsync(pipe, ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ct.IsCancellationRequested)
             {
                 _ = ex;
                 return;
+            }
+            catch (Exception) when (WasDropped(pipe))
+            {
+                // Closed on purpose after a Forget (see OnForgotten): not an error, listen again at once.
             }
             catch (Exception ex)
             {
@@ -137,6 +175,8 @@ public sealed class SkuaPipeServer(string pipeName, SkuaBridge bridge, Action<Ex
                 lock (_lock)
                 {
                     _current = null;
+                    _serving = null;
+                    _dropped = null;
                 }
 
                 pipe?.Dispose();

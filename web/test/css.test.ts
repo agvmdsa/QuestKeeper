@@ -11,15 +11,23 @@ describe('app.css', () => {
   it('has a visible keyboard focus', () => expect(css).toMatch(/:focus-visible/));
   it('keeps tap targets at least 3rem tall', () => expect(css).toMatch(/\.row\s*\{[^}]*min-height:\s*3rem/));
   it('keeps the title strip and banner fixed while scrolling, without position: fixed', () => {
-    expect(css).toMatch(/\.chrome\s*\{[^}]*position:\s*sticky;[^}]*top:\s*0;[^}]*z-index:\s*\d+/);
+    const chrome = css.match(/\.chrome\s*\{([^}]*)\}/)![1]!;
+    expect(chrome).toMatch(/position:\s*sticky/);
+    expect(chrome).toMatch(/top:\s*0\b/);
+    expect(chrome).toMatch(/z-index:\s*\d+/);
     expect(css).not.toMatch(/position:\s*fixed/);
     expect(css).toMatch(/\.banner\[hidden\]\s*\{[^}]*display:\s*none/);
   });
   it('pads anchored and focused elements below the sticky header, keeping the notch inset', () => {
-    expect(css).toMatch(/html\s*\{[^}]*scroll-padding-top:[^;}]*env\(safe-area-inset-top\)/);
+    expect(css).toMatch(/html\s*\{[^}]*scroll-padding-top:[^;}]*var\(--chrome-h/);
     expect(css).toMatch(/\.top\s*\{[^}]*env\(safe-area-inset-top\)/);
   });
-  it('gives the theme buttons a 3rem tap target', () => expect(css).toMatch(/button\s*\{[^}]*min-height:\s*3rem/));
+  it('gives the theme buttons a 3rem tap target', () => {
+    expect(css).toMatch(/(^|\n)button\s*\{[^}]*min-height:\s*3rem/);
+    const rule = css.match(/\.theme-btn\s*\{([^}]*)\}/)![1]!;
+    expect(rule).not.toMatch(/min-height:\s*[^3]/);
+    expect(rule).not.toMatch(/(^|[;\s])height:/);
+  });
 });
 
 describe('index.html', () => {

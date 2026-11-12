@@ -275,8 +275,8 @@ export function themeFooter(model: Pick<Model, 'theme'>): VNode {
   const current = model.theme ?? 'system';
   return h(
     'footer',
-    { className: 'appearance', attrs: { role: 'group', 'aria-label': t('theme.group') } },
-    h('p', { className: 'muted', text: t('theme.group') }),
+    { className: 'appearance', attrs: { role: 'group', 'aria-labelledby': 'appearance-label' } },
+    h('p', { className: 'muted', text: t('theme.group'), attrs: { id: 'appearance-label' } }),
     h(
       'div',
       { className: 'appearance-row' },

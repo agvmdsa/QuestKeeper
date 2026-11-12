@@ -1,5 +1,5 @@
 *, *::before, *::after { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; scroll-padding-top: calc(4rem + env(safe-area-inset-top)); }
+html { -webkit-text-size-adjust: 100%; scroll-padding-top: calc(var(--chrome-h, calc(3rem + env(safe-area-inset-top))) + 0.5rem); }
 body { margin: 0; background: var(--bg); color: var(--text); font: 1rem/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 h1, h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; line-height: 1.2; }
 h2 { font-size: 1.125rem; margin-bottom: 0.5rem; overflow-wrap: anywhere; }

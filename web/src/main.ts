@@ -1,3 +1,4 @@
+import { watchChromeHeight } from './chrome';
 import { applyTheme, loadTheme, saveTheme, parseTheme, type ThemeChoice } from './theme';
 import './styles/tokens.css';
 import './styles/app.css';
@@ -21,6 +22,8 @@ function storage(): Storage | null {
 }
 let theme: ThemeChoice = loadTheme(storage());
 applyTheme(document.documentElement, theme);
+
+watchChromeHeight(document.documentElement, document.querySelector<HTMLElement>('.chrome'));
 
 setLocale(detectLocale(navigator.languages?.length ? navigator.languages : [navigator.language ?? 'en']));
 

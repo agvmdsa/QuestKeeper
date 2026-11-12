@@ -24,6 +24,7 @@ const systemDark = { ...light, ...block(systemDarkText) };
 const forcedDark = { ...light, ...block(forcedDarkText) };
 // A dark phone with Light forced matches no dark block, so the :root values apply.
 const forcedLight = light;
+const lightForcedText = body(/^:root\[data-theme='light'\]\s*\{([^}]*)\}/m);
 
 function luminance(hex: string): number {
   const [r, g, b] = [1, 3, 5]
@@ -65,5 +66,6 @@ describe('theme selectors', () => {
     expect(css).toMatch(/:root\[data-theme='light'\]\s*\{\s*color-scheme:\s*light;/);
     expect(css).toMatch(/:root\[data-theme='dark'\]\s*\{\s*color-scheme:\s*dark;/);
   });
+  it('forcing Light defines no colour properties (the :root values apply)', () => expect(block(lightForcedText)).toEqual({}));
   it('does not use light-dark()', () => expect(css).not.toMatch(/light-dark\s*\(/));
 });

@@ -55,7 +55,10 @@ describe('theme footer', () => {
   const buttons = (n: VNode) => all(n).filter((x) => x.tag === 'button');
   it('is a labelled group of three buttons from the catalog', () => {
     const f = themeFooter({ theme: 'light' });
-    expect(f.attrs).toMatchObject({ role: 'group', 'aria-label': en['theme.group'] });
+    expect(f.attrs).toMatchObject({ role: 'group', 'aria-labelledby': 'appearance-label' });
+    const label = all(f).find((n) => n.attrs?.id === 'appearance-label')!;
+    expect(label.text).toBe(en['theme.group']);
+    expect(f.attrs).not.toHaveProperty('aria-label');
     expect(en['theme.group']).toBe('Appearance');
     expect(buttons(f).map((b) => b.text)).toEqual(['System', 'Light', 'Dark']);
     expect(buttons(f).map((b) => b.attrs!['data-value'])).toEqual(['system', 'light', 'dark']);

@@ -170,6 +170,7 @@ const ALLOWED = new Set([
   'theme.${choice}', // a catalog key (theme.system, theme.light, theme.dark), resolved through t()
   'id:${t.id}', // focusKey(): an internal id used to restore keyboard focus, never shown
   'href:${t.href}', // focusKey(): an internal id used to restore keyboard focus, never shown
+  '${height}px', // a CSS length for --chrome-h, not text
   'Enter', // KeyboardEvent.key value, not text
 ]);
 

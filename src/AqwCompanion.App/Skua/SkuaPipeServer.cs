@@ -142,9 +142,8 @@ public sealed class SkuaPipeServer(string pipeName, SkuaBridge bridge, Action<Ex
 
                 await ServeAsync(pipe, ct).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ct.IsCancellationRequested)
+            catch (Exception) when (ct.IsCancellationRequested)
             {
-                _ = ex;
                 return;
             }
             catch (Exception) when (WasDropped(pipe))

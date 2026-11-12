@@ -282,4 +282,13 @@ public class SkuaLineTests
         Assert.Equal(new SkuaHello("0.1.0", "1.4.5.0"), hello.Hello);
         Assert.Equal("Bone x2", log.Entry.Text);
     }
+
+    [Fact]
+    public void The_shared_log_kinds_fixture_lists_every_kind_the_page_must_place()
+    {
+        // web/test/skua.test.ts reads the same file and checks that every kind has a filter (or is explicitly in none).
+        var names = System.Text.Json.JsonSerializer.Deserialize<string[]>(Fixture("log-kinds.json"));
+
+        Assert.Equal(Enum.GetNames<SkuaLogKind>(), names);
+    }
 }

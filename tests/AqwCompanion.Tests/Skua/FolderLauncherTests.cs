@@ -59,4 +59,24 @@ public class FolderLauncherTests
 
         Assert.False(launcher.Open(ReleasePage.Url));
     }
+
+    [Fact]
+    public void The_folder_launcher_counts_a_start_only_when_a_process_came_back()
+    {
+        var info = new ProcessStartInfo("explorer.exe");
+
+        Assert.False(ProcessFolderLauncher.StartProcess(info, _ => null));
+        Assert.True(ProcessFolderLauncher.StartProcess(info, _ => Process.GetCurrentProcess()));
+    }
+
+    [Fact]
+    public void The_release_launcher_counts_a_shell_start_without_a_new_process_as_opened()
+    {
+        // ShellExecuteEx returns no process when a running browser takes the URL: Process.Start answers null on success.
+        var info = new ProcessStartInfo(ReleasePage.Url) { UseShellExecute = true };
+
+        Assert.True(ProcessReleasePageLauncher.StartProcess(info, _ => null));
+        Assert.True(ProcessReleasePageLauncher.StartProcess(info, _ => Process.GetCurrentProcess()));
+        Assert.Throws<InvalidOperationException>(() => ProcessReleasePageLauncher.StartProcess(info, _ => throw new InvalidOperationException("no")));
+    }
 }

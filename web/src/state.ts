@@ -1,4 +1,4 @@
-import type { PairOutcome } from './api';
+import { STATE_TIMEOUT_MS, type PairOutcome } from './api';
 import { formatNumberLocale, t, type MessageKey } from './i18n';
 import { parseSkua } from './skua';
 import type { Character, Figures, HardFarms, Notice, RemoteState } from './types';
@@ -216,7 +216,7 @@ export function relativeTime(iso: string, nowMs: number): string {
 }
 
 /** How long the stream may stay down before the banner says Questkeeper cannot be reached (the same as the state request's timeout). */
-export const UNREACHABLE_AFTER_MS = 10_000;
+export const UNREACHABLE_AFTER_MS = STATE_TIMEOUT_MS;
 
 /** What the page knows about the link: when the stream went down (null if unknown) and whether the last state request failed or timed out. */
 export interface LinkFacts {

@@ -335,7 +335,8 @@ public class SkuaPipeServerTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            // Pipe security descriptors exist only on Windows; elsewhere the server uses CurrentUserOnly.
+            // Pipe security descriptors exist only on Windows; elsewhere the server uses CurrentUserOnly. This test therefore
+            // cannot run on the macOS development machine; it runs on the Windows CI.
             return;
         }
 
@@ -351,6 +352,13 @@ public class SkuaPipeServerTests
         var rule = Assert.Single(rules);
         Assert.Equal(user, rule.IdentityReference);
         Assert.Equal(System.Security.AccessControl.AccessControlType.Allow, rule.AccessControlType);
+        Assert.Equal(PipeAccessRights.FullControl, rule.PipeAccessRights);
+
+        // A real pipe with that descriptor reads back the user SID as owner (on an elevated runner too, where the token's
+        // default owner would be BUILTIN\Administrators).
+        using var pipe = NamedPipeServerStreamAcl.Create(
+            NewName(), PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 0, 0, security);
+        Assert.Equal(user, pipe.GetAccessControl().GetOwner(typeof(System.Security.Principal.SecurityIdentifier)));
     }
 
     private sealed class FakeStore : ISkuaLogStore

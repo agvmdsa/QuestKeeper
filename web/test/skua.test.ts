@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { filterOf, formatDuration, LOG_FILTERS, parseLogFilter, parseSkua, questRows, skuaEmptyText, skuaLogRows, skuaNow, skuaSummary, type LogFilter } from '../src/skua';
 import { isUsableState, keepState, parseRoute, parseState, recallKept } from '../src/state';
@@ -138,6 +139,16 @@ describe('log filters', () => {
     ['ScriptError', 'script'], ['Died', 'session'], ['LoggedOut', 'session'], ['Relogin', 'session'],
     ['QuestAccepted', null], ['QuestTurnedIn', null], ['Mystery', null], ['', null], ['constructor', null], ['__proto__', null],
   ])('%s -> %s', (kind, filter) => expect(filterOf(kind)).toBe(filter));
+
+  it('places every log kind Questkeeper knows (the shared C# fixture), so a new kind cannot fall under Everything unnoticed', () => {
+    const kinds = JSON.parse(readFileSync(new URL('../../tests/AqwCompanion.Tests/Skua/fixtures/log-kinds.json', import.meta.url), 'utf8')) as string[];
+    const onlyUnderEverything = ['QuestAccepted', 'QuestTurnedIn'];
+    expect(kinds.length).toBeGreaterThan(0);
+    for (const kind of kinds) {
+      if (onlyUnderEverything.includes(kind)) expect(filterOf(kind), kind).toBeNull();
+      else expect(filterOf(kind), kind).not.toBeNull();
+    }
+  });
 
   it('lists the filters in order, parsing anything else as Everything', () => {
     expect(LOG_FILTERS).toEqual(['all', 'shop', 'drops', 'maps', 'script', 'session']);

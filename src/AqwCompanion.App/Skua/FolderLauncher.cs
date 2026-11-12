@@ -45,9 +45,12 @@ public sealed class ProcessFolderLauncher : IFolderLauncher
         }
     }
 
-    private static bool StartProcess(ProcessStartInfo info)
+    private static bool StartProcess(ProcessStartInfo info) => StartProcess(info, Process.Start);
+
+    /// <summary>True only when a process was started. Without the shell (as here) Process.Start answers a process or throws; null is still a failure.</summary>
+    internal static bool StartProcess(ProcessStartInfo info, Func<ProcessStartInfo, Process?> start)
     {
-        using var process = Process.Start(info);
-        return true;
+        using var process = start(info);
+        return process is not null;
     }
 }

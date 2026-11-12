@@ -169,6 +169,51 @@ public class SkuaPipeServerTests
     }
 
     [Fact]
+    public async Task A_forget_closes_the_connection_so_the_plugin_reconnects_and_resends_its_status()
+    {
+        var name = NewName();
+        var bridge = NewBridge();
+        var errors = 0;
+        await using var server = new SkuaPipeServer(name, bridge, _ => Interlocked.Increment(ref errors));
+        server.Start();
+        await WaitListening(server, 1);
+        var status = new SkuaStatus(true, "Hero", "Artix", "battleon", null, false, null);
+        var first = await ConnectAsync(name);
+        await WriteAsync(first, HelloLine + "\n" + SkuaLine.ToLine(new StatusMessage(status)) + "\n");
+        await WaitFor(bridge, () => bridge.Current.Status is not null);
+
+        bridge.Quiesce();
+        bridge.Forget();
+
+        await WaitFor(bridge, () => bridge.Current.Connection == SkuaConnection.NotConnected);
+        await first.DisposeAsync();
+        Assert.Null(bridge.Current.Status);
+        Assert.NotNull(bridge.Current.Hello);
+        await WaitListening(server, 2);
+        await using var second = await ConnectAsync(name);
+        await WriteAsync(second, HelloLine + "\n" + SkuaLine.ToLine(new StatusMessage(status)) + "\n");
+        await WaitFor(bridge, () => bridge.Current.Status == status && bridge.Current.Connection == SkuaConnection.Connected);
+        Assert.Equal(0, Volatile.Read(ref errors));
+    }
+
+    [Fact]
+    public async Task A_forget_while_no_client_is_connected_keeps_the_waiting_pipe()
+    {
+        var name = NewName();
+        var bridge = NewBridge();
+        await using var server = new SkuaPipeServer(name, bridge);
+        server.Start();
+        await WaitListening(server, 1);
+
+        bridge.Forget();
+
+        await using var client = await ConnectAsync(name);
+        await WriteAsync(client, HelloLine + "\n");
+        await WaitFor(bridge, () => bridge.Current.Hello is not null);
+        Assert.Equal(1, server.ListeningCount);
+    }
+
+    [Fact]
     public async Task Disposing_with_a_client_connected_returns_promptly_and_frees_the_name()
     {
         var name = NewName();
@@ -290,7 +335,8 @@ public class SkuaPipeServerTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            // Pipe security descriptors exist only on Windows; elsewhere the server uses CurrentUserOnly.
+            // Pipe security descriptors exist only on Windows; elsewhere the server uses CurrentUserOnly. This test therefore
+            // cannot run on the macOS development machine; it runs on the Windows CI.
             return;
         }
 
@@ -306,6 +352,13 @@ public class SkuaPipeServerTests
         var rule = Assert.Single(rules);
         Assert.Equal(user, rule.IdentityReference);
         Assert.Equal(System.Security.AccessControl.AccessControlType.Allow, rule.AccessControlType);
+        Assert.Equal(PipeAccessRights.FullControl, rule.PipeAccessRights);
+
+        // A real pipe with that descriptor reads back the user SID as owner (on an elevated runner too, where the token's
+        // default owner would be BUILTIN\Administrators).
+        using var pipe = NamedPipeServerStreamAcl.Create(
+            NewName(), PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 0, 0, security);
+        Assert.Equal(user, pipe.GetAccessControl().GetOwner(typeof(System.Security.Principal.SecurityIdentifier)));
     }
 
     private sealed class FakeStore : ISkuaLogStore

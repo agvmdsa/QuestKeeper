@@ -1,6 +1,8 @@
 import { characterHref, characterRow, characterRows, expFraction, formatNumber, hardFarmsView, noticeLine } from './state';
-import { skuaEmptyText, skuaHeader, skuaLogRows, skuaSummary, SKUA_TITLE } from './skua';
-import type { Faction, RemoteState } from './types';
+import { plural, t } from './i18n';
+import { LOG_FILTERS, LOG_FILTER_LABELS, questRows, skuaEmptyText, skuaLogRows, skuaNow, skuaSummary, type LogFilter } from './skua';
+import { THEMES, type ThemeChoice } from './theme';
+import type { Faction, RemoteState, SkuaState } from './types';
 
 export interface VNode {
   tag: string;
@@ -18,6 +20,10 @@ export interface Model {
   hfOpen: boolean;
   /** How to install the page on an iPhone or iPad, or null. */
   installHint: string | null;
+  /** The stored appearance choice; System when absent. */
+  theme?: ThemeChoice;
+  /** The selected Skua log filter; Everything when absent. */
+  skuaFilter?: LogFilter;
 }
 
 type Child = VNode | null | false;
@@ -39,7 +45,7 @@ export function mount(node: VNode): HTMLElement {
   return el;
 }
 
-const back = (): VNode => h('a', { className: 'back', text: 'Back to characters', attrs: { href: '#/' } });
+const back = (): VNode => h('a', { className: 'back', text: t('common.back'), attrs: { href: '#/' } });
 
 const empty = (text: string): VNode => h('p', { className: 'empty', text });
 
@@ -71,9 +77,9 @@ export function listView(model: Model): VNode {
     h(
       'section',
       { className: 'card' },
-      h('h2', { text: 'Characters' }),
+      h('h2', { text: t('list.title') }),
       rows.length === 0
-        ? empty('No characters yet. Log a character in while Questkeeper is listening.')
+        ? empty(t('list.empty'))
         : h(
             'ul',
             { className: 'list' },
@@ -84,8 +90,8 @@ export function listView(model: Model): VNode {
                 h(
                   'a',
                   { className: 'row', attrs: { href: characterHref(r.name) } },
-                  h('span', { className: 'title' }, h('span', { className: 'name', text: r.name }), h('span', { className: 'level', text: `Lv ${r.level}` })),
-                  h('span', { className: 'gold', text: `${r.gold} gold` }),
+                  h('span', { className: 'title' }, h('span', { className: 'name', text: r.name }), h('span', { className: 'level', text: t('list.level', { level: r.level }) })),
+                  h('span', { className: 'gold', text: t('list.gold', { gold: r.gold }) }),
                   h('span', { className: 'row-status' }, status(r.kind, r.status)),
                 ),
               ),
@@ -96,16 +102,16 @@ export function listView(model: Model): VNode {
       ? h(
           'section',
           { className: 'card' },
-          h('h2', { text: SKUA_TITLE }),
+          h('h2', { text: t('skua.title') }),
           h('a', { className: 'row', attrs: { href: '#/skua' } }, h('span', { className: 'name', text: skuaSummary(model.state.skua) })),
         )
       : null,
     h(
       'section',
       { className: 'card' },
-      h('h2', { text: 'Recent notices' }),
+      h('h2', { text: t('list.notices.title') }),
       notices.length === 0
-        ? empty('Nothing has happened yet.')
+        ? empty(t('list.notices.empty'))
         : h(
             'ul',
             { className: 'notices' },
@@ -116,44 +122,87 @@ export function listView(model: Model): VNode {
                 {},
                 h('p', { className: 'notice-title', text: line.title }),
                 h('p', { text: line.body }),
-                h('p', { className: 'muted', text: n.character ? `${n.character} - ${line.when}` : line.when }),
+                h('p', { className: 'muted', text: n.character ? t('list.notices.when', { character: n.character, when: line.when }) : line.when }),
               );
             }),
           ),
     ),
-    model.state?.snapshot ? h('p', { className: 'note', text: `Questkeeper: ${model.state.snapshot.capture.state}` }) : null,
+    model.state?.snapshot ? h('p', { className: 'note', text: t('list.capture', { state: model.state.snapshot.capture.state }) }) : null,
     model.installHint ? h('p', { className: 'note', text: model.installHint }) : null,
+  );
+}
+
+function nowCard(skua: SkuaState, nowMs: number): VNode | null {
+  const now = skuaNow(skua, nowMs);
+  if (!now) return null;
+  return h(
+    'section',
+    { className: 'card now-card' },
+    h('h2', { text: t('skua.now.title') }),
+    now.loggedIn ? (now.character ? h('p', { className: 'now-name', text: now.character }) : null) : h('p', { className: 'skua-line', text: t('skua.notLoggedIn') }),
+    now.where ? h('p', { className: 'skua-line', text: now.where }) : null,
+    status(now.script.running ? 'live' : 'idle', now.script.text),
+    now.script.name ? h('p', { className: 'skua-line', text: now.script.name }) : null,
+  );
+}
+
+function questsCard(skua: SkuaState): VNode | null {
+  const quests = questRows(skua);
+  if (!quests) return null;
+  return h(
+    'section',
+    { className: 'card' },
+    h('h2', { text: plural('skua.quests.title', quests.length) }),
+    quests.length === 0
+      ? empty(t('skua.quests.none'))
+      : h('ul', { className: 'quests' }, ...quests.map((q) => h('li', {}, h('p', { className: 'name', text: q.name }), q.ready ? status('ready', t('skua.quests.ready')) : null))),
+  );
+}
+
+function filterRow(selected: LogFilter): VNode {
+  return h(
+    'div',
+    { className: 'filters', attrs: { role: 'group', 'aria-label': t('skua.filter.group') } },
+    ...LOG_FILTERS.map((filter) =>
+      h('button', {
+        className: 'filter-btn',
+        text: t(LOG_FILTER_LABELS[filter]),
+        attrs: { type: 'button', 'data-action': 'skua-filter', 'data-value': filter, 'aria-pressed': String(filter === selected) },
+      }),
+    ),
+  );
+}
+
+function logCard(skua: SkuaState, model: Model): VNode {
+  const filter = model.skuaFilter ?? 'all';
+  const rows = skuaLogRows(skua, model.nowMs, filter);
+  const emptyText = skuaEmptyText(skua, filter);
+  return h(
+    'section',
+    { className: 'card' },
+    h('h2', { text: t('skua.log.title') }),
+    filterRow(filter),
+    emptyText
+      ? empty(emptyText)
+      : h('ul', { className: 'skua-log' }, ...rows.map((r) => h('li', {}, h('p', { text: r.text }), r.when ? h('p', { className: 'muted', text: r.when }) : null))),
   );
 }
 
 export function skuaView(model: Model): VNode {
   const skua = model.state?.skua ?? null;
-  const header = skua ? skuaHeader(skua, model.nowMs) : null;
-  const rows = skua && skua.connection === 'Connected' ? skuaLogRows(skua, model.nowMs) : [];
-  const emptyText = skuaEmptyText(skua);
-  return h(
-    'div',
-    {},
-    back(),
-    h('section', { className: 'card' }, h('h2', { text: header?.title ?? SKUA_TITLE }), ...(header?.lines ?? []).map((line) => h('p', { className: 'skua-line', text: line }))),
-    h(
-      'section',
-      { className: 'card' },
-      h('h2', { text: 'Log' }),
-      emptyText
-        ? empty(emptyText)
-        : h('ul', { className: 'skua-log' }, ...rows.map((r) => h('li', {}, h('p', { text: r.text }), r.when ? h('p', { className: 'muted', text: r.when }) : null))),
-    ),
-  );
+  if (!skua || skua.connection !== 'Connected') {
+    return h('div', {}, back(), h('section', { className: 'card' }, h('h2', { text: t('skua.title') }), empty(skuaEmptyText(skua))));
+  }
+  return h('div', {}, back(), nowCard(skua, model.nowMs), questsCard(skua), logCard(skua, model));
 }
 
 function factionRow(f: Faction): VNode {
   return h(
     'li',
     {},
-    h('p', { className: 'faction' }, h('span', { className: 'name', text: f.name }), h('span', { className: 'muted', text: f.max ? 'Max rank' : `Rank ${f.rank}` })),
+    h('p', { className: 'faction' }, h('span', { className: 'name', text: f.name }), h('span', { className: 'muted', text: f.max ? t('factions.maxRank') : t('factions.rank', { rank: f.rank }) })),
     bar(f.name, f.fraction),
-    f.max ? null : h('p', { className: 'muted', text: `${formatNumber(f.toNext)} to next rank` }),
+    f.max ? null : h('p', { className: 'muted', text: t('factions.toNext', { n: formatNumber(f.toNext) }) }),
   );
 }
 
@@ -161,7 +210,7 @@ export function characterView(model: Model, name: string): VNode {
   const snapshot = model.state?.snapshot;
   const character = snapshot?.characters.find((c) => c.name === name);
   if (!snapshot || !character) {
-    return h('div', {}, back(), h('section', { className: 'card' }, empty('This character is not logged in right now.')));
+    return h('div', {}, back(), h('section', { className: 'card' }, empty(t('character.notLoggedIn'))));
   }
 
   const row = characterRow(character, model.nowMs);
@@ -175,21 +224,21 @@ export function characterView(model: Model, name: string): VNode {
     h(
       'dl',
       { className: 'figures' },
-      ...fact('Level', String(character.level)),
-      ...fact('Gold', formatNumber(f.gold)),
-      ...fact('Experience', `${formatNumber(f.exp)} / ${formatNumber(f.expToLevel)}`),
-      ...fact('Armor class', String(f.ac)),
-      ...fact('Class points', formatNumber(f.classPoints)),
-      ...fact('Days played', String(f.daysPlayed)),
-      ...fact('Last kill', kill ? `${formatNumber(kill.gold)} gold, ${formatNumber(kill.exp)} exp` : 'None seen'),
+      ...fact(t('character.level'), String(character.level)),
+      ...fact(t('character.gold'), formatNumber(f.gold)),
+      ...fact(t('character.exp'), t('character.expOf', { exp: formatNumber(f.exp), toLevel: formatNumber(f.expToLevel) })),
+      ...fact(t('character.ac'), String(f.ac)),
+      ...fact(t('character.classPoints'), formatNumber(f.classPoints)),
+      ...fact(t('character.daysPlayed'), String(f.daysPlayed)),
+      ...fact(t('character.lastKill'), kill ? t('character.lastKill.value', { gold: formatNumber(kill.gold), exp: formatNumber(kill.exp) }) : t('character.lastKill.none')),
     ),
-    bar('Experience to next level', expFraction(f)),
+    bar(t('character.expBar'), expFraction(f)),
   );
 
   if (snapshot.selected !== name) {
     const note = snapshot.selected
-      ? `Factions and Hard Farms are shown for the character selected in Questkeeper (${snapshot.selected}).`
-      : 'Select this character in Questkeeper to see its factions and Hard Farms.';
+      ? t('character.note.selectedElsewhere', { selected: snapshot.selected })
+      : t('character.note.selectHere');
     return h('div', {}, back(), figures, h('p', { className: 'note', text: note }));
   }
 
@@ -203,31 +252,31 @@ export function characterView(model: Model, name: string): VNode {
     h(
       'section',
       { className: 'card' },
-      h('h2', { text: 'Factions' }),
-      snapshot.factions.length === 0 ? empty('No factions read yet.') : h('ul', { className: 'list' }, ...snapshot.factions.map(factionRow)),
+      h('h2', { text: t('factions.title') }),
+      snapshot.factions.length === 0 ? empty(t('factions.empty')) : h('ul', { className: 'list' }, ...snapshot.factions.map(factionRow)),
     ),
     h(
       'section',
       { className: 'card' },
-      h('h2', { text: 'Hard Farms' }),
+      h('h2', { text: t('hardFarms.title') }),
       hf === null
-        ? empty('Hard Farms are not loaded yet. Import the list in Questkeeper.')
+        ? empty(t('hardFarms.notLoaded'))
         : h(
             'div',
             {},
-            h('p', { text: `${hf.owned} of ${hf.total} owned` }),
-            bar('Hard Farms owned', hf.fraction),
+            h('p', { text: t('hardFarms.owned', { owned: hf.owned, total: hf.total }) }),
+            bar(t('hardFarms.bar'), hf.fraction),
             hf.shown.length + hf.hidden === 0
               ? null
               : h(
                   'details',
                   { attrs: model.hfOpen ? { open: '' } : {} },
-                  h('summary', { text: `Missing (${missingCount})` }),
+                  h('summary', { text: t('hardFarms.missing', { count: missingCount }) }),
                   h('ul', { className: 'missing' }, ...hf.shown.map((item) => h('li', { text: item }))),
-                  hf.hidden > 0 ? h('button', { text: `Show ${hf.hidden} more`, attrs: { type: 'button', 'data-action': 'toggle-all' } }) : null,
-                  model.showAll && missingCount > 20 ? h('button', { text: 'Show fewer', attrs: { type: 'button', 'data-action': 'toggle-all' } }) : null,
+                  hf.hidden > 0 ? h('button', { text: t('hardFarms.showMore', { count: hf.hidden }), attrs: { type: 'button', 'data-action': 'toggle-all' } }) : null,
+                  model.showAll && missingCount > 20 ? h('button', { text: t('hardFarms.showFewer'), attrs: { type: 'button', 'data-action': 'toggle-all' } }) : null,
                 ),
-            h('p', { className: 'muted', text: 'The Hard Farms list comes from the AQW Wiki (CC BY-SA 3.0).' }),
+            h('p', { className: 'muted', text: t('hardFarms.source') }),
           ),
     ),
   );
@@ -237,21 +286,21 @@ export function pairNeededView(reason: string | null = null, installHint: string
   return h(
     'section',
     { className: 'card' },
-    h('h2', { text: 'Not paired' }),
+    h('h2', { text: t('pair.title') }),
     reason ? h('p', { className: 'reason', text: reason, attrs: { role: 'status' } }) : null,
     h('p', {
-      text: 'On your PC, open Questkeeper, then Settings, "Watch my characters from my phone", "Pair a phone...", and scan the code or open the link here.',
+      text: t('pair.steps'),
     }),
     h(
       'div',
       { className: 'paste' },
       h('p', {
         className: 'muted',
-        text: 'Using Questkeeper from your Home Screen? The code opens the browser instead. Copy the pairing link (Copy link in Questkeeper on your PC) and paste it here.',
+        text: t('pair.pasteHelp'),
       }),
-      h('label', { text: 'Pairing link', attrs: { for: 'pair-link' } }),
+      h('label', { text: t('pair.linkLabel'), attrs: { for: 'pair-link' } }),
       h('input', { attrs: { id: 'pair-link', type: 'text', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', enterkeyhint: 'go' } }),
-      h('button', { text: 'Pair', attrs: { type: 'button', 'data-action': 'pair-paste' } }),
+      h('button', { text: t('pair.button'), attrs: { type: 'button', 'data-action': 'pair-paste' } }),
     ),
     installHint ? h('p', { className: 'muted hint', text: installHint }) : null,
   );
@@ -261,7 +310,33 @@ export function drawFailedView(): VNode {
   return h(
     'section',
     { className: 'card' },
-    h('h2', { text: 'Something went wrong showing this data' }),
-    h('p', { className: 'muted', text: 'The page will try again when new data arrives.' }),
+    h('h2', { text: t('failed.title') }),
+    h('p', { className: 'muted', text: t('failed.body') }),
   );
+}
+
+/** The Appearance control: three toggle buttons, exactly one pressed. */
+export function themeFooter(model: Pick<Model, 'theme'>): VNode {
+  const current = model.theme ?? 'system';
+  return h(
+    'footer',
+    { className: 'appearance', attrs: { role: 'group', 'aria-labelledby': 'appearance-label' } },
+    h('p', { className: 'muted', text: t('theme.group'), attrs: { id: 'appearance-label' } }),
+    h(
+      'div',
+      { className: 'appearance-row' },
+      ...THEMES.map((choice) =>
+        h('button', {
+          className: 'theme-btn',
+          text: t(`theme.${choice}`),
+          attrs: { type: 'button', 'data-action': 'theme', 'data-value': choice, 'aria-pressed': String(choice === current) },
+        }),
+      ),
+    ),
+  );
+}
+
+/** Puts the Appearance footer under a view, inside the same column and grid. */
+export function withFooter(view: VNode, model: Pick<Model, 'theme'>): VNode {
+  return h('div', {}, ...(view.tag === 'div' ? view.children : [view]), themeFooter(model));
 }

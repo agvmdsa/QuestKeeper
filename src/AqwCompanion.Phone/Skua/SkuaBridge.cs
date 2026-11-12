@@ -38,6 +38,12 @@ public sealed class SkuaBridge : ISkuaFeed, IForgettable
 
     public event EventHandler? Changed;
 
+    /// <summary>
+    /// Raised after a Forget. The pipe server closes the current connection on it, so the plugin reconnects and sends its
+    /// hello and its last status again (it otherwise re-sends a status only when it changes).
+    /// </summary>
+    public event EventHandler? Forgotten;
+
     public string Name => "Skua log";
 
     public int Rejected
@@ -196,25 +202,37 @@ public sealed class SkuaBridge : ISkuaFeed, IForgettable
         }
     }
 
+    /// <summary>
+    /// Clears the log, the status and the stored file, and accepts messages again (the coordinator resumes only after a failed
+    /// removal; every participant clears its own quiesced flag here). The hello is kept: it holds only the plugin and Skua
+    /// version strings, no character data, and the plugin sends it only when it connects. The connection state is kept too.
+    /// The I/O lock is held across the clear and the delete, so a save of an entry accepted after the clear always lands
+    /// after the delete (a late save of a snapshot from before the clear is refused by the epoch).
+    /// </summary>
     public void Forget()
     {
-        lock (_lock)
-        {
-            _log.Clear();
-            _hello = null;
-            _status = null;
-            _dirty = false;
-            _lastSave = DateTimeOffset.MinValue;
-            _epoch++;
-        }
-
         lock (_io)
         {
+            lock (_lock)
+            {
+                _log.Clear();
+                _status = null;
+                _dirty = false;
+                _lastSave = DateTimeOffset.MinValue;
+                _epoch++;
+                _quiesced = false;
+            }
+
+            AfterClear?.Invoke();
             _store.Delete();
         }
 
         RaiseChanged();
+        RaiseForgotten();
     }
+
+    /// <summary>Test seam: runs inside Forget after the in-memory clear and before the store delete. Never set in production.</summary>
+    internal Action? AfterClear { get; set; }
 
     /// <summary>
     /// Called under the state lock. A failed save is not retried until the next entry or flush: the store never throws, so there is nothing to retry on.
@@ -256,9 +274,13 @@ public sealed class SkuaBridge : ISkuaFeed, IForgettable
         }
     }
 
-    private void RaiseChanged()
+    private void RaiseChanged() => Raise(Changed);
+
+    private void RaiseForgotten() => Raise(Forgotten);
+
+    private void Raise(EventHandler? changed)
     {
-        if (Changed is not { } changed)
+        if (changed is null)
         {
             return;
         }

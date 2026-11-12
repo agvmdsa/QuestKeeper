@@ -39,9 +39,16 @@ public sealed class ProcessReleasePageLauncher : IReleasePageLauncher
         }
     }
 
-    private static bool StartProcess(ProcessStartInfo info)
+    private static bool StartProcess(ProcessStartInfo info) => StartProcess(info, Process.Start);
+
+    /// <summary>
+    /// True when the shell took the address. Deliberately not <c>process is not null</c>: with the shell, Process.Start
+    /// answers null when no new process was started, which is the usual case for a URL while the browser is already
+    /// running (ShellExecuteEx then returns no process handle), so null here is a success. A real failure throws.
+    /// </summary>
+    internal static bool StartProcess(ProcessStartInfo info, Func<ProcessStartInfo, Process?> start)
     {
-        using var process = Process.Start(info);
+        using var process = start(info);
         return true;
     }
 }

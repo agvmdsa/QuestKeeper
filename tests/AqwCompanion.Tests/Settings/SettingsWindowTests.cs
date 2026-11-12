@@ -226,11 +226,16 @@ public class SettingsWindowTests
 
         Assert.Equal(SettingsViewModel.SkuaStepsText, window.FindControl<TextBlock>("SettingsSkuaSteps")!.Text);
         Assert.Equal("Skua is connecting...", window.FindControl<TextBlock>("SettingsSkuaStatus")!.Text);
-        foreach (var name in new[] { "SettingsSkuaOpenFolder", "SettingsSkuaOpenRelease" })
+        foreach (var (name, text) in new[]
+        {
+            ("SettingsSkuaOpenFolder", SettingsViewModel.OpenSkuaPluginsFolderText), ("SettingsSkuaOpenRelease", SettingsViewModel.OpenReleasePageText),
+        })
         {
             var button = window.FindControl<Button>(name)!;
             Assert.True(button.IsEffectivelyEnabled);
-            Assert.False(string.IsNullOrEmpty(Avalonia.Automation.AutomationProperties.GetName(button)));
+            // The accessible name is the visible text, so speech input and screen readers use the same words.
+            Assert.Equal(text, button.Content);
+            Assert.Equal(text, Avalonia.Automation.AutomationProperties.GetName(button));
         }
     }
 }

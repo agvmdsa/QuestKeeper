@@ -9,9 +9,13 @@ namespace QuestKeeper.SkuaBridge;
 /// </summary>
 internal static class BridgeMessages
 {
-    /// <summary>The status line. Character, server and map are only reported while logged in (Skua keeps the last values after a logout).</summary>
+    /// <summary>
+    /// The status line. Character, server and map are only reported while logged in (Skua keeps the last values after a
+    /// logout); the active quests are always empty while logged out.
+    /// </summary>
     public static SkuaStatus Status(
-        bool loggedIn, string? username, string? server, string? map, string? loadedScriptPath, bool running, DateTimeOffset? runningSince) =>
+        bool loggedIn, string? username, string? server, string? map, string? loadedScriptPath, bool running, DateTimeOffset? runningSince,
+        IReadOnlyList<SkuaQuest>? quests) =>
         new(
             loggedIn,
             loggedIn ? Blank(username) : null,
@@ -19,7 +23,8 @@ internal static class BridgeMessages
             loggedIn ? Blank(map) : null,
             ScriptName(loadedScriptPath),
             running,
-            running ? runningSince : null);
+            running ? runningSince : null,
+            loggedIn ? quests : []);
 
     /// <summary>
     /// How many were bought: the quantity now minus the quantity in the snapshot taken before, when positive; otherwise
@@ -39,11 +44,15 @@ internal static class BridgeMessages
         return Blank(name);
     }
 
-    /// <summary>The message of the error that stopped a script. Skua invokes ScriptMain by reflection, so the real error is usually the inner one.</summary>
+    /// <summary>
+    /// The message of the error that stopped a script. Skua invokes ScriptMain by reflection, so the real error is usually
+    /// the inner one. Absolute paths in it are reduced to their file name (<see cref="SkuaText.WithFileNamesOnly"/>), so the
+    /// Windows user name in a local folder does not leave the plugin.
+    /// </summary>
     public static string ErrorText(Exception exception)
     {
         var actual = exception is TargetInvocationException { InnerException: { } inner } ? inner : exception;
-        return Blank(actual.Message) ?? actual.GetType().Name;
+        return Blank(actual.Message is { } message ? SkuaText.WithFileNamesOnly(message) : null) ?? actual.GetType().Name;
     }
 
     /// <summary>The plugin's own version as the release names it (MinVer's informational version without build metadata).</summary>

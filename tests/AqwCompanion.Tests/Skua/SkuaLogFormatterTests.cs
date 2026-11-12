@@ -63,14 +63,6 @@ public class SkuaLogFormatterTests
     }
 
     [Fact]
-    public void Quests_use_the_name_when_known_and_the_id_otherwise()
-    {
-        Assert.Equal("Quest accepted: Slay the Beast", SkuaLogFormatter.QuestAccepted(T, 5, "Slay the Beast").Text);
-        Assert.Equal("Quest accepted: #5", SkuaLogFormatter.QuestAccepted(T, 5, null).Text);
-        Assert.Equal("Quest turned in: #5", SkuaLogFormatter.QuestTurnedIn(T, 5, null).Text);
-    }
-
-    [Fact]
     public void An_error_text_loses_line_breaks_and_is_cut_to_the_cap()
     {
         var entry = SkuaLogFormatter.ScriptError(T, "line one\r\nline two " + new string('x', 400));

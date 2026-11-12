@@ -118,6 +118,25 @@ Off by default. **Settings, "Watch my characters from my phone"** serves a small
 - Push notifications (a notice while the page is closed).
 - Testing: the author has run the page on a Windows PC with a paired browser. The path through Tailscale to a real phone is only being tested now in a prerelease, so expect rough edges.
 
+## Skua plugin
+
+An optional, separate download for people who play with [Skua](https://github.com/auqw/Skua) (a third-party game client). `QuestKeeper.SkuaBridge.dll` runs inside Skua and shows Skua's state in the **Skua** tab of the phone page: a **Now** card (character, server, map, script running or not), the **Active quests** (with the ones ready to turn in marked), and a short **Log** (buys, sells, drops, map changes, script start, stop and errors, deaths, logouts and relogins) with type filters (Everything, Shop, Drops, Maps, Script, Session). It is read-only: it only reports, it cannot start, stop or change anything in Skua or the game, and nothing flows from Questkeeper into Skua.
+
+**Install**
+
+1. Download `QuestKeeper.SkuaBridge.dll` from the release page (**Open the release page** in the **Skua** block of **Settings** goes there).
+2. Copy it into `%AppData%\Skua\plugins` (**Open Skua's plugins folder** in the same block opens that folder), then reopen Skua.
+3. With Questkeeper running, the **Skua** block in **Settings** reads "Skua connected" and the plugin and Skua versions.
+
+**Check the file:** its SHA-256 is in `SHA256SUMS.txt` on the release page and in the release notes (`Get-FileHash .\QuestKeeper.SkuaBridge.dll -Algorithm SHA256` in PowerShell).
+
+**Remove it:** close Skua and delete `QuestKeeper.SkuaBridge.dll` from the plugins folder.
+
+- **Tested with Skua 1.4.5.0.** Connect and status were verified on the author's Windows on 2026-11-11; other Skua versions may differ.
+- **It never writes anything into the Skua folder.** The app only opens the folder; you copy the file yourself.
+- **Limits:** one Skua at a time. Log lines appear while a script is running (Skua raises the game events only then); the status (character, server, map) always updates. Skua started as administrator is not supported.
+- **License:** Skua publishes no license. The plugin only references Skua's interfaces and copies none of its code; the Skua assemblies are never committed or shipped here.
+
 ## Build from source
 
 You need the [.NET 10 SDK](https://dotnet.microsoft.com/download) (the exact version is in `global.json`).
@@ -130,7 +149,7 @@ dotnet run --project src/AqwCompanion.App   # run the app (the capture needs Win
 
 The phone page lives in `web/` and the exe embeds the built page, so build it before the .NET build: `cd web && npm ci && npm run build`. Without `web/dist` the build stops with a message; pass `-p:SkipWebCheck=true` to skip that check (the exe then serves nothing on the phone port).
 
-A `vX.Y.Z` tag runs `.github/workflows/release.yml`: tests, a self-contained single-file `win-x64` publish, and a zip with its `SHA256SUMS.txt`. The version comes from the tag (MinVer).
+A `vX.Y.Z` tag runs `.github/workflows/release.yml`: tests, a self-contained single-file `win-x64` publish, and a zip, with `SHA256SUMS.txt` for every file. The Skua plugin DLL is attached too (not inside the zip or the installer). The version comes from the tag (MinVer).
 
 ## Not affiliated
 

@@ -204,15 +204,18 @@ public class SkuaBridgeTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void Forget_clears_everything_deletes_the_file_and_keeps_the_connection(bool quiesceFirst)
+    public void Forget_clears_the_log_and_status_deletes_the_file_and_keeps_the_hello_and_connection(bool quiesceFirst)
     {
         var bridge = Create();
         bridge.ClientConnected();
-        bridge.Accept(new HelloMessage(new SkuaHello("0.1.0", "1.4.5.0")));
+        var hello = new SkuaHello("0.1.0", "1.4.5.0");
+        bridge.Accept(new HelloMessage(hello));
         bridge.Accept(new StatusMessage(new SkuaStatus(true, "A", null, null, null, false, null)));
         bridge.Accept(Entry(1));
         var changes = 0;
+        var forgotten = 0;
         bridge.Changed += (_, _) => changes++;
+        bridge.Forgotten += (_, _) => forgotten++;
 
         if (quiesceFirst)
         {
@@ -222,13 +225,61 @@ public class SkuaBridgeTests
         bridge.Forget();
 
         Assert.Empty(bridge.Log);
-        Assert.Null(bridge.Current.Hello);
+        Assert.Equal(hello, bridge.Current.Hello);
         Assert.Null(bridge.Current.Status);
         Assert.Equal(SkuaConnection.Connected, bridge.Current.Connection);
         Assert.Equal(1, _store.Deletes);
         Assert.Equal(1, changes);
+        Assert.Equal(1, forgotten);
         bridge.Flush();
         Assert.Equal(1, _store.Saves);
+    }
+
+    [Fact]
+    public void After_quiesce_and_a_successful_forget_messages_are_accepted_again()
+    {
+        var bridge = Create();
+        bridge.ClientConnected();
+        bridge.Quiesce();
+        bridge.Forget();
+        var changes = 0;
+        bridge.Changed += (_, _) => changes++;
+
+        var hello = new SkuaHello("0.1.0", "1.4.5.0");
+        var status = new SkuaStatus(true, "Hero", null, "battleon", null, false, null);
+        bridge.Accept(new HelloMessage(hello));
+        bridge.Accept(new StatusMessage(status));
+        bridge.Accept(Entry(1));
+
+        Assert.Equal(3, changes);
+        Assert.Equal(hello, bridge.Current.Hello);
+        Assert.Equal(status, bridge.Current.Status);
+        Assert.Equal(["drop 1"], bridge.Log.Select(e => e.Text));
+        Assert.Equal(["drop 1"], _store.Stored.Select(e => e.Text));
+    }
+
+    [Fact]
+    public async Task An_entry_accepted_during_a_forget_without_quiesce_is_not_deleted_from_the_store()
+    {
+        var bridge = Create();
+        bridge.Accept(Entry(1));
+        Assert.Equal(["drop 1"], _store.Stored.Select(e => e.Text));
+        Task? writer = null;
+        var finishedEarly = false;
+        // Runs between the in-memory clear and the delete. With the I/O lock held across both, the new entry's save waits for
+        // the delete; without it the save would land first and the delete would remove the entry from the store.
+        bridge.AfterClear = () =>
+        {
+            writer = Task.Run(() => bridge.Accept(Entry(2)));
+            finishedEarly = writer.Wait(TimeSpan.FromMilliseconds(300));
+        };
+
+        bridge.Forget();
+        await writer!.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.False(finishedEarly);
+        Assert.Equal(["drop 2"], bridge.Log.Select(e => e.Text));
+        Assert.Equal(["drop 2"], _store.Stored.Select(e => e.Text));
     }
 
     [Fact]

@@ -103,9 +103,9 @@
                    AutomationProperties.Name="{Binding SkuaStatusText}" />
         <StackPanel Orientation="Horizontal" Spacing="12">
           <Button x:Name="SettingsSkuaOpenFolder" Content="{x:Static st:SettingsViewModel.OpenSkuaPluginsFolderText}"
-                  Command="{Binding OpenSkuaPluginsFolderCommand}" AutomationProperties.Name="Open Skua's plugins folder" />
+                  Command="{Binding OpenSkuaPluginsFolderCommand}" AutomationProperties.Name="{x:Static st:SettingsViewModel.OpenSkuaPluginsFolderText}" />
           <Button x:Name="SettingsSkuaOpenRelease" Content="{x:Static st:SettingsViewModel.OpenReleasePageText}"
-                  Command="{Binding OpenReleasePageCommand}" AutomationProperties.Name="Open the Questkeeper release page" />
+                  Command="{Binding OpenReleasePageCommand}" AutomationProperties.Name="{x:Static st:SettingsViewModel.OpenReleasePageText}" />
         </StackPanel>
       </StackPanel>
     </Border>

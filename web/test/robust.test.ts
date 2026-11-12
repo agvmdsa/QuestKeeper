@@ -167,6 +167,10 @@ describe('focusKey', () => {
   it('keys buttons by action, links by href and the details summary by itself', () => {
     expect(focusKey({ tag: 'BUTTON', action: 'toggle-all', href: null })).toBe('action:toggle-all');
     expect(focusKey({ tag: 'A', action: null, href: '#/c/Alpha' })).toBe('href:#/c/Alpha');
+    expect(focusKey({ tag: 'BUTTON', action: 'theme', href: null, value: 'dark' })).toBe('action:theme:dark');
+    expect(focusKey({ tag: 'BUTTON', action: 'skua-filter', href: null, value: 'drops' })).toBe('action:skua-filter:drops');
+    expect(focusKey({ tag: 'BUTTON', action: 'skua-filter', href: null, value: 'drops' })).not.toBe(focusKey({ tag: 'BUTTON', action: 'skua-filter', href: null, value: 'maps' }));
+    expect(focusKey({ tag: 'BUTTON', action: 'theme', href: null, value: 'light' })).not.toBe(focusKey({ tag: 'BUTTON', action: 'theme', href: null, value: 'dark' }));
     expect(focusKey({ tag: 'SUMMARY', action: null, href: null })).toBe('summary');
   });
   it('keys a text field by its id, so focus stays in the pairing link field after a redraw', () => {

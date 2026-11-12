@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getState, probeOf, STATE_TIMEOUT_MS, timeoutSignal, UnpairedError } from '../src/api';
-import { PASTE_REJECTED, parsePairingInput } from '../src/state';
+import { t } from '../src/i18n';
+import { parsePairingInput } from '../src/state';
 import { pairNeededView, type VNode } from '../src/views';
 
 const TOKEN = 'Ab3_-9xYz0Ab3_-9xYz0Ab3_-9xYz0Ab3_-9xYz0Abc';
@@ -46,7 +47,7 @@ describe('parsePairingInput', () => {
   ])('refuses %s', (_name, text) => expect(parsePairingInput(text)).toBeNull());
 
   it('says what to do with a paste it refused', () =>
-    expect(PASTE_REJECTED).toBe('That is not a pairing link. Copy the whole link from Questkeeper on your PC and paste it here.'));
+    expect(t('pair.pasteRejected')).toBe('That is not a pairing link. Copy the whole link from Questkeeper on your PC and paste it here.'));
 });
 
 describe('probeOf', () => {
@@ -125,7 +126,7 @@ describe('the paste field of the Not paired card', () => {
     expect(all(view).some((n) => n.tag === 'form')).toBe(false);
   });
   it('announces why a paste or a link was refused', () => {
-    const reason = all(pairNeededView(PASTE_REJECTED)).find((n) => n.text === PASTE_REJECTED);
+    const reason = all(pairNeededView(t('pair.pasteRejected'))).find((n) => n.text === t('pair.pasteRejected'));
     expect(reason?.attrs).toEqual({ role: 'status' });
   });
   it('explains why an app on the Home Screen needs it', () => {

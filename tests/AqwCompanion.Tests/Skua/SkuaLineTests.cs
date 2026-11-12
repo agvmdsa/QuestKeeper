@@ -28,6 +28,138 @@ public class SkuaLineTests
     }
 
     [Fact]
+    public void A_status_with_quests_matches_its_fixture_both_ways()
+    {
+        var message = new StatusMessage(new SkuaStatus(
+            true, "Hero", "Artix", "battleon", "Farm.cs", true, Noon, [new SkuaQuest(5, "Slay the Beast", true), new SkuaQuest(12, "Gather 10 Bones", false)]));
+
+        Assert.Equal(Fixture("status-with-quests.json"), SkuaLine.ToLine(message));
+        Assert.Equal(message, SkuaLine.Parse(Fixture("status-with-quests.json")));
+    }
+
+    [Fact]
+    public void A_status_without_quests_leaves_the_field_out_and_parses_back_to_null()
+    {
+        var line = SkuaLine.ToLine(new StatusMessage(new SkuaStatus(true, "Hero", "Artix", "battleon", "Farm.cs", true, Noon)));
+
+        Assert.DoesNotContain("quests", line);
+        var parsed = Assert.IsType<StatusMessage>(SkuaLine.Parse(Fixture("status.json")));
+        Assert.Null(parsed.Status.Quests);
+    }
+
+    [Fact]
+    public void No_active_quests_travel_as_an_empty_list_not_as_absent()
+    {
+        var message = new StatusMessage(new SkuaStatus(true, "Hero", null, null, null, false, null, []));
+
+        var line = SkuaLine.ToLine(message);
+        var parsed = Assert.IsType<StatusMessage>(SkuaLine.Parse(line));
+
+        Assert.Contains("\"quests\":[]", line);
+        Assert.NotNull(parsed.Status.Quests);
+        Assert.Empty(parsed.Status.Quests);
+        Assert.Equal(message, parsed);
+        Assert.NotEqual(message, message with { Status = message.Status with { Quests = null } });
+    }
+
+    [Fact]
+    public void Statuses_compare_their_quest_lists_by_content()
+    {
+        var a = new SkuaStatus(true, "Hero", null, null, null, false, null, [new SkuaQuest(5, "A", false)]);
+        var same = a with { Quests = [new SkuaQuest(5, "A", false)] };
+        var ready = a with { Quests = [new SkuaQuest(5, "A", true)] };
+
+        Assert.Equal(a, same);
+        Assert.Equal(a.GetHashCode(), same.GetHashCode());
+        Assert.NotEqual(a, ready);
+        Assert.NotEqual(a, a with { Quests = [new SkuaQuest(5, "A", false), new SkuaQuest(6, "B", false)] });
+    }
+
+    [Fact]
+    public void At_most_thirty_quests_are_written_and_read()
+    {
+        var quests = Enumerable.Range(1, 40).Select(i => new SkuaQuest(i, $"Q{i}", false)).ToList();
+        var message = new StatusMessage(new SkuaStatus(true, "Hero", null, null, null, false, null, quests));
+
+        var parsed = Assert.IsType<StatusMessage>(SkuaLine.Parse(SkuaLine.ToLine(message)));
+        Assert.Equal(SkuaProtocol.MaxQuests, parsed.Status.Quests!.Count);
+        Assert.Equal(30, parsed.Status.Quests[^1].Id);
+
+        var entries = string.Join(',', Enumerable.Range(1, 40).Select(i => $"{{\"id\":{i},\"name\":\"Q{i}\",\"ready\":true}}"));
+        var read = Assert.IsType<StatusMessage>(SkuaLine.Parse(StatusLine($"[{entries}]")));
+        Assert.Equal(SkuaProtocol.MaxQuests, read.Status.Quests!.Count);
+    }
+
+    [Fact]
+    public void A_long_quest_name_is_cut_without_splitting_a_surrogate_pair()
+    {
+        var name = new string('a', SkuaProtocol.MaxTextLength - 1) + "\U0001F600" + "tail";
+        var message = new StatusMessage(new SkuaStatus(true, "Hero", null, null, null, false, null, [new SkuaQuest(1, name, true)]));
+
+        var parsed = Assert.IsType<StatusMessage>(SkuaLine.Parse(SkuaLine.ToLine(message)));
+        var cut = parsed.Status.Quests!.Single().Name;
+
+        Assert.True(cut.Length <= SkuaProtocol.MaxTextLength);
+        Assert.False(char.IsHighSurrogate(cut[^1]));
+
+        var read = Assert.IsType<StatusMessage>(SkuaLine.Parse(StatusLine($"[{{\"id\":1,\"name\":\"{new string('n', 400)}\",\"ready\":false}}]")));
+        Assert.Equal(SkuaProtocol.MaxTextLength, read.Status.Quests!.Single().Name.Length);
+    }
+
+    [Fact]
+    public void Thirty_long_non_ascii_names_still_fit_the_line_cap_by_leaving_the_last_quests_out()
+    {
+        var quests = Enumerable.Range(1, 30).Select(i => new SkuaQuest(i, new string('\u00e9', SkuaProtocol.MaxTextLength), true)).ToList();
+        var message = new StatusMessage(new SkuaStatus(true, "Hero", null, null, null, false, null, quests));
+
+        var line = SkuaLine.ToLine(message);
+        var parsed = Assert.IsType<StatusMessage>(SkuaLine.Parse(line));
+
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(line) <= SkuaProtocol.MaxLineBytes);
+        Assert.InRange(parsed.Status.Quests!.Count, 1, 29);
+        Assert.Equal(Enumerable.Range(1, parsed.Status.Quests.Count), parsed.Status.Quests.Select(q => q.Id));
+    }
+
+    [Theory]
+    [InlineData("{\"id\":-1,\"name\":\"neg\",\"ready\":true}")]
+    [InlineData("{\"id\":1.5,\"name\":\"frac\",\"ready\":true}")]
+    [InlineData("{\"id\":\"7\",\"name\":\"text id\",\"ready\":true}")]
+    [InlineData("{\"id\":99999999999,\"name\":\"big\",\"ready\":true}")]
+    [InlineData("{\"name\":\"no id\",\"ready\":true}")]
+    [InlineData("{\"id\":7,\"ready\":true}")]
+    [InlineData("{\"id\":7,\"name\":null,\"ready\":true}")]
+    [InlineData("{\"id\":7,\"name\":\"bad \\ud800 name\",\"ready\":true}")]
+    [InlineData("{\"id\":7,\"name\":\"ready text\",\"ready\":\"true\"}")]
+    [InlineData("{\"id\":7,\"name\":\"no ready\"}")]
+    [InlineData("7")]
+    [InlineData("null")]
+    [InlineData("[1]")]
+    public void A_malformed_quest_is_dropped_and_the_rest_of_the_status_kept(string bad)
+    {
+        var parsed = Assert.IsType<StatusMessage>(SkuaLine.Parse(StatusLine($"[{bad},{{\"id\":5,\"name\":\"Slay the Beast\",\"ready\":true}}]")));
+
+        Assert.Equal("Hero", parsed.Status.Character);
+        Assert.Equal([new SkuaQuest(5, "Slay the Beast", true)], parsed.Status.Quests);
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("\"quests\"")]
+    [InlineData("5")]
+    [InlineData("true")]
+    public void A_quests_field_that_is_not_an_array_counts_as_absent(string value)
+    {
+        var parsed = Assert.IsType<StatusMessage>(SkuaLine.Parse(StatusLine(value)));
+
+        Assert.Equal("Hero", parsed.Status.Character);
+        Assert.Null(parsed.Status.Quests);
+    }
+
+    private static string StatusLine(string questsJson) =>
+        "{\"v\":1,\"type\":\"status\",\"loggedIn\":true,\"character\":\"Hero\",\"server\":null,\"map\":null,\"script\":null,\"running\":false,\"runningSince\":null,\"quests\":" + questsJson + "}";
+
+    [Fact]
     public void Log_matches_its_fixture_both_ways()
     {
         var message = new LogMessage(new SkuaLogEntry(Noon.AddSeconds(5), SkuaLogKind.Sold, "Sold Blood Orb x50 for 2,500 gold"));
@@ -121,5 +253,42 @@ public class SkuaLineTests
         Assert.True(line.Length < SkuaProtocol.MaxLineBytes);
         Assert.True(System.Text.Encoding.UTF8.GetByteCount(line) > SkuaProtocol.MaxLineBytes);
         Assert.Null(SkuaLine.Parse(line));
+    }
+
+    [Fact]
+    public void A_status_with_lone_surrogates_in_its_text_is_written_and_round_trips_without_them()
+    {
+        // Built at run time: a lone surrogate in a literal may be coerced by the compiler.
+        var lone = ((char)0xD800).ToString();
+        var message = new StatusMessage(new SkuaStatus(
+            true, "He" + lone + "ro", "Artix", "battle" + lone + "on", "Farm" + lone, false, null, [new SkuaQuest(5, lone + "Slay", false)]));
+
+        var line = SkuaLine.ToLine(message);
+        var parsed = Assert.IsType<StatusMessage>(SkuaLine.Parse(line));
+
+        Assert.Equal(new SkuaStatus(true, "Hero", "Artix", "battleon", "Farm", false, null, [new SkuaQuest(5, "Slay", false)]), parsed.Status);
+        Assert.DoesNotContain('\uFFFD', line);
+    }
+
+    [Fact]
+    public void Hello_and_log_with_lone_surrogates_are_written_and_round_trip_without_them()
+    {
+        var lone = ((char)0xDC00).ToString();
+
+        var hello = Assert.IsType<HelloMessage>(SkuaLine.Parse(SkuaLine.ToLine(new HelloMessage(new SkuaHello("0.1.0" + lone, "1.4.5.0")))));
+        var log = Assert.IsType<LogMessage>(SkuaLine.Parse(SkuaLine.ToLine(
+            new LogMessage(new SkuaLogEntry(Noon, SkuaLogKind.Dropped, "Bone" + lone + " x2")))));
+
+        Assert.Equal(new SkuaHello("0.1.0", "1.4.5.0"), hello.Hello);
+        Assert.Equal("Bone x2", log.Entry.Text);
+    }
+
+    [Fact]
+    public void The_shared_log_kinds_fixture_lists_every_kind_the_page_must_place()
+    {
+        // web/test/skua.test.ts reads the same file and checks that every kind has a filter (or is explicitly in none).
+        var names = System.Text.Json.JsonSerializer.Deserialize<string[]>(Fixture("log-kinds.json"));
+
+        Assert.Equal(Enum.GetNames<SkuaLogKind>(), names);
     }
 }

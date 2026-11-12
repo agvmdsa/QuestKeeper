@@ -1,4 +1,5 @@
-import type { PairOutcome } from './api';
+import { STATE_TIMEOUT_MS, type PairOutcome } from './api';
+import { formatNumberLocale, t, type MessageKey } from './i18n';
 import { parseSkua } from './skua';
 import type { Character, Figures, HardFarms, Notice, RemoteState } from './types';
 
@@ -33,12 +34,11 @@ const HARD_FARMS_SHOWN = 20;
 const LIVE_WINDOW_MS = 120_000;
 const CLOCK_SKEW_MS = 60_000;
 const RECONNECT_MS = [2000, 4000, 8000, 15000];
-const PAIR_REJECTED = 'The pairing link was not accepted. Create a new one in Questkeeper on your PC.';
-const PAIR_FAILURE: Record<PairOutcome, string | null> = {
+const PAIR_FAILURE: Record<PairOutcome, MessageKey | null> = {
   paired: null,
-  locked: 'Too many attempts. Wait a minute and open the pairing link again.',
-  invalid: PAIR_REJECTED,
-  failed: PAIR_REJECTED,
+  locked: 'pair.locked',
+  invalid: 'pair.rejected',
+  failed: 'pair.rejected',
 };
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -74,8 +74,6 @@ export function parseNotice(text: string): Notice | null {
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const MAX_PASTE = 512;
 
-export const PASTE_REJECTED = 'That is not a pairing link. Copy the whole link from Questkeeper on your PC and paste it here.';
-
 /**
  * The token from a pasted pairing link: the whole link (https, a bare name, no path, query, port or user), its "#t=" part, or the
  * token alone. Anything else is null. The text is only read here; it is never logged or put in the address bar.
@@ -103,7 +101,8 @@ export function takePairingToken(hash: string): { token: string; cleanHash: stri
 }
 
 export function pairFailureText(outcome: PairOutcome): string | null {
-  return PAIR_FAILURE[outcome];
+  const key = PAIR_FAILURE[outcome];
+  return key === null ? null : t(key);
 }
 
 /** What asking for the state said before a pairing link is used: known (200), unknown (401) or no answer. */
@@ -136,11 +135,13 @@ export interface FocusTarget {
   action: string | null;
   href: string | null;
   id?: string | null;
+  /** `data-value`, for controls that share one action (the theme buttons). */
+  value?: string | null;
 }
 
 /** Names a focused control so the same control can get focus back after a redraw. */
 export function focusKey(t: FocusTarget): string | null {
-  if (t.action) return `action:${t.action}`;
+  if (t.action) return t.value ? `action:${t.action}:${t.value}` : `action:${t.action}`;
   if (t.id) return `id:${t.id}`;
   const tag = t.tag.toLowerCase();
   if (tag === 'a' && t.href) return `href:${t.href}`;
@@ -184,7 +185,7 @@ export function recallKept(text: string, nowMs: number): { state: RemoteState; r
 }
 
 export function formatNumber(n: number): string {
-  return String(Math.trunc(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return formatNumberLocale(n);
 }
 
 export function formatCompact(n: number): string {
@@ -206,34 +207,51 @@ export function relativeTime(iso: string, nowMs: number): string {
   const then = Date.parse(iso);
   if (Number.isNaN(then)) return '';
   const seconds = (nowMs - then) / 1000;
-  if (seconds < 45) return 'just now';
+  if (seconds < 45) return t('time.now');
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${Math.max(1, minutes)} min ago`;
+  if (minutes < 60) return t('time.minutesAgo', { n: Math.max(1, minutes) });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
-  return `${Math.floor(hours / 24)} d ago`;
+  if (hours < 24) return t('time.hoursAgo', { n: hours });
+  return t('time.daysAgo', { n: Math.floor(hours / 24) });
+}
+
+/** How long the stream may stay down before the banner says Questkeeper cannot be reached (the same as the state request's timeout). */
+export const UNREACHABLE_AFTER_MS = STATE_TIMEOUT_MS;
+
+/** What the page knows about the link: when the stream went down (null if unknown) and whether the last state request failed or timed out. */
+export interface LinkFacts {
+  downSinceMs: number | null;
+  requestFailed: boolean;
+}
+
+/** Fresh data proves the PC is reachable: the failure is forgotten and, with the stream closed, the down clock restarts from now. */
+export function linkAfterFreshData(sseOpen: boolean, link: LinkFacts, nowMs: number): LinkFacts {
+  return { downSinceMs: sseOpen ? link.downSinceMs : nowMs, requestFailed: false };
 }
 
 /**
- * Nothing while the event stream is open; a calm "Connecting..." on a first visit when no data was ever shown (nothing old to warn
- * about); otherwise the shown data is old, and the banner says how old when the time is known.
+ * Nothing while the event stream is open. Once the last state request failed or the stream has been down for more than 10 s, the
+ * calm "Can't reach Questkeeper" warning, with the age of the shown data when it is known. Before that, a first visit with no data
+ * shows "Connecting..."; otherwise the shown data is old, and the banner says how old when the time is known.
  */
-export function linkBanner(sseOpen: boolean, lastUpdateMs: number | null, nowMs: number, hasData = true): Banner | null {
+export function linkBanner(sseOpen: boolean, lastUpdateMs: number | null, nowMs: number, hasData = true, link?: LinkFacts): Banner | null {
   if (sseOpen) return null;
-  if (!hasData && lastUpdateMs === null) return { tone: 'neutral', text: 'Connecting...' };
   const age = lastUpdateMs === null || !Number.isFinite(lastUpdateMs) ? '' : relativeTime(new Date(lastUpdateMs).toISOString(), nowMs);
-  return { tone: 'warn', text: age ? `Old data - last update ${age}. Reconnecting...` : 'Old data - reconnecting...' };
+  const unreachable = !!link && (link.requestFailed || (link.downSinceMs !== null && nowMs - link.downSinceMs > UNREACHABLE_AFTER_MS));
+  if (unreachable) return { tone: 'warn', text: age ? t('banner.unreachableAge', { age }) : t('banner.unreachable') };
+  if (!hasData && lastUpdateMs === null) return { tone: 'neutral', text: t('banner.connecting') };
+  return { tone: 'warn', text: age ? t('banner.oldWithAge', { age }) : t('banner.old') };
 }
 
 export function characterRow(c: Character, nowMs: number): Row {
   const last = c.lastLiveUpdateUtc ? Date.parse(c.lastLiveUpdateUtc) : Number.NaN;
   let kind: Row['kind'] = 'saved';
-  let status = `Saved ${relativeTime(c.savedAtUtc, nowMs)}`;
+  let status = t('status.saved', { when: relativeTime(c.savedAtUtc, nowMs) });
   if (c.live && !Number.isNaN(last)) {
     const fresh = nowMs - last <= LIVE_WINDOW_MS;
     const when = relativeTime(c.lastLiveUpdateUtc!, nowMs);
     kind = fresh ? 'live' : 'idle';
-    status = fresh ? `Live - activity ${when}` : `Idle - last activity ${when}`;
+    status = fresh ? t('status.live', { when }) : t('status.idle', { when });
   }
   return { name: c.name, level: c.level, kind, status, gold: formatCompact(c.figures.gold) };
 }
@@ -305,7 +323,7 @@ const IOS = /iPhone|iPad/;
  */
 export function iosInstallHint(userAgent: string, standalone: boolean, maxTouchPoints = 0): string | null {
   const ios = IOS.test(userAgent) || (/Macintosh/.test(userAgent) && maxTouchPoints > 1);
-  return ios && !standalone ? 'Install: tap Share, then Add to Home Screen.' : null;
+  return ios && !standalone ? t('install.ios') : null;
 }
 
 export function deviceName(userAgent: string): string {

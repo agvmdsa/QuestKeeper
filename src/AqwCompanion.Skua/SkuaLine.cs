@@ -9,6 +9,25 @@ public static class SkuaLine
 {
     public static string ToLine(SkuaMessage message)
     {
+        if (message is not StatusMessage { Status.Quests: { Count: > 0 } quests })
+        {
+            return Write(message, int.MaxValue);
+        }
+
+        // Quest names are cut, but 30 long names in escaped non-ASCII could still pass the line cap, and a line over the
+        // cap is refused whole. The last quests are left out until the line fits.
+        var count = Math.Min(quests.Count, SkuaProtocol.MaxQuests);
+        var line = Write(message, count);
+        while (count > 0 && Encoding.UTF8.GetByteCount(line) > SkuaProtocol.MaxLineBytes)
+        {
+            line = Write(message, --count);
+        }
+
+        return line;
+    }
+
+    private static string Write(SkuaMessage message, int maxQuests)
+    {
         using var stream = new MemoryStream();
         using (var w = new Utf8JsonWriter(stream))
         {
@@ -36,6 +55,21 @@ public static class SkuaLine
                     else
                     {
                         w.WriteNull("runningSince");
+                    }
+
+                    if (s.Status.Quests is { } quests)
+                    {
+                        w.WriteStartArray("quests");
+                        foreach (var quest in quests.Take(Math.Min(maxQuests, SkuaProtocol.MaxQuests)))
+                        {
+                            w.WriteStartObject();
+                            w.WriteNumber("id", quest.Id);
+                            w.WriteString("name", Cut(quest.Name));
+                            w.WriteBoolean("ready", quest.Ready);
+                            w.WriteEndObject();
+                        }
+
+                        w.WriteEndArray();
                     }
 
                     break;
@@ -135,7 +169,56 @@ public static class SkuaLine
 
         return new StatusMessage(new SkuaStatus(
             loggedIn.GetBoolean(), CutOrNull(Str(root, "character")), CutOrNull(Str(root, "server")), CutOrNull(Str(root, "map")), CutOrNull(Str(root, "script")),
-            running.GetBoolean(), since));
+            running.GetBoolean(), since, ParseQuests(root)));
+    }
+
+    /// <summary>
+    /// The active quests, or null when the field is absent or not an array (an older plugin, or damage: the rest of the
+    /// status still counts). A damaged entry is left out on its own; at most <see cref="SkuaProtocol.MaxQuests"/> are kept.
+    /// </summary>
+    private static IReadOnlyList<SkuaQuest>? ParseQuests(JsonElement root)
+    {
+        if (!root.TryGetProperty("quests", out var array) || array.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var quests = new List<SkuaQuest>();
+        foreach (var entry in array.EnumerateArray())
+        {
+            if (quests.Count >= SkuaProtocol.MaxQuests)
+            {
+                break;
+            }
+
+            if (ParseQuest(entry) is { } quest)
+            {
+                quests.Add(quest);
+            }
+        }
+
+        return quests;
+    }
+
+    private static SkuaQuest? ParseQuest(JsonElement entry)
+    {
+        try
+        {
+            if (entry.ValueKind != JsonValueKind.Object
+                || !entry.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.Number || !id.TryGetInt32(out var questId) || questId < 0
+                || Str(entry, "name") is not { } name
+                || !entry.TryGetProperty("ready", out var ready) || ready.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            {
+                return null;
+            }
+
+            return new SkuaQuest(questId, Cut(name), ready.GetBoolean());
+        }
+        catch (InvalidOperationException)
+        {
+            // An escaped lone surrogate in the name: only this entry is lost.
+            return null;
+        }
     }
 
     private static SkuaMessage? ParseLog(JsonElement root)
@@ -153,7 +236,11 @@ public static class SkuaLine
         return new LogMessage(new SkuaLogEntry(time, kind, Cut(body)));
     }
 
-    /// <summary>A string value, or null when absent, not a string, or damaged (an escaped lone surrogate decodes to U+FFFD, which the plugin never sends).</summary>
+    /// <summary>
+    /// A string value, or null when absent, not a string, or containing U+FFFD (which the plugin never sends). An escaped
+    /// lone surrogate (<c>\ud800</c>) makes <c>GetString</c> throw <see cref="InvalidOperationException"/>: the caller
+    /// catches it (<see cref="Parse"/> for the whole line, <c>ParseQuest</c> for one quest entry).
+    /// </summary>
     private static string? Str(JsonElement root, string name)
     {
         if (!root.TryGetProperty(name, out var p) || p.ValueKind != JsonValueKind.String)
@@ -177,8 +264,14 @@ public static class SkuaLine
         }
     }
 
+    /// <summary>
+    /// Every string goes through here on both sides: lone surrogates are removed first (the writer would throw on one, see
+    /// <see cref="SkuaText.WithoutLoneSurrogates"/>), then the text is cut to <see cref="SkuaProtocol.MaxTextLength"/>
+    /// without splitting a pair.
+    /// </summary>
     private static string Cut(string value)
     {
+        value = SkuaText.WithoutLoneSurrogates(value);
         if (value.Length <= SkuaProtocol.MaxTextLength)
         {
             return value;

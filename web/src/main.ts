@@ -1,13 +1,32 @@
+import { watchChromeHeight } from './chrome';
+import { applyTheme, loadTheme, saveTheme, parseTheme, type ThemeChoice } from './theme';
 import './styles/tokens.css';
 import './styles/app.css';
 import { getState, openEvents, pair, probeOf, type PairOutcome } from './api';
 import {
-  afterStreamCheck, deviceName, focusKey, iosInstallHint, keepState, KEPT_KEY, linkBanner, pairFailureText, pairingStep, parseNotice, parsePairingInput, parseRoute,
-  parseState, PASTE_REJECTED,
-  recallKept, reconnectDelay, streamErrorStep, takePairingToken, type PairProbe,
+  afterStreamCheck, deviceName, focusKey, iosInstallHint, keepState, KEPT_KEY, linkAfterFreshData, linkBanner, pairFailureText, pairingStep, parseNotice, parsePairingInput, parseRoute,
+  parseState,
+  recallKept, reconnectDelay, streamErrorStep, takePairingToken, UNREACHABLE_AFTER_MS, type PairProbe,
 } from './state';
+import { parseLogFilter, type LogFilter } from './skua';
+import { detectLocale, setLocale, t } from './i18n';
 import type { Notice, RemoteState } from './types';
-import { characterView, drawFailedView, listView, mount, pairNeededView, skuaView, type Model, type VNode } from './views';
+import { characterView, drawFailedView, listView, mount, pairNeededView, skuaView, withFooter, type Model, type VNode } from './views';
+
+// First thing: CSP forbids an inline script, so the page may flash the system theme until this runs.
+function storage(): Storage | null {
+  try {
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
+let theme: ThemeChoice = loadTheme(storage());
+applyTheme(document.documentElement, theme);
+
+watchChromeHeight(document.documentElement, document.querySelector<HTMLElement>('.chrome'));
+
+setLocale(detectLocale(navigator.languages?.length ? navigator.languages : [navigator.language ?? 'en']));
 
 const app = document.getElementById('app')!;
 const banner = document.getElementById('banner')!;
@@ -21,10 +40,16 @@ let state: RemoteState | null = null;
 let notices: Notice[] = [];
 let lastUpdateMs: number | null = null;
 let sseOpen = false;
+// When the stream went down (the page starts without one) and whether the last state request failed: they decide "Can't reach Questkeeper".
+let downSinceMs: number | null = Date.now();
+let requestFailed = false;
+let unreachableTimer: ReturnType<typeof setTimeout> | undefined;
 let unpaired = false;
 let pairReason: string | null = null;
 let showAll = false;
 let hfOpen = false;
+// The Skua log filter lives in memory only: a reload starts at Everything.
+let skuaFilter: LogFilter = 'all';
 let source: EventSource | null = null;
 let attempts = 0;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -61,8 +86,22 @@ function recall(): ReturnType<typeof recallKept> {
   }
 }
 
+/** Redraws just after the stream has been down for 10 s, so the banner changes without waiting for the 15 s tick or new data. */
+function armUnreachableTimer(): void {
+  clearTimeout(unreachableTimer);
+  if (sseOpen || downSinceMs === null) return;
+  const wait = downSinceMs + UNREACHABLE_AFTER_MS + 1 - Date.now();
+  if (wait > 0) unreachableTimer = setTimeout(draw, wait);
+}
+
+function markDown(): void {
+  sseOpen = false;
+  downSinceMs ??= Date.now();
+  armUnreachableTimer();
+}
+
 function drawBanner(): void {
-  const note = unpaired ? null : linkBanner(sseOpen, lastUpdateMs, Date.now(), state !== null);
+  const note = unpaired ? null : linkBanner(sseOpen, lastUpdateMs, Date.now(), state !== null, { downSinceMs, requestFailed });
   const key = note ? `${note.tone}|${note.text}` : '';
   if (key === lastBanner) return;
   lastBanner = key;
@@ -76,23 +115,27 @@ function drawBanner(): void {
 }
 
 function tree(): VNode {
-  if (unpaired) return pairNeededView(pairReason, installHint);
-  const model: Model = { state: state && { ...state, notices }, nowMs: Date.now(), showAll, hfOpen, installHint };
+  const model: Model = { state: state && { ...state, notices }, nowMs: Date.now(), showAll, hfOpen, installHint, theme, skuaFilter };
+  if (unpaired) return withFooter(pairNeededView(pairReason, installHint), model);
   const route = parseRoute(location.hash);
-  if (route.view === 'skua') return skuaView(model);
-  return route.view === 'character' ? characterView(model, route.name) : listView(model);
+  if (route.view === 'skua') return withFooter(skuaView(model), model);
+  return withFooter(route.view === 'character' ? characterView(model, route.name) : listView(model), model);
+}
+
+function keyOf(el: HTMLElement): string | null {
+  return focusKey({ tag: el.tagName, action: el.getAttribute('data-action'), href: el.getAttribute('href'), id: el.id, value: el.getAttribute('data-value') });
 }
 
 function focusedKey(): string | null {
   const el = document.activeElement;
   if (!(el instanceof HTMLElement) || !app.contains(el)) return null;
-  return focusKey({ tag: el.tagName, action: el.getAttribute('data-action'), href: el.getAttribute('href'), id: el.id });
+  return keyOf(el);
 }
 
 function restoreFocus(key: string | null): void {
   if (!key) return;
   for (const el of app.querySelectorAll<HTMLElement>('a, button, summary, input')) {
-    if (focusKey({ tag: el.tagName, action: el.getAttribute('data-action'), href: el.getAttribute('href'), id: el.id }) === key) {
+    if (keyOf(el) === key) {
       el.focus({ preventScroll: true });
       return;
     }
@@ -131,6 +174,8 @@ function setState(text: string): void {
   state = parsed;
   notices = parsed.notices;
   lastUpdateMs = Date.now();
+  ({ downSinceMs, requestFailed } = linkAfterFreshData(sseOpen, { downSinceMs, requestFailed }, lastUpdateMs));
+  armUnreachableTimer();
   // Kept only once it has been drawn, so data that breaks the page is never stored and replayed on the next load.
   if (draw()) remember(parsed, lastUpdateMs);
 }
@@ -146,7 +191,7 @@ function closeStream(): void {
   clearTimeout(retryTimer);
   source?.close();
   source = null;
-  sseOpen = false;
+  markDown();
 }
 
 /** A device the PC no longer knows keeps nothing: names and gold are dropped from memory and storage. */
@@ -172,12 +217,15 @@ function openStream(): void {
   source = openEvents({
     open: () => {
       sseOpen = true;
+      downSinceMs = null;
+      requestFailed = false;
+      clearTimeout(unreachableTimer);
       unpaired = false;
       attempts = 0;
       draw();
     },
     error: (closed) => {
-      sseOpen = false;
+      markDown();
       draw();
       if (streamErrorStep(closed) === 'wait') return; // EventSource retries by itself
       source?.close();
@@ -190,6 +238,10 @@ function openStream(): void {
         })
         .catch((error: unknown) => {
           probe = probeOf(error);
+          if (probe !== 'unpaired') {
+            requestFailed = true;
+            draw();
+          }
         })
         .finally(() => {
           if (afterStreamCheck(probe) === 'unpaired') becomeUnpaired();
@@ -212,6 +264,8 @@ async function connect(): Promise<void> {
       becomeUnpaired();
       return;
     }
+    requestFailed = true;
+    draw();
   }
   if (!source) openStream();
 }
@@ -262,7 +316,7 @@ function pairFromPaste(): void {
   const token = parsePairingInput(input.value);
   input.value = '';
   if (!token) {
-    pairReason = PASTE_REJECTED;
+    pairReason = t('pair.pasteRejected');
     draw();
     return;
   }
@@ -283,6 +337,7 @@ async function start(): Promise<void> {
     lastUpdateMs = kept.receivedAtMs;
     draw();
   }
+  armUnreachableTimer();
   try {
     if (!(await tryPairFromHash())) await connect();
   } catch {
@@ -291,6 +346,20 @@ async function start(): Promise<void> {
 }
 
 app.addEventListener('click', (event) => {
+  const themeButton = (event.target as HTMLElement).closest('[data-action="theme"]');
+  if (themeButton) {
+    theme = parseTheme(themeButton.getAttribute('data-value'));
+    saveTheme(storage(), theme);
+    applyTheme(document.documentElement, theme);
+    draw();
+    return;
+  }
+  const filterButton = (event.target as HTMLElement).closest('[data-action="skua-filter"]');
+  if (filterButton) {
+    skuaFilter = parseLogFilter(filterButton.getAttribute('data-value'));
+    draw();
+    return;
+  }
   if ((event.target as HTMLElement).closest('[data-action="pair-paste"]')) {
     pairFromPaste();
     return;

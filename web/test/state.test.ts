@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   characterHref, characterRow, characterRows, deviceName, expFraction, formatCompact, formatNumber,
-  hardFarmsView, iosInstallHint, linkBanner, noticeLine, parseRoute, parseState, relativeTime,
+  hardFarmsView, iosInstallHint, linkAfterFreshData, linkBanner, noticeLine, parseRoute, parseState, relativeTime,
 } from '../src/state';
 import type { Character, RemoteState } from '../src/types';
 
@@ -67,6 +67,54 @@ describe('linkBanner', () => {
   it('only says "Connecting..." in a calm tone on a first visit, when no data was ever shown', () => {
     expect(linkBanner(false, null, NOW, false)).toEqual({ tone: 'neutral', text: 'Connecting...' });
     expect(linkBanner(true, null, NOW, false)).toBeNull();
+  });
+});
+
+describe('linkBanner when Questkeeper cannot be reached', () => {
+  const SENTENCE = "Can't reach Questkeeper. Check that your PC is on and Questkeeper is running.";
+  it('keeps the old wording for a short reconnect', () => {
+    expect(linkBanner(false, NOW - 180_000, NOW, true, { downSinceMs: NOW - 9_900, requestFailed: false })?.text).toBe('Old data - last update 3 min ago. Reconnecting...');
+    expect(linkBanner(false, NOW - 180_000, NOW, true, { downSinceMs: NOW - 10_000, requestFailed: false })?.text).toBe('Old data - last update 3 min ago. Reconnecting...');
+  });
+  it('turns to unreachable once the connection has been down for more than 10 s', () => {
+    expect(linkBanner(false, NOW - 180_000, NOW, true, { downSinceMs: NOW - 10_001, requestFailed: false })).toEqual({
+      tone: 'warn', text: "Can't reach Questkeeper. Last update 3 min ago. Check that your PC is on and Questkeeper is running.",
+    });
+  });
+  it('turns to unreachable at once when the last state request failed or timed out', () => {
+    expect(linkBanner(false, NOW - 7_200_000, NOW, true, { downSinceMs: NOW - 1_000, requestFailed: true })?.text).toBe(
+      "Can't reach Questkeeper. Last update 2 h ago. Check that your PC is on and Questkeeper is running.",
+    );
+  });
+  it('leaves the age out when stored data has no known time or there is none', () => {
+    expect(linkBanner(false, null, NOW, true, { downSinceMs: null, requestFailed: true })).toEqual({ tone: 'warn', text: SENTENCE });
+    expect(linkBanner(false, Number.NaN, NOW, true, { downSinceMs: null, requestFailed: true })?.text).toBe(SENTENCE);
+  });
+  it('replaces Connecting... on a first visit with no data once it has failed', () => {
+    expect(linkBanner(false, null, NOW, false, { downSinceMs: NOW - 2_000, requestFailed: false })).toEqual({ tone: 'neutral', text: 'Connecting...' });
+    expect(linkBanner(false, null, NOW, false, { downSinceMs: NOW - 11_000, requestFailed: false })).toEqual({ tone: 'warn', text: SENTENCE });
+    expect(linkBanner(false, null, NOW, false, { downSinceMs: NOW - 1_000, requestFailed: true })).toEqual({ tone: 'warn', text: SENTENCE });
+  });
+  it('clears when the stream is open again, whatever happened before', () => {
+    expect(linkBanner(true, NOW - 180_000, NOW, true, { downSinceMs: NOW - 60_000, requestFailed: true })).toBeNull();
+  });
+  it('is backward compatible without the link facts', () => {
+    expect(linkBanner(false, NOW - 180_000, NOW)?.text).toBe('Old data - last update 3 min ago. Reconnecting...');
+  });
+});
+
+describe('linkAfterFreshData', () => {
+  it('restarts the down clock and forgets the failure when data arrives with the stream closed', () => {
+    const link = linkAfterFreshData(false, { downSinceMs: NOW - 60_000, requestFailed: true }, NOW);
+    expect(link).toEqual({ downSinceMs: NOW, requestFailed: false });
+    expect(linkBanner(false, NOW, NOW + 10_000, true, link)?.text).toBe('Old data - last update just now. Reconnecting...');
+  });
+  it('still says unreachable once the fresh data is itself older than 10 s of silence', () => {
+    const link = linkAfterFreshData(false, { downSinceMs: NOW - 60_000, requestFailed: true }, NOW);
+    expect(linkBanner(false, NOW, NOW + 10_001, true, link)?.text).toContain("Can't reach Questkeeper");
+  });
+  it('keeps the clock untouched while the stream is open', () => {
+    expect(linkAfterFreshData(true, { downSinceMs: null, requestFailed: true }, NOW)).toEqual({ downSinceMs: null, requestFailed: false });
   });
 });
 

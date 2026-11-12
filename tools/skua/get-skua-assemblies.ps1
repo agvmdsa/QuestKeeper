@@ -3,8 +3,11 @@
   Fetches the Skua interface assemblies the Questkeeper plugin compiles against.
 .DESCRIPTION
   Plan A (default): download the official x64 .msi from the Skua release and unpack it
-  with "msiexec /a" (administrative install, nothing is installed).
-  Plan B (-FromSource): clone the release tag and build the two library projects.
+  with "msiexec /a" (administrative install, nothing is installed). The .msi's SHA-256 must match
+  the value pinned below for that version BEFORE msiexec runs; a version without a pinned hash or
+  a mismatch stops the script. There is no switch to skip the check.
+  Plan B (-FromSource): clone the release tag and build the two library projects (no hash pin:
+  it trusts the tag on GitHub).
   Nothing downloaded here is committed; the destination is git-ignored.
 #>
 [CmdletBinding()]
@@ -15,6 +18,13 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# SHA-256 of the official x64 .msi per Skua version. Computed from the downloaded file on 2026-11-12 and equal to the
+# digest GitHub publishes for the release asset (gh api repos/auqw/Skua/releases/tags/1.4.5.0). Add a version only
+# after checking both the same way.
+$KnownMsiSha256 = @{
+    '1.4.5.0' = '51B6DBF67DCCF33D6329F9B8FACECC952575635ED1A4DC37F861C2E67EC0DEEE'
+}
 
 $required = @('Skua.Core.Interfaces.dll', 'Skua.Core.Models.dll')
 $optional = @('Skua.Core.dll')
@@ -37,7 +47,15 @@ try {
     else {
         $msi = Join-Path $work "Skua-$Version-Release-x64.msi"
         $url = "https://github.com/auqw/Skua/releases/download/$Version/Skua-$Version-Release-x64.msi"
+        if (-not $KnownMsiSha256.ContainsKey($Version)) {
+            throw "No pinned SHA-256 for the Skua $Version .msi. Pin it in `$KnownMsiSha256 after checking it, or use -FromSource."
+        }
         Invoke-WebRequest -Uri $url -OutFile $msi
+        $actual = (Get-FileHash -Algorithm SHA256 -Path $msi).Hash
+        if ($actual -ne $KnownMsiSha256[$Version]) {
+            throw "The downloaded Skua $Version .msi does not match its pinned SHA-256 (expected $($KnownMsiSha256[$Version]), got $actual). It was not run."
+        }
+        Write-Host "Skua $Version .msi SHA-256 matches the pinned value."
         $target = Join-Path $work 'extracted'
         New-Item -ItemType Directory -Path $target | Out-Null
         $p = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/a', "`"$msi`"", '/qn', "TARGETDIR=`"$target`"") -Wait -PassThru

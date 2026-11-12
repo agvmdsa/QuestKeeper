@@ -6,7 +6,9 @@ type Catalog = Readonly<Record<string, string>>;
 
 /** Keys that have both a `.one` and a `.other` sibling, without the suffix: the ones plural() takes. */
 type Strip<K, S extends string> = K extends `${infer B}${S}` ? B : never;
-export type BaseKey = Extract<Strip<MessageKey, '.one'>, Strip<MessageKey, '.other'>>;
+/** The bases of a key union that have both a `.one` and an `.other` form. */
+export type BaseOf<K extends string> = Extract<Strip<K, '.one'>, Strip<K, '.other'>>;
+export type BaseKey = BaseOf<MessageKey>;
 
 /** The supported locales. Adding one: a catalog file, an import and one entry here. */
 export const LOCALES = { en } satisfies Record<string, Catalog>;
@@ -58,7 +60,7 @@ export function pluralFrom(catalog: Catalog, loc: string, base: string, n: numbe
     // An unknown language falls back to the generic form.
   }
   const key = category === 'one' ? `${base}.one` : `${base}.other`;
-  return fill(lookup(catalog, key), { n, ...params });
+  return fill(lookup(catalog, key), { n: numberText(n, loc), ...params });
 }
 
 export function plural(base: BaseKey, n: number, params?: Params): string {
@@ -67,15 +69,24 @@ export function plural(base: BaseKey, n: number, params?: Params): string {
 
 const formats = new Map<string, Intl.NumberFormat>();
 
+/** A number written for a language ("1,234" or "1.5" in English); the plain digits when the language is unknown. */
+function numberText(n: number, loc: string): string {
+  try {
+    let format = formats.get(loc);
+    if (!format) {
+      format = new Intl.NumberFormat(loc);
+      formats.set(loc, format);
+    }
+    return format.format(n);
+  } catch {
+    return String(n);
+  }
+}
+
 /** A whole number with thousands separators of the current language ("1,234" in English). */
 export function formatNumberLocale(n: number): string {
   const whole = Math.trunc(n) + 0; // + 0 turns -0 into 0
   // Beyond the safe range, or not a number, the plain digits stay as they always were.
   if (!Number.isSafeInteger(whole)) return String(whole).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  let format = formats.get(locale);
-  if (!format) {
-    format = new Intl.NumberFormat(locale);
-    formats.set(locale, format);
-  }
-  return format.format(whole);
+  return numberText(whole, locale);
 }

@@ -42,7 +42,7 @@ export function parseSkua(value: unknown): SkuaState | null {
 
 /** "just now", "3 min", "1 h 5 min", "2 d 3 h". */
 export function formatDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms < MINUTE_MS) return t('duration.now');
+  if (!Number.isFinite(ms) || ms < MINUTE_MS) return t('time.now');
   const minutes = Math.floor(ms / MINUTE_MS);
   if (minutes < 60) return t('duration.minutes', { n: minutes });
   const hours = Math.floor(minutes / 60);

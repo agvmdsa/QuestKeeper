@@ -80,7 +80,6 @@ export const en = {
   'skua.runningFor': 'Running {name} for {duration}',
   'skua.log.title': 'Log',
 
-  'duration.now': 'just now',
   'duration.minutes': '{n} min',
   'duration.hours': '{n} h',
   'duration.hoursMinutes': '{h} h {m} min',

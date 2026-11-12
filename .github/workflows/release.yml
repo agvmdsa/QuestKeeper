@@ -88,6 +88,23 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path "dist/Questkeeper-Setup-v$label.exe")) { Write-Error "The installer was not produced"; exit 1 }
 
+      # The Skua plugin is a separate download: it is NOT in the zip or the installer. Its file goes into dist/ so the Checksums step lists it
+      # in SHA256SUMS.txt, and the hash is repeated in the release notes. The Skua interface assemblies come from the official Skua release
+      # (never committed); MinVer gives the plugin the same version as the app (same Directory.Build.props, same tag).
+      - name: Build the Skua plugin
+        shell: pwsh
+        run: |
+          ./tools/skua/get-skua-assemblies.ps1 -Version 1.4.5.0 -Destination plugin/QuestKeeper.SkuaBridge/lib/skua
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build plugin/QuestKeeper.SkuaBridge -c Release -o out/skua-plugin
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $dll = 'out/skua-plugin/QuestKeeper.SkuaBridge.dll'
+          if (-not (Test-Path $dll)) { Write-Error "The plugin was not produced"; exit 1 }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item $dll dist/QuestKeeper.SkuaBridge.dll
+          $hash = (Get-FileHash dist/QuestKeeper.SkuaBridge.dll -Algorithm SHA256).Hash.ToLower()
+          "SKUA_PLUGIN_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Checksums
         shell: pwsh
         run: |
@@ -107,5 +124,7 @@ jobs:
           $files = Get-ChildItem dist -File | ForEach-Object FullName
           $flags = @()
           if ($env:TAG.Contains('-')) { $flags += '--prerelease' }
-          gh release create $env:TAG @files --title $env:TAG --generate-notes @flags
+          # --notes is put in front of the generated notes (gh documents the combination).
+          $notes = "Skua plugin: QuestKeeper.SkuaBridge.dll (SHA-256 $($env:SKUA_PLUGIN_SHA256)). Copy it into %AppData%\Skua\plugins and reopen Skua."
+          gh release create $env:TAG @files --title $env:TAG --notes $notes --generate-notes @flags
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

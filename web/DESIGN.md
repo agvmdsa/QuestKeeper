@@ -186,6 +186,18 @@ A link-styled grid row, at least 3rem tall, ink text, no underline at rest. The 
 ### Status line
 A 0.75rem dot plus words. `live` is solid green, `idle` is solid orange, `saved` is hollow; the dot is `aria-hidden`, the text carries the meaning.
 
+### Skua tab
+Three stacked cards in a fixed order, under the Back link; when Skua is not connected or the versions differ there is only one calm card with the explanation.
+- **Now:** the character name as a serif 1.25rem headline, a muted "Server · Map" line, then the script as a status line (solid green dot with "Running for 12 min", or solid orange with "No script running") and the script name muted under it. Without a character it says "Not logged in to a character." in place of the name and place.
+- **Active quests:** the heading carries the count ("Active quests · 3", written with `plural()` so a screen reader hears it). A semantic list, ready quests first, then the game's order, rows divided by Band rules. A plugin that does not report quests (null) shows no card; an empty list says "No active quests."
+- **Log:** the filter chips under the heading, then the newest-first list. An empty filter says "Nothing here yet."; an empty log "Nothing to show yet." The filter never hides the other two cards.
+
+### Filter chips
+A labelled group (`role="group"`, "Filter the log") of toggle buttons: Everything, Shop, Drops, Maps, Script, Session. They are the theme buttons' twins: at least 3rem tall, `aria-pressed`, `data-action="skua-filter"` with `data-value`; the pressed one is Accent Orange with a 3px border (never colour alone). The row wraps onto a second line instead of scrolling. The choice lives in memory only (a reload starts at Everything), and keyboard focus returns to the pressed chip after the redraw through `focusKey`. Quest accepted and turned-in lines belong to no chip and show only under Everything.
+
+### Ready marker
+"Ready to turn in" on a quest row is a status line whose dot is a solid green diamond (the round dot turned 45 degrees) next to the words, so it differs from the round status dots by shape as well as by text. It uses only existing tokens (`--ok`, `--border`), so the contrast tests already cover it in every theme.
+
 ### Progress bar
 A 0.625rem track (Band, gold border, 5px corners) with a fill of Bar Red whose width follows `--fraction`, animated 250ms with `cubic-bezier(0.25, 1, 0.5, 1)`. It is a `progressbar` with a label and value. Used for experience to the next level and Hard Farms owned.
 

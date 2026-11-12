@@ -1,8 +1,8 @@
 import { characterHref, characterRow, characterRows, expFraction, formatNumber, hardFarmsView, noticeLine } from './state';
-import { t } from './i18n';
-import { skuaEmptyText, skuaHeader, skuaLogRows, skuaSummary } from './skua';
+import { plural, t } from './i18n';
+import { LOG_FILTERS, LOG_FILTER_LABELS, questRows, skuaEmptyText, skuaLogRows, skuaNow, skuaSummary, type LogFilter } from './skua';
 import { THEMES, type ThemeChoice } from './theme';
-import type { Faction, RemoteState } from './types';
+import type { Faction, RemoteState, SkuaState } from './types';
 
 export interface VNode {
   tag: string;
@@ -22,6 +22,8 @@ export interface Model {
   installHint: string | null;
   /** The stored appearance choice; System when absent. */
   theme?: ThemeChoice;
+  /** The selected Skua log filter; Everything when absent. */
+  skuaFilter?: LogFilter;
 }
 
 type Child = VNode | null | false;
@@ -130,25 +132,68 @@ export function listView(model: Model): VNode {
   );
 }
 
-export function skuaView(model: Model): VNode {
-  const skua = model.state?.skua ?? null;
-  const header = skua ? skuaHeader(skua, model.nowMs) : null;
-  const rows = skua && skua.connection === 'Connected' ? skuaLogRows(skua, model.nowMs) : [];
-  const emptyText = skuaEmptyText(skua);
+function nowCard(skua: SkuaState, nowMs: number): VNode | null {
+  const now = skuaNow(skua, nowMs);
+  if (!now) return null;
+  return h(
+    'section',
+    { className: 'now-card' },
+    h('h2', { text: t('skua.now.title') }),
+    now.loggedIn ? (now.character ? h('p', { className: 'now-name', text: now.character }) : null) : h('p', { className: 'skua-line', text: t('skua.notLoggedIn') }),
+    now.where ? h('p', { className: 'skua-line', text: now.where }) : null,
+    status(now.script.running ? 'live' : 'idle', now.script.text),
+    now.script.name ? h('p', { className: 'skua-line', text: now.script.name }) : null,
+  );
+}
+
+function questsCard(skua: SkuaState): VNode | null {
+  const quests = questRows(skua);
+  if (!quests) return null;
+  return h(
+    'section',
+    { className: 'card' },
+    h('h2', { text: plural('skua.quests.title', quests.length) }),
+    quests.length === 0
+      ? empty(t('skua.quests.none'))
+      : h('ul', { className: 'quests' }, ...quests.map((q) => h('li', {}, h('p', { className: 'name', text: q.name }), q.ready ? status('ready', t('skua.quests.ready')) : null))),
+  );
+}
+
+function filterRow(selected: LogFilter): VNode {
   return h(
     'div',
-    {},
-    back(),
-    h('section', { className: 'card' }, h('h2', { text: header?.title ?? t('skua.title') }), ...(header?.lines ?? []).map((line) => h('p', { className: 'skua-line', text: line }))),
-    h(
-      'section',
-      { className: 'card' },
-      h('h2', { text: t('skua.log.title') }),
-      emptyText
-        ? empty(emptyText)
-        : h('ul', { className: 'skua-log' }, ...rows.map((r) => h('li', {}, h('p', { text: r.text }), r.when ? h('p', { className: 'muted', text: r.when }) : null))),
+    { className: 'filters', attrs: { role: 'group', 'aria-label': t('skua.filter.group') } },
+    ...LOG_FILTERS.map((filter) =>
+      h('button', {
+        className: 'filter-btn',
+        text: t(LOG_FILTER_LABELS[filter]),
+        attrs: { type: 'button', 'data-action': 'skua-filter', 'data-value': filter, 'aria-pressed': String(filter === selected) },
+      }),
     ),
   );
+}
+
+function logCard(skua: SkuaState, model: Model): VNode {
+  const filter = model.skuaFilter ?? 'all';
+  const rows = skuaLogRows(skua, model.nowMs, filter);
+  const emptyText = skuaEmptyText(skua, filter);
+  return h(
+    'section',
+    { className: 'card' },
+    h('h2', { text: t('skua.log.title') }),
+    filterRow(filter),
+    emptyText
+      ? empty(emptyText)
+      : h('ul', { className: 'skua-log' }, ...rows.map((r) => h('li', {}, h('p', { text: r.text }), r.when ? h('p', { className: 'muted', text: r.when }) : null))),
+  );
+}
+
+export function skuaView(model: Model): VNode {
+  const skua = model.state?.skua ?? null;
+  if (!skua || skua.connection !== 'Connected') {
+    return h('div', {}, back(), h('section', { className: 'card' }, h('h2', { text: t('skua.title') }), empty(skuaEmptyText(skua))));
+  }
+  return h('div', {}, back(), nowCard(skua, model.nowMs), questsCard(skua), logCard(skua, model));
 }
 
 function factionRow(f: Faction): VNode {

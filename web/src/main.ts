@@ -8,6 +8,7 @@ import {
   parseState,
   recallKept, reconnectDelay, streamErrorStep, takePairingToken, type PairProbe,
 } from './state';
+import { parseLogFilter, type LogFilter } from './skua';
 import { detectLocale, setLocale, t } from './i18n';
 import type { Notice, RemoteState } from './types';
 import { characterView, drawFailedView, listView, mount, pairNeededView, skuaView, withFooter, type Model, type VNode } from './views';
@@ -43,6 +44,8 @@ let unpaired = false;
 let pairReason: string | null = null;
 let showAll = false;
 let hfOpen = false;
+// The Skua log filter lives in memory only: a reload starts at Everything.
+let skuaFilter: LogFilter = 'all';
 let source: EventSource | null = null;
 let attempts = 0;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -94,7 +97,7 @@ function drawBanner(): void {
 }
 
 function tree(): VNode {
-  const model: Model = { state: state && { ...state, notices }, nowMs: Date.now(), showAll, hfOpen, installHint, theme };
+  const model: Model = { state: state && { ...state, notices }, nowMs: Date.now(), showAll, hfOpen, installHint, theme, skuaFilter };
   if (unpaired) return withFooter(pairNeededView(pairReason, installHint), model);
   const route = parseRoute(location.hash);
   if (route.view === 'skua') return withFooter(skuaView(model), model);
@@ -318,6 +321,12 @@ app.addEventListener('click', (event) => {
     theme = parseTheme(themeButton.getAttribute('data-value'));
     saveTheme(storage(), theme);
     applyTheme(document.documentElement, theme);
+    draw();
+    return;
+  }
+  const filterButton = (event.target as HTMLElement).closest('[data-action="skua-filter"]');
+  if (filterButton) {
+    skuaFilter = parseLogFilter(filterButton.getAttribute('data-value'));
     draw();
     return;
   }

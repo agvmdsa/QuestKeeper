@@ -30,6 +30,21 @@ describe('app.css', () => {
   });
 });
 
+describe('skua tab styles', () => {
+  it('gives the filter buttons a 3rem tap target and lets them wrap without scrolling', () => {
+    const rule = css.match(/\.filter-btn\s*\{([^}]*)\}/)![1]!;
+    expect(rule).not.toMatch(/min-height:\s*[^3]/);
+    expect(rule).not.toMatch(/(^|[;\s])height:/);
+    const row = css.match(/\.filters\s*\{([^}]*)\}/)![1]!;
+    expect(row).toMatch(/flex-wrap:\s*wrap/);
+    expect(row).not.toMatch(/overflow/);
+  });
+  it('shows the pressed filter with a thicker border, not colour alone', () => expect(css).toMatch(/\.filter-btn\[aria-pressed="true"\]\s*\{[^}]*border-width:\s*3px/));
+  it('gives the ready marker a shape of its own (a diamond, not the round status dot)', () => {
+    expect(css).toMatch(/\.dot\[data-kind="ready"\]\s*\{[^}]*rotate\(45deg\)/);
+  });
+});
+
 describe('index.html', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   it('wraps the title strip and the banner in one sticky container', () => {

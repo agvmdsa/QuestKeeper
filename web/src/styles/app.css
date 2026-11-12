@@ -52,7 +52,11 @@ main > div { display: grid; gap: 1rem; }
 .notice-title { font-weight: 600; }
 .notices .muted { overflow-wrap: anywhere; }
 .skua-line { color: var(--muted); font-size: 0.9375rem; }
-.skua-line:first-of-type { margin-top: 0.25rem; }
+.now-name { font-family: Georgia, "Times New Roman", serif; font-size: 1.25rem; line-height: 1.2; overflow-wrap: anywhere; }
+.now-card .skua-line, .now-card .status { margin-top: 0.25rem; }
+.quests li + li { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--raised); }
+.quests .status { margin-top: 0.25rem; font-weight: 600; }
+.dot[data-kind="ready"] { background: var(--ok); border-radius: 0.125rem; transform: rotate(45deg); }
 .skua-log li + li { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--raised); }
 .skua-log p { overflow-wrap: anywhere; }
 .reason { margin-bottom: 0.5rem; font-weight: 600; }
@@ -81,3 +85,7 @@ button { min-height: 3rem; margin-top: 0.5rem; padding: 0 1rem; font: inherit; f
 .appearance-row { display: flex; gap: 0.5rem; }
 .theme-btn { flex: 1; min-width: 3rem; margin-top: 0; color: var(--text); background: var(--surface); }
 .theme-btn[aria-pressed="true"] { color: var(--on-accent); background: var(--accent); border-width: 3px; }
+
+.filters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
+.filter-btn { min-width: 3rem; margin-top: 0; color: var(--text); background: var(--surface); }
+.filter-btn[aria-pressed="true"] { color: var(--on-accent); background: var(--accent); border-width: 3px; }

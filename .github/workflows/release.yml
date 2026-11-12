@@ -94,8 +94,9 @@ jobs:
       - name: Build the Skua plugin
         shell: pwsh
         run: |
+          # The script reports failure by throwing (the step runs with $ErrorActionPreference = 'stop'); it runs no native command, so
+          # $LASTEXITCODE is still $null here and must not be tested ($null -ne 0 is true and would end the step early).
           ./tools/skua/get-skua-assemblies.ps1 -Version 1.4.5.0 -Destination plugin/QuestKeeper.SkuaBridge/lib/skua
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build plugin/QuestKeeper.SkuaBridge -c Release -o out/skua-plugin
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $dll = 'out/skua-plugin/QuestKeeper.SkuaBridge.dll'

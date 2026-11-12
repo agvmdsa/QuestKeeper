@@ -120,7 +120,7 @@ Off by default. **Settings, "Watch my characters from my phone"** serves a small
 
 ## Skua plugin
 
-An optional, separate download for people who play with [Skua](https://github.com/auqw/Skua) (a third-party game client). `QuestKeeper.SkuaBridge.dll` runs inside Skua and shows Skua's state and a short log (character, server, map, script running or not, buys, sells, drops, map changes) in the **Skua** tab of the phone page. It is read-only: it only reports, it cannot start, stop or change anything in Skua or the game, and nothing flows from Questkeeper into Skua.
+An optional, separate download for people who play with [Skua](https://github.com/auqw/Skua) (a third-party game client). `QuestKeeper.SkuaBridge.dll` runs inside Skua and shows Skua's state in the **Skua** tab of the phone page: a **Now** card (character, server, map, script running or not), the **Active quests** (with the ones ready to turn in marked), and a short **Log** (buys, sells, drops, map changes, script start, stop and errors, deaths, logouts and relogins) with type filters (Everything, Shop, Drops, Maps, Script, Session). It is read-only: it only reports, it cannot start, stop or change anything in Skua or the game, and nothing flows from Questkeeper into Skua.
 
 **Install**
 

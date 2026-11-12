@@ -1,8 +1,9 @@
 # QuestKeeper.SkuaBridge
 
 A read-only Skua plugin. It runs inside Skua 1.4.5.0 and reports Skua's state and a short event log to Questkeeper over a
-local named pipe (`QuestKeeper.SkuaBridge.v1`, current Windows user only, outbound only). Status: **written and
-statically reviewed, not verified inside Skua** (only the owner's Windows can prove it).
+local named pipe (`QuestKeeper.SkuaBridge.v1`, current Windows user only, outbound only). Status: **connect and status
+verified by the owner on Windows on 2026-11-11 with an earlier build; the quest reading, the re-attach across script
+runs and the rest are not yet verified** (only the owner's Windows can prove it).
 
 ## Corrections to the plan (verified against the 1.4.5.0 DLLs and the 1.4.5.0 tag source)
 

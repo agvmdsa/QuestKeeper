@@ -44,11 +44,15 @@ internal static class BridgeMessages
         return Blank(name);
     }
 
-    /// <summary>The message of the error that stopped a script. Skua invokes ScriptMain by reflection, so the real error is usually the inner one.</summary>
+    /// <summary>
+    /// The message of the error that stopped a script. Skua invokes ScriptMain by reflection, so the real error is usually
+    /// the inner one. Absolute paths in it are reduced to their file name (<see cref="SkuaText.WithFileNamesOnly"/>), so the
+    /// Windows user name in a local folder does not leave the plugin.
+    /// </summary>
     public static string ErrorText(Exception exception)
     {
         var actual = exception is TargetInvocationException { InnerException: { } inner } ? inner : exception;
-        return Blank(actual.Message) ?? actual.GetType().Name;
+        return Blank(actual.Message is { } message ? SkuaText.WithFileNamesOnly(message) : null) ?? actual.GetType().Name;
     }
 
     /// <summary>The plugin's own version as the release names it (MinVer's informational version without build metadata).</summary>

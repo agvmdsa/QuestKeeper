@@ -254,4 +254,32 @@ public class SkuaLineTests
         Assert.True(System.Text.Encoding.UTF8.GetByteCount(line) > SkuaProtocol.MaxLineBytes);
         Assert.Null(SkuaLine.Parse(line));
     }
+
+    [Fact]
+    public void A_status_with_lone_surrogates_in_its_text_is_written_and_round_trips_without_them()
+    {
+        // Built at run time: a lone surrogate in a literal may be coerced by the compiler.
+        var lone = ((char)0xD800).ToString();
+        var message = new StatusMessage(new SkuaStatus(
+            true, "He" + lone + "ro", "Artix", "battle" + lone + "on", "Farm" + lone, false, null, [new SkuaQuest(5, lone + "Slay", false)]));
+
+        var line = SkuaLine.ToLine(message);
+        var parsed = Assert.IsType<StatusMessage>(SkuaLine.Parse(line));
+
+        Assert.Equal(new SkuaStatus(true, "Hero", "Artix", "battleon", "Farm", false, null, [new SkuaQuest(5, "Slay", false)]), parsed.Status);
+        Assert.DoesNotContain('\uFFFD', line);
+    }
+
+    [Fact]
+    public void Hello_and_log_with_lone_surrogates_are_written_and_round_trip_without_them()
+    {
+        var lone = ((char)0xDC00).ToString();
+
+        var hello = Assert.IsType<HelloMessage>(SkuaLine.Parse(SkuaLine.ToLine(new HelloMessage(new SkuaHello("0.1.0" + lone, "1.4.5.0")))));
+        var log = Assert.IsType<LogMessage>(SkuaLine.Parse(SkuaLine.ToLine(
+            new LogMessage(new SkuaLogEntry(Noon, SkuaLogKind.Dropped, "Bone" + lone + " x2")))));
+
+        Assert.Equal(new SkuaHello("0.1.0", "1.4.5.0"), hello.Hello);
+        Assert.Equal("Bone x2", log.Entry.Text);
+    }
 }

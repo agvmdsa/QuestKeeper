@@ -264,8 +264,14 @@ public static class SkuaLine
         }
     }
 
+    /// <summary>
+    /// Every string goes through here on both sides: lone surrogates are removed first (the writer would throw on one, see
+    /// <see cref="SkuaText.WithoutLoneSurrogates"/>), then the text is cut to <see cref="SkuaProtocol.MaxTextLength"/>
+    /// without splitting a pair.
+    /// </summary>
     private static string Cut(string value)
     {
+        value = SkuaText.WithoutLoneSurrogates(value);
         if (value.Length <= SkuaProtocol.MaxTextLength)
         {
             return value;

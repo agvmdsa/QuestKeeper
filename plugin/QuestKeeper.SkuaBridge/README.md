@@ -62,7 +62,8 @@ throwaway project and read in the tag source.
   sale), dropped (`Drop: X` for an item offered in the drop list, Skua's `dropItem`, the usual farming case; `Received: X`
   for an item put straight into the inventory, Skua's `addItems`, such as a reward; accepting a drop-list item raises no
   further event, so each drop is one line), map changed, died, logged out, relogin, script started, script stopped,
-  script error. Quest accepted / turned in are no longer sent (the active quests travel in the status instead); the two
+  script error (the exception's message with every absolute path reduced to its file name, so no local folder and its
+  Windows user name leaves the plugin). Quest accepted / turned in are no longer sent (the active quests travel in the status instead); the two
   kinds stay in the protocol so logs kept by an older version still load.
 - Never: gold, inventory contents, monster kills (`MonsterKilled` is not subscribed).
 
@@ -73,7 +74,11 @@ throwaway project and read in the tag source.
 - Handlers run on Skua's threads (the UI thread for game packets, the script thread, a `Task.Run` for
   `ScriptStopping`) and only build a message and queue it. Every read that goes through Flash (inventory, quests,
   logged in, map, user name, active quests) runs on one background task, never on Skua's threads.
-- Queues are bounded (256, oldest dropped): the pipe client's line queue and the worker's queue.
+- Queues are bounded (256, oldest dropped): the pipe client's line queue and the worker's queue. A status is never
+  queued itself: one marker means "write the latest status here", and at most one marker is pending, so status changes
+  during a long disconnect cannot push log lines out or queue repeated writes.
+- Every string sent loses its lone surrogates (an unpaired UTF-16 half that Skua or the game may hand over), because
+  the JSON writer refuses them and the whole message would be lost.
 - While Questkeeper is not connected the plugin does no Flash reads at all: no status poll, no inventory snapshot, no
   quest read (log lines still queue, unnamed where a read would be needed). When the pipe connects, `hello` and
   the last known status are written, then one status read and one snapshot are requested.
@@ -81,7 +86,8 @@ throwaway project and read in the tag source.
   whole timeout while the pipe does not exist), then waits 1 s doubling to 30 s, retrying for the plugin's whole life; on
   each connect it writes `hello`, the latest status, then the queue; a write error drops the connection and reconnects;
   an empty line every 10 s while idle finds a closed Questkeeper (Questkeeper's reader skips empty lines). `Dispose`
-  cancels, waits up to 2 s, then disposes its token source.
+  cancels, waits up to 2 s, then disposes its token source. `Unload` first waits up to 1 s for the background task to
+  finish the read it may be in (bounded, since `Unload` may run on Skua's UI thread), then disposes the pipe client.
 - No snapshot on a map change (it does not change the inventory).
 
 ## Cost of the quest reads (unverified on a real Skua)

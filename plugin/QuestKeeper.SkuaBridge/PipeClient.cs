@@ -29,21 +29,33 @@ internal sealed class PipeClient : IDisposable
 
     private static readonly byte[] NewLine = "\n"u8.ToArray();
 
-    // A null entry means "send the latest status here". Status itself is never queued, so a reconnect cannot replay an old one.
-    private readonly Channel<string?> _queue = Channel.CreateBounded<string?>(
-        new BoundedChannelOptions(Capacity) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true, SingleWriter = false });
+    // A null entry means "send the latest status here". Status itself is never queued, so a reconnect cannot replay an old one,
+    // and at most one marker is pending (_statusQueued), so frequent status changes during a long disconnect cannot push log
+    // lines out of the bounded queue or queue repeated writes of the same status.
+    // A dropped marker clears the flag so the next change queues one again; a reconnect writes the latest status anyway.
+    private readonly Channel<string?> _queue;
 
     private readonly CancellationTokenSource _cancel = new();
     private readonly object _lock = new();
     private readonly string _helloLine;
     private readonly Action? _onConnected;
     private string? _statusLine;
+    private int _statusQueued;
     private bool _connected;
     private Task? _loop;
     private bool _disposed;
 
     public PipeClient(SkuaHello hello, Action? onConnected = null)
     {
+        _queue = Channel.CreateBounded<string?>(
+            new BoundedChannelOptions(Capacity) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true, SingleWriter = false },
+            dropped =>
+            {
+                if (dropped is null)
+                {
+                    Volatile.Write(ref _statusQueued, 0);
+                }
+            });
         _helloLine = SkuaLine.ToLine(new HelloMessage(hello));
         _onConnected = onConnected;
     }
@@ -83,7 +95,10 @@ internal sealed class PipeClient : IDisposable
             if (message is StatusMessage)
             {
                 Volatile.Write(ref _statusLine, line);
-                _queue.Writer.TryWrite(null);
+                if (Interlocked.Exchange(ref _statusQueued, 1) == 0 && !_queue.Writer.TryWrite(null))
+                {
+                    Volatile.Write(ref _statusQueued, 0);
+                }
             }
             else
             {
@@ -239,6 +254,12 @@ internal sealed class PipeClient : IDisposable
 
             while (reader.TryRead(out var entry))
             {
+                if (entry is null)
+                {
+                    // Cleared before the status is read: a change from here on queues a new marker, so none is missed.
+                    Volatile.Write(ref _statusQueued, 0);
+                }
+
                 var line = entry ?? Volatile.Read(ref _statusLine);
                 if (line is null)
                 {

@@ -10,10 +10,11 @@ using Skua.Core.Models.Quests;
 namespace QuestKeeper.SkuaBridge;
 
 /// <summary>
-/// Read-only adapter inside Skua. It only reads properties, calls one read-only check (<c>Quests.CanComplete</c>) and
-/// subscribes to events, and reports what it sees to Questkeeper over the outbound pipe. It never calls a Skua method
-/// that changes game or Skua state, receives nothing from Questkeeper, and never lets an exception reach Skua. See
-/// README.md for the audited list of Skua members.
+/// Read-only adapter inside Skua. It only reads properties and subscribes to events, and reports what it sees to
+/// Questkeeper over the outbound pipe. One of those properties, <c>Quests.Active</c>, writes Skua's own quest tree cache
+/// when read (Skua's getter, not a game action), so it is read at most every 15 s. It never calls a Skua method that
+/// changes game or Skua state, receives nothing from Questkeeper, and never lets an exception reach Skua. See README.md
+/// for the audited list of Skua members.
 /// </summary>
 public sealed class SkuaBridgePlugin : ISkuaPlugin
 {
@@ -25,6 +26,9 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
 
     private const int WorkCapacity = 256;
 
+    /// <summary>How long Unload waits for the worker to leave. Unload may run on Skua's UI thread, so the wait stays short.</summary>
+    private static readonly TimeSpan WorkerStopWait = TimeSpan.FromSeconds(1);
+
     private readonly object _subscriptionLock = new();
     private readonly object _stateLock = new();
     private readonly SkuaItemNames _names = new();
@@ -34,6 +38,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
     private PipeClient? _client;
     private Channel<WorkItem>? _work;
     private CancellationTokenSource? _stop;
+    private Task? _worker;
     private bool _subscribed;
     private bool _unloaded;
 
@@ -126,7 +131,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
             Subscribe();
             _client.Start();
             var stop = _stop.Token;
-            _ = Task.Run(() => WorkAsync(stop), stop);
+            _worker = Task.Run(() => WorkAsync(stop), stop);
             RequestStatus();
             RequestSnapshot();
         }
@@ -149,12 +154,30 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
 
             _work?.Writer.TryComplete();
             _stop?.Cancel();
-            _client?.Dispose(); // Waits up to 2 s, which also gives the worker time to leave.
+            StopWorker();
+            _client?.Dispose(); // Waits up to 2 s for the pipe loop.
             _stop?.Dispose();
         }
         catch (Exception)
         {
             // Unloading must never fail into Skua.
+        }
+    }
+
+    /// <summary>
+    /// Waits, bounded, for the worker to finish the Skua read it may be in, so it does not run on after Unload. A worker
+    /// that does not leave in time (a Skua getter that waits for the UI thread this may be running on) is left to end on
+    /// its own: it checks the cancelled token before each read and sends nothing once unloaded.
+    /// </summary>
+    private void StopWorker()
+    {
+        try
+        {
+            _worker?.Wait(WorkerStopWait);
+        }
+        catch (Exception)
+        {
+            // A cancelled or failed worker is gone either way.
         }
     }
 

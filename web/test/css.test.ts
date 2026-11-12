@@ -31,6 +31,12 @@ describe('app.css', () => {
 });
 
 describe('skua tab styles', () => {
+  it('wraps every server-provided line of the Skua tab', () => {
+    for (const sel of ['\\.skua-line', '\\.skua-log p', '\\.now-name', '\\.name']) {
+      expect(css).toMatch(new RegExp(`${sel}\\s*\\{[^}]*overflow-wrap:\\s*anywhere`));
+    }
+  });
+  it('styles the card class the Now card shares', () => expect(css).toMatch(/\.card\s*\{[^}]*background:\s*var\(--surface\)[^}]*border-radius/));
   it('gives the filter buttons a 3rem tap target and lets them wrap without scrolling', () => {
     const rule = css.match(/\.filter-btn\s*\{([^}]*)\}/)![1]!;
     expect(rule).not.toMatch(/min-height:\s*[^3]/);

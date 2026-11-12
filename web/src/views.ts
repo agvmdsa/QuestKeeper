@@ -137,7 +137,7 @@ function nowCard(skua: SkuaState, nowMs: number): VNode | null {
   if (!now) return null;
   return h(
     'section',
-    { className: 'now-card' },
+    { className: 'card now-card' },
     h('h2', { text: t('skua.now.title') }),
     now.loggedIn ? (now.character ? h('p', { className: 'now-name', text: now.character }) : null) : h('p', { className: 'skua-line', text: t('skua.notLoggedIn') }),
     now.where ? h('p', { className: 'skua-line', text: now.where }) : null,

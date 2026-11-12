@@ -158,6 +158,7 @@ function literals(source: string): Literal[] {
 const ALLOWED = new Set([
   'The attribute ${name} is not allowed.', // a programming error thrown by mount(), caught by draw(); never shown
   'muted hint', // CSS class names
+  'card now-card', // CSS class names
   'Browser', // deviceName() fallback: the name stored on the PC for this phone, not page text
   'iPhone', // deviceName(): a device name stored on the PC
   'iPad', // deviceName(): a device name stored on the PC

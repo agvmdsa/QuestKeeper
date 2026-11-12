@@ -51,7 +51,7 @@ main > div { display: grid; gap: 1rem; }
 .notices li + li { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--raised); }
 .notice-title { font-weight: 600; }
 .notices .muted { overflow-wrap: anywhere; }
-.skua-line { color: var(--muted); font-size: 0.9375rem; }
+.skua-line { color: var(--muted); font-size: 0.9375rem; overflow-wrap: anywhere; }
 .now-name { font-family: Georgia, "Times New Roman", serif; font-size: 1.25rem; line-height: 1.2; overflow-wrap: anywhere; }
 .now-card .skua-line, .now-card .status { margin-top: 0.25rem; }
 .quests li + li { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--raised); }

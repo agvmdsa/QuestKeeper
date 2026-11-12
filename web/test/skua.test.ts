@@ -228,6 +228,7 @@ describe('views', () => {
   it('writes the quest count with plural() and lists the quests, ready first, with a shape and words', () => {
     expect(plural('skua.quests.title', 1)).toBe('Active quests · 1');
     expect(plural('skua.quests.title', 3)).toBe('Active quests · 3');
+    expect(plural('skua.quests.title', 30)).toBe('Active quests · 30');
     const view = skuaView(model(withStatus({ quests: [quest(1, 'Gather Bones', false), quest(2, 'Slay the Beast', true)] })));
     const card = sections(view)[1]!;
     const items = all(card).filter((n) => n.tag === 'li');
@@ -271,6 +272,12 @@ describe('views', () => {
     expect(headings(view)).toEqual(['Now', 'Active quests · 1', 'Log']);
     expect(texts(skuaView(model(s, 'drops')))).toContain('Nothing here yet.');
     expect(headings(skuaView(model(s, 'drops')))).toEqual(['Now', 'Active quests · 1', 'Log']);
+  });
+  it('gives all three cards the card class', () => {
+    const view = skuaView(model(withStatus({ quests: [] })));
+    const cards = all(view).filter((n) => n.tag === 'section');
+    expect(cards).toHaveLength(3);
+    for (const c of cards) expect(c.className?.split(' ')).toContain('card');
   });
   it('is stable across redraws: the same data gives the same tree', () => {
     expect(JSON.stringify(skuaView(model(skua())))).toBe(JSON.stringify(skuaView(model(skua()))));

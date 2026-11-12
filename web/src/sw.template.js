@@ -29,7 +29,7 @@ const unreachablePage = () =>
     {
       status: 503,
       statusText: 'Unreachable',
-      headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' },
+      headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'none'" },
     },
   );
 
@@ -65,14 +65,23 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(network.catch(() => fallback(request)));
     return;
   }
-  let timer;
-  const late = new Promise((resolve) => {
-    timer = setTimeout(() => resolve(TIMED_OUT), SHELL_WAIT_MS);
-  });
-  event.respondWith(
-    Promise.race([network, late])
-      .then((result) => (result === TIMED_OUT ? fallback(request) : result))
-      .catch(() => fallback(request))
-      .finally(() => clearTimeout(timer)),
-  );
+  const wait = async () => {
+    // The timer only applies where there is something to fall back to: a cached copy, or a navigation (which gets the plain page).
+    // Without one, a slow network is waited for as before, so a new version's assets on a slow link still load.
+    const canFallBack = request.mode === 'navigate' || request.destination === 'document' || !!(await caches.match(request));
+    if (!canFallBack) return network.catch(() => fallback(request));
+    let timer;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(() => resolve(TIMED_OUT), SHELL_WAIT_MS);
+    });
+    try {
+      const result = await Promise.race([network, late]);
+      return result === TIMED_OUT ? await fallback(request) : result;
+    } catch {
+      return fallback(request);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  event.respondWith(wait());
 });

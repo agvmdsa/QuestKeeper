@@ -224,6 +224,11 @@ export interface LinkFacts {
   requestFailed: boolean;
 }
 
+/** Fresh data proves the PC is reachable: the failure is forgotten and, with the stream closed, the down clock restarts from now. */
+export function linkAfterFreshData(sseOpen: boolean, link: LinkFacts, nowMs: number): LinkFacts {
+  return { downSinceMs: sseOpen ? link.downSinceMs : nowMs, requestFailed: false };
+}
+
 /**
  * Nothing while the event stream is open. Once the last state request failed or the stream has been down for more than 10 s, the
  * calm "Can't reach Questkeeper" warning, with the age of the shown data when it is known. Before that, a first visit with no data

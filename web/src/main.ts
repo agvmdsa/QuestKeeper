@@ -4,7 +4,7 @@ import './styles/tokens.css';
 import './styles/app.css';
 import { getState, openEvents, pair, probeOf, type PairOutcome } from './api';
 import {
-  afterStreamCheck, deviceName, focusKey, iosInstallHint, keepState, KEPT_KEY, linkBanner, pairFailureText, pairingStep, parseNotice, parsePairingInput, parseRoute,
+  afterStreamCheck, deviceName, focusKey, iosInstallHint, keepState, KEPT_KEY, linkAfterFreshData, linkBanner, pairFailureText, pairingStep, parseNotice, parsePairingInput, parseRoute,
   parseState,
   recallKept, reconnectDelay, streamErrorStep, takePairingToken, UNREACHABLE_AFTER_MS, type PairProbe,
 } from './state';
@@ -174,7 +174,8 @@ function setState(text: string): void {
   state = parsed;
   notices = parsed.notices;
   lastUpdateMs = Date.now();
-  requestFailed = false;
+  ({ downSinceMs, requestFailed } = linkAfterFreshData(sseOpen, { downSinceMs, requestFailed }, lastUpdateMs));
+  armUnreachableTimer();
   // Kept only once it has been drawn, so data that breaks the page is never stored and replayed on the next load.
   if (draw()) remember(parsed, lastUpdateMs);
 }

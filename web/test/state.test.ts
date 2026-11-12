@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   characterHref, characterRow, characterRows, deviceName, expFraction, formatCompact, formatNumber,
-  hardFarmsView, iosInstallHint, linkBanner, noticeLine, parseRoute, parseState, relativeTime,
+  hardFarmsView, iosInstallHint, linkAfterFreshData, linkBanner, noticeLine, parseRoute, parseState, relativeTime,
 } from '../src/state';
 import type { Character, RemoteState } from '../src/types';
 
@@ -100,6 +100,21 @@ describe('linkBanner when Questkeeper cannot be reached', () => {
   });
   it('is backward compatible without the link facts', () => {
     expect(linkBanner(false, NOW - 180_000, NOW)?.text).toBe('Old data - last update 3 min ago. Reconnecting...');
+  });
+});
+
+describe('linkAfterFreshData', () => {
+  it('restarts the down clock and forgets the failure when data arrives with the stream closed', () => {
+    const link = linkAfterFreshData(false, { downSinceMs: NOW - 60_000, requestFailed: true }, NOW);
+    expect(link).toEqual({ downSinceMs: NOW, requestFailed: false });
+    expect(linkBanner(false, NOW, NOW + 10_000, true, link)?.text).toBe('Old data - last update just now. Reconnecting...');
+  });
+  it('still says unreachable once the fresh data is itself older than 10 s of silence', () => {
+    const link = linkAfterFreshData(false, { downSinceMs: NOW - 60_000, requestFailed: true }, NOW);
+    expect(linkBanner(false, NOW, NOW + 10_001, true, link)?.text).toContain("Can't reach Questkeeper");
+  });
+  it('keeps the clock untouched while the stream is open', () => {
+    expect(linkAfterFreshData(true, { downSinceMs: null, requestFailed: true }, NOW)).toEqual({ downSinceMs: null, requestFailed: false });
   });
 });
 

@@ -84,6 +84,7 @@ describe('service worker shell answers', () => {
     release(ok('newer'));
     await Promise.all(waits);
     expect(sw.put).toHaveBeenCalledOnce();
+    expect(await (sw.put.mock.calls[0]![1] as Response).text()).toBe('newer');
   });
 
   it('never leaves an unhandled rejection when the network fails after the cache answered', async () => {
@@ -112,6 +113,7 @@ describe('service worker shell answers', () => {
     expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8');
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(response.headers.get('content-security-policy')).toBe("default-src 'none'");
     const html = await response.text();
     expect(html).toContain('<h1>');
     expect(html).toContain(SENTENCE);
@@ -121,9 +123,9 @@ describe('service worker shell answers', () => {
 
   it('keeps a missing script or style failing as such, never as HTML', async () => {
     for (const destination of ['script', 'style']) {
-      const sw = load(never);
+      const sw = load(async () => { throw new Error('down'); });
       const { answer } = dispatch(sw, req('/assets/app.js', { destination }));
-      await vi.advanceTimersByTimeAsync(3000);
+      await vi.advanceTimersByTimeAsync(0);
       const response = (await answer)!;
       expect(response.status).toBe(503);
       expect(await response.text()).toBe('');
@@ -131,9 +133,9 @@ describe('service worker shell answers', () => {
   });
 
   it('answers a missing icon or manifest with an empty 503 too', async () => {
-    const sw = load(never);
+    const sw = load(async () => { throw new Error('down'); });
     const { answer } = dispatch(sw, req('/icons/icon-192.png', { destination: 'image' }));
-    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(0);
     const response = (await answer)!;
     expect(response.status).toBe(503);
     expect(await response.text()).toBe('');
@@ -168,7 +170,40 @@ describe('service worker shell answers', () => {
     expect(sw.put).not.toHaveBeenCalled();
   });
 
-  it('does not cache a failed or opaque answer', async () => {
+  it('does not cache an opaque answer', async () => {
+    const opaque = new Response('x');
+    Object.defineProperty(opaque, 'type', { value: 'opaque' });
+    const sw = load(async () => opaque);
+    const { waits } = dispatch(sw, nav());
+    await vi.advanceTimersByTimeAsync(0);
+    await Promise.all(waits);
+    expect(sw.put).not.toHaveBeenCalled();
+  });
+
+  it('waits for a slow script that has no cached copy, as the old code did', async () => {
+    let release!: (r: Response) => void;
+    const sw = load(() => new Promise<Response>((resolve) => (release = resolve)));
+    const { answer } = dispatch(sw, req('/assets/index-NEW.js', { destination: 'script' }));
+    await vi.advanceTimersByTimeAsync(10_000);
+    release(ok('new code'));
+    expect(await (await answer)!.text()).toBe('new code');
+  });
+
+  it('still fails an uncached script when the fetch really fails', async () => {
+    const sw = load(async () => { throw new Error('down'); });
+    const { answer } = dispatch(sw, req('/assets/index-NEW.js', { destination: 'script' }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await answer)!.status).toBe(503);
+  });
+
+  it('falls back to the cached page for an uncached non-shell navigation', async () => {
+    const sw = load(async () => { throw new Error('down'); }, { '/': new Response('shell') });
+    const { answer } = dispatch(sw, nav('/somewhere'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await (await answer)!.text()).toBe('shell');
+  });
+
+  it('does not cache a failed answer', async () => {
     const sw = load(async () => new Response('x', { status: 500 }));
     const { waits } = dispatch(sw, nav());
     await vi.advanceTimersByTimeAsync(0);

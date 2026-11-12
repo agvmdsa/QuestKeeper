@@ -5,13 +5,15 @@ using System.Threading.Channels;
 using AqwCompanion.Skua;
 using Skua.Core.Interfaces;
 using Skua.Core.Models.Items;
+using Skua.Core.Models.Quests;
 
 namespace QuestKeeper.SkuaBridge;
 
 /// <summary>
-/// Read-only adapter inside Skua. It only reads properties and subscribes to events, and reports what it sees to
-/// Questkeeper over the outbound pipe. It never calls a Skua method that changes game or Skua state, receives nothing
-/// from Questkeeper, and never lets an exception reach Skua. See README.md for the audited list of Skua members.
+/// Read-only adapter inside Skua. It only reads properties, calls one read-only check (<c>Quests.CanComplete</c>) and
+/// subscribes to events, and reports what it sees to Questkeeper over the outbound pipe. It never calls a Skua method
+/// that changes game or Skua state, receives nothing from Questkeeper, and never lets an exception reach Skua. See
+/// README.md for the audited list of Skua members.
 /// </summary>
 public sealed class SkuaBridgePlugin : ISkuaPlugin
 {
@@ -44,14 +46,15 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
     private long _lastStatusStart = long.MinValue;
     private SkuaStatus? _lastStatus;
     private bool _wasLoggedIn;
+    private List<int>? _readyIds;
+    private Dictionary<int, bool> _ready = [];
+    private long _readyReadAt;
 
     // Handlers kept in fields so Unload removes exactly what Load added.
     private readonly ItemBoughtHandler _onBought;
     private readonly ItemSoldHandler _onSold;
     private readonly ItemDroppedHandler _onDropped;
     private readonly MapChangedEventHandler _onMapChanged;
-    private readonly QuestAcceptedEventHandler _onQuestAccepted;
-    private readonly QuestTurnInEventHandler _onQuestTurnedIn;
     private readonly PlayerDeathEventHandler _onDeath;
     private readonly LogoutEventHandler _onLogout;
     private readonly ReloginTriggeredEventHandler _onRelogin;
@@ -64,8 +67,6 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
         _onSold = (id, quantitySold, _, cost, isAc) => Safe(() => Sold(id, quantitySold, cost, isAc));
         _onDropped = (item, addedToInv, _) => Safe(() => Dropped(item, addedToInv));
         _onMapChanged = map => Safe(() => MapChanged(map));
-        _onQuestAccepted = id => Safe(() => Quest(id, accepted: true));
-        _onQuestTurnedIn = id => Safe(() => Quest(id, accepted: false));
         _onDeath = () => Safe(() => Log(SkuaLogFormatter.Died(Now())));
         _onLogout = () => Safe(() =>
         {
@@ -221,8 +222,6 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
         events.ItemSold += _onSold;
         events.ItemDropped += _onDropped;
         events.MapChanged += _onMapChanged;
-        events.QuestAccepted += _onQuestAccepted;
-        events.QuestTurnedIn += _onQuestTurnedIn;
         events.PlayerDeath += _onDeath;
         events.Logout += _onLogout;
         events.ReloginTriggered += _onRelogin;
@@ -235,8 +234,6 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
         Safe(() => events.ItemSold -= _onSold);
         Safe(() => events.ItemDropped -= _onDropped);
         Safe(() => events.MapChanged -= _onMapChanged);
-        Safe(() => events.QuestAccepted -= _onQuestAccepted);
-        Safe(() => events.QuestTurnedIn -= _onQuestTurnedIn);
         Safe(() => events.PlayerDeath -= _onDeath);
         Safe(() => events.Logout -= _onLogout);
         Safe(() => events.ReloginTriggered -= _onRelogin);
@@ -286,16 +283,6 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
         }
 
         RequestStatus();
-    }
-
-    private void Quest(int questId, bool accepted)
-    {
-        var at = Now();
-        Post(() =>
-        {
-            var name = ReadQuestName(questId);
-            Log(accepted ? SkuaLogFormatter.QuestAccepted(at, questId, name) : SkuaLogFormatter.QuestTurnedIn(at, questId, name));
-        });
     }
 
     /// <summary>
@@ -465,8 +452,10 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
             loggedIn ? bot.Map.Name : null,
             bot.Manager.LoadedScript,
             running,
-            since);
+            since,
+            ReadQuests(bot, loggedIn));
 
+        // Sent only when something changed, quests and their ready flags included (SkuaStatus compares quest lists by content).
         if (status != _lastStatus)
         {
             _lastStatus = status;
@@ -507,20 +496,66 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
         _names.Replace(items.Where(i => i is not null).Select(i => (i.CharItemID, i.Name ?? string.Empty, i.Quantity)));
     }
 
-    private string? ReadQuestName(int questId)
+    /// <summary>
+    /// The active quests with their ready flag, read on the worker only while Questkeeper is connected (PublishStatus
+    /// checks). Empty while logged out. <c>Quests.Active</c> is read on every status read; <c>CanComplete</c> (one read
+    /// per quest) only when the set of active quests changed or 15 s have passed, otherwise the last flags are reused.
+    /// If the list cannot be read, the last reported list stays.
+    /// </summary>
+    private IReadOnlyList<SkuaQuest>? ReadQuests(IScriptInterface bot, bool loggedIn)
     {
-        if (_bot is not { } bot || Volatile.Read(ref _unloaded) || !Connected)
+        if (!loggedIn)
         {
-            return null;
+            _readyIds = null;
+            _ready = [];
+            return [];
         }
 
-        var tree = bot.Quests.Tree;
-        return tree?.Find(q => q is not null && q.ID == questId)?.Name;
+        IReadOnlyList<(int Id, string Name)> active;
+        try
+        {
+            // Skua builds a new list per read; copy anyway so nothing here holds a list Skua may reuse.
+            List<Quest> read = [.. bot.Quests.Active ?? []];
+            active = SkuaQuestRefresh.Active(read.Where(q => q is not null).Select(q => (q.ID, (string?)q.Name)));
+        }
+        catch (Exception)
+        {
+            return _lastStatus?.Quests;
+        }
+
+        var ids = active.Select(q => q.Id).ToList();
+        if (SkuaQuestRefresh.ReadyDue(_readyIds, ids, Stopwatch.GetElapsedTime(_readyReadAt)))
+        {
+            var ready = new Dictionary<int, bool>();
+            foreach (var id in ids)
+            {
+                ready[id] = CanComplete(bot, id);
+            }
+
+            _ready = ready;
+            _readyIds = ids;
+            _readyReadAt = Stopwatch.GetTimestamp();
+        }
+
+        return SkuaQuestRefresh.Build(active, _ready);
+    }
+
+    /// <summary>Skua's own "can be turned in" check; a failed read keeps the last flag (not ready when there is none).</summary>
+    private bool CanComplete(IScriptInterface bot, int id)
+    {
+        try
+        {
+            return bot.Quests.CanComplete(id);
+        }
+        catch (Exception)
+        {
+            return _ready.TryGetValue(id, out var last) && last;
+        }
     }
 
     // ---- Helpers ---------------------------------------------------------------------------------------------------
 
-    /// <summary>While Questkeeper is absent the plugin does no Flash reads at all (no status poll, no snapshot); log lines still queue.</summary>
+    /// <summary>While Questkeeper is absent the plugin does no Flash reads at all (no status poll, no quests, no snapshot); log lines still queue.</summary>
     private bool Connected => _client?.IsConnected == true;
 
     private void Log(SkuaLogEntry entry) => _client?.Send(new LogMessage(entry));

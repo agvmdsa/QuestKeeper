@@ -60,6 +60,12 @@ export interface Notice {
 
 export type SkuaConnection = 'NotConnected' | 'Connected' | 'VersionMismatch';
 
+export interface SkuaQuest {
+  id: number;
+  name: string;
+  ready: boolean;
+}
+
 export interface SkuaStatus {
   loggedIn: boolean;
   character: string | null;
@@ -68,6 +74,8 @@ export interface SkuaStatus {
   script: string | null;
   scriptRunning: boolean;
   runningSince: string | null;
+  /** null: the plugin does not report quests (an older plugin); empty: no active quests. */
+  quests: SkuaQuest[] | null;
 }
 
 export interface SkuaLogEntry {

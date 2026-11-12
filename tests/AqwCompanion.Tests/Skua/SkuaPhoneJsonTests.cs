@@ -32,6 +32,32 @@ public class SkuaPhoneJsonTests
     }
 
     [Fact]
+    public void Active_quests_serialize_with_camel_case_names()
+    {
+        var view = new SkuaView(
+            SkuaConnection.Connected,
+            null,
+            new SkuaStatus(true, "Hero", null, null, null, false, null, [new SkuaQuest(5, "Slay the Beast", true)]),
+            []);
+
+        var json = PhoneJson.Serialize(new PhoneState(Snapshot(), [], view));
+
+        Assert.Contains("\"runningSince\":null,\"quests\":[{\"id\":5,\"name\":\"Slay the Beast\",\"ready\":true}]}", json);
+    }
+
+    [Fact]
+    public void Quests_not_reported_serialize_as_null_and_none_active_as_an_empty_list()
+    {
+        var status = new SkuaStatus(true, "Hero", null, null, null, false, null);
+
+        var absent = PhoneJson.Serialize(new PhoneState(Snapshot(), [], new SkuaView(SkuaConnection.Connected, null, status, [])));
+        var none = PhoneJson.Serialize(new PhoneState(Snapshot(), [], new SkuaView(SkuaConnection.Connected, null, status with { Quests = [] }, [])));
+
+        Assert.Contains("\"quests\":null", absent);
+        Assert.Contains("\"quests\":[]", none);
+    }
+
+    [Fact]
     public void No_skua_part_serializes_as_null()
     {
         var json = PhoneJson.Serialize(new PhoneState(Snapshot(), [], null));

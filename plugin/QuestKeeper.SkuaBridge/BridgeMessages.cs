@@ -9,9 +9,13 @@ namespace QuestKeeper.SkuaBridge;
 /// </summary>
 internal static class BridgeMessages
 {
-    /// <summary>The status line. Character, server and map are only reported while logged in (Skua keeps the last values after a logout).</summary>
+    /// <summary>
+    /// The status line. Character, server and map are only reported while logged in (Skua keeps the last values after a
+    /// logout); the active quests are always empty while logged out.
+    /// </summary>
     public static SkuaStatus Status(
-        bool loggedIn, string? username, string? server, string? map, string? loadedScriptPath, bool running, DateTimeOffset? runningSince) =>
+        bool loggedIn, string? username, string? server, string? map, string? loadedScriptPath, bool running, DateTimeOffset? runningSince,
+        IReadOnlyList<SkuaQuest>? quests) =>
         new(
             loggedIn,
             loggedIn ? Blank(username) : null,
@@ -19,7 +23,8 @@ internal static class BridgeMessages
             loggedIn ? Blank(map) : null,
             ScriptName(loadedScriptPath),
             running,
-            running ? runningSince : null);
+            running ? runningSince : null,
+            loggedIn ? quests : []);
 
     /// <summary>
     /// How many were bought: the quantity now minus the quantity in the snapshot taken before, when positive; otherwise

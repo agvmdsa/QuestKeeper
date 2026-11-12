@@ -8,7 +8,7 @@ const NOW = Date.parse('2026-11-11T12:12:00Z');
 const wire = {
   connection: 'Connected',
   hello: { pluginVersion: '0.1.0', skuaVersion: '1.4.5.0' },
-  status: { loggedIn: true, character: 'Hero', server: 'Artix', map: 'battleon', script: 'Farm.cs', scriptRunning: true, runningSince: '2026-11-11T12:00:00+00:00' },
+  status: { loggedIn: true, character: 'Hero', server: 'Artix', map: 'battleon', script: 'Farm.cs', scriptRunning: true, runningSince: '2026-11-11T12:00:00+00:00', quests: null },
   log: [{ at: '2026-11-11T12:00:05+00:00', kind: 'Sold', text: 'Sold Blood Orb x50 for 2,500 gold' }],
 };
 const skua = (over: Partial<SkuaState> = {}): SkuaState => ({ ...parseSkua(wire)!, ...over });
@@ -35,6 +35,54 @@ describe('parseSkua', () => {
     expect(s.log).toHaveLength(100);
     expect(s.log[0]!.text).toHaveLength(300);
     expect(parseSkua({ ...wire, log: [{ at: 'x', kind: 'Sold' }] })!.log).toEqual([]);
+  });
+});
+
+describe('parseSkua quests', () => {
+  const withQuests = (quests: unknown) => ({ ...wire, status: { ...wire.status, quests } });
+  const quests = (value: unknown) => parseSkua(withQuests(value))!.status!.quests;
+
+  it('reads the active quests with their ready flag', () => {
+    expect(quests([{ id: 5, name: 'Slay the Beast', ready: true }, { id: 12, name: 'Gather 10 Bones', ready: false }])).toEqual([
+      { id: 5, name: 'Slay the Beast', ready: true },
+      { id: 12, name: 'Gather 10 Bones', ready: false },
+    ]);
+  });
+  it('keeps null (not reported) apart from an empty list (none active)', () => {
+    expect(quests([])).toEqual([]);
+    expect(quests(null)).toBeNull();
+  });
+  it('reads an older payload without quests as not reported', () => {
+    const { quests: _omit, ...old } = wire.status;
+    expect(parseSkua({ ...wire, status: old })!.status!.quests).toBeNull();
+  });
+  it('treats a quests value that is not an array as not reported, keeping the rest of the status', () => {
+    for (const bad of ['x', 5, true, { id: 1, name: 'a', ready: true }]) {
+      const s = parseSkua(withQuests(bad))!;
+      expect(s.status!.quests).toBeNull();
+      expect(s.status!.character).toBe('Hero');
+    }
+  });
+  it('drops a malformed entry and keeps the others', () => {
+    const good = { id: 5, name: 'Slay the Beast', ready: true };
+    const bad = [
+      null, 'q', 7, [], { id: -1, name: 'n', ready: true }, { id: 1.5, name: 'n', ready: true }, { id: '7', name: 'n', ready: true },
+      { id: 2_147_483_648, name: 'n', ready: true }, { id: Number.NaN, name: 'n', ready: true }, { name: 'n', ready: true },
+      { id: 7, name: null, ready: true }, { id: 7, ready: true }, { id: 7, name: 'n', ready: 'true' }, { id: 7, name: 'n' },
+    ];
+    expect(quests([...bad, good])).toEqual([good]);
+  });
+  it('keeps at most 30 quests and cuts a long name to 300 without splitting a surrogate pair', () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({ id: i, name: `Q${i}`, ready: false }));
+    const list = quests(many)!;
+    expect(list).toHaveLength(30);
+    expect(list[29]!.id).toBe(29);
+    expect(quests([{ id: 1, name: 'n'.repeat(400), ready: true }])![0]!.name).toHaveLength(300);
+    const pair = quests([{ id: 1, name: 'a'.repeat(299) + '\u{1F600}tail', ready: true }])![0]!.name;
+    expect(pair).toBe('a'.repeat(299));
+  });
+  it('never throws on hostile input', () => {
+    expect(() => parseSkua(withQuests([{ id: 1, name: { toString: 1 }, ready: true }, Object.create(null)]))).not.toThrow();
   });
 });
 

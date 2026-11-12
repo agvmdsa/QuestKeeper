@@ -23,12 +23,6 @@ public static class SkuaLogFormatter
 
     public static SkuaLogEntry MapChanged(DateTimeOffset at, string map) => Entry(at, SkuaLogKind.MapChanged, $"Map: {map}");
 
-    public static SkuaLogEntry QuestAccepted(DateTimeOffset at, int id, string? name) =>
-        Entry(at, SkuaLogKind.QuestAccepted, $"Quest accepted: {Quest(name, id)}");
-
-    public static SkuaLogEntry QuestTurnedIn(DateTimeOffset at, int id, string? name) =>
-        Entry(at, SkuaLogKind.QuestTurnedIn, $"Quest turned in: {Quest(name, id)}");
-
     public static SkuaLogEntry Died(DateTimeOffset at) => Entry(at, SkuaLogKind.Died, "Died");
 
     public static SkuaLogEntry LoggedOut(DateTimeOffset at) => Entry(at, SkuaLogKind.LoggedOut, "Logged out");
@@ -44,8 +38,6 @@ public static class SkuaLogFormatter
         Entry(at, SkuaLogKind.ScriptError, $"Script stopped with an error: {message}");
 
     private static string Item(string? name, int id) => string.IsNullOrWhiteSpace(name) ? $"item #{id.ToString(Inv)}" : name;
-
-    private static string Quest(string? name, int id) => string.IsNullOrWhiteSpace(name) ? $"#{id.ToString(Inv)}" : name;
 
     private static SkuaLogEntry Entry(DateTimeOffset at, SkuaLogKind kind, string text)
     {

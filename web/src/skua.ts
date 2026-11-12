@@ -1,9 +1,11 @@
 import { t } from './i18n';
 import { relativeTime } from './state';
-import type { SkuaConnection, SkuaLogEntry, SkuaState, SkuaStatus } from './types';
+import type { SkuaConnection, SkuaLogEntry, SkuaQuest, SkuaState, SkuaStatus } from './types';
 
 const MAX_TEXT = 300;
 const MAX_ENTRIES = 100;
+const MAX_QUESTS = 30;
+const MAX_QUEST_ID = 2_147_483_647;
 const CONNECTIONS: readonly string[] = ['NotConnected', 'Connected', 'VersionMismatch'];
 const MINUTE_MS = 60_000;
 
@@ -20,7 +22,29 @@ function parseStatus(v: unknown): SkuaStatus | null {
     script: str(v.script),
     scriptRunning: v.scriptRunning === true,
     runningSince: str(v.runningSince),
+    quests: parseQuests(v.quests),
   };
+}
+
+/** Cut to the text cap without leaving half of a surrogate pair at the end. */
+function cut(text: string): string {
+  if (text.length <= MAX_TEXT) return text;
+  const end = MAX_TEXT;
+  const last = text.charCodeAt(end - 1);
+  return text.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
+}
+
+/** The active quests; anything but an array is "not reported" (null), and a damaged entry is left out on its own. */
+function parseQuests(v: unknown): SkuaQuest[] | null {
+  if (!Array.isArray(v)) return null;
+  const quests: SkuaQuest[] = [];
+  for (const q of v as unknown[]) {
+    if (quests.length >= MAX_QUESTS) break;
+    if (!isObject(q) || typeof q.id !== 'number' || !Number.isInteger(q.id) || q.id < 0 || q.id > MAX_QUEST_ID) continue;
+    if (typeof q.name !== 'string' || typeof q.ready !== 'boolean') continue;
+    quests.push({ id: q.id, name: cut(q.name), ready: q.ready });
+  }
+  return quests;
 }
 
 function parseHello(v: unknown): SkuaState['hello'] {

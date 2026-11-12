@@ -166,6 +166,8 @@ const ALLOWED = new Set([
   'Connected', // Skua connection enum value of the protocol
   'VersionMismatch', // Skua connection enum value of the protocol
   'action:${t.action}', // focusKey(): an internal id used to restore keyboard focus, never shown
+  'action:${t.action}:${t.value}', // focusKey(): an internal id used to restore keyboard focus, never shown
+  'theme.${choice}', // a catalog key (theme.system, theme.light, theme.dark), resolved through t()
   'id:${t.id}', // focusKey(): an internal id used to restore keyboard focus, never shown
   'href:${t.href}', // focusKey(): an internal id used to restore keyboard focus, never shown
   'Enter', // KeyboardEvent.key value, not text

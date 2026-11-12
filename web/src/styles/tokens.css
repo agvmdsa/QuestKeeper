@@ -19,8 +19,9 @@
   --on-top: #FFFDF7;
 }
 
+/* The dark values appear twice on purpose (the CSS light-dark function is avoided: older iPhones lack it): once for a dark system unless Light is forced, once for a forced Dark. web/test/tokens.test.ts keeps the two identical. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --bg: #1A0B17;
     --surface: #2A1124;
     --raised: #3B1A33;
@@ -31,4 +32,21 @@
     --danger: #FF9A8F;
     --bar: #F69A07;
   }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #1A0B17;
+  --surface: #2A1124;
+  --raised: #3B1A33;
+  --border: #94741A;
+  --text: #FEF0C2;
+  --muted: #D9C99A;
+  --link: #FAB84F;
+  --danger: #FF9A8F;
+  --bar: #F69A07;
 }

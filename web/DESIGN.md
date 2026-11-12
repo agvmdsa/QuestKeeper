@@ -166,6 +166,16 @@ Plum band with the serif app name in On Top, inner column 34rem, top padding inc
 ### Banner
 Full-width Band strip, 600 weight, 1px gold bottom border, `role="status"`. It has one tone (`data-tone="warn"`) and appears only while the live event stream to the PC is closed: "Old data - last update 3 min ago. Reconnecting..." (the age from the time the last state arrived, which is kept with the stored state, so it survives a reload), or "Old data - reconnecting..." when that time is not known. It is hidden while the stream is open and on the "Not paired" card.
 
+### Fixed header
+The title strip and the banner sit together in one `<div class="chrome">` that is `position: sticky; top: 0` with a z-index above the content, so they stay in view while scrolling. It is deliberately not `position: fixed` with a body offset: the banner has a variable height and appears and disappears, and sticky keeps the layout correct with no arithmetic. A hidden banner is `display: none`, so it leaves no gap or border. The strip keeps the `env(safe-area-inset-top)` padding for the iPhone notch, and `html` has a `scroll-padding-top` so a focused or anchored element is never left under the header.
+
+### Appearance switch
+A footer on every view (the list, a character, Skua and the "Not paired" card; only the draw-failed card has none) with the label "Appearance" and three toggle buttons, System / Light / Dark. Each is at least 3rem tall, has `aria-pressed`, `data-action="theme"` and `data-value`; the pressed one is Accent Orange with a thicker border (state is never colour alone). The choice is kept in `localStorage` under `qkp-theme-v1` (reads and writes never throw, since storage can be blocked in private mode) and applied as `data-theme="light"|"dark"` on `<html>`; System removes the attribute so the phone's setting decides. `main.ts` applies the stored choice before anything else.
+
+The dark values are written twice in `tokens.css`: in `@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) {...} }` and in `:root[data-theme='dark'] {...}`. The CSS `light-dark()` function would need only one copy but is missing on older iPhones, so it is not used; `tokens.test.ts` keeps the two copies identical and checks every contrast pairing in light, system dark, forced dark and forced light on a dark phone. `color-scheme` is `light dark` for System and `light` or `dark` when forced. The `theme-color` meta stays the plum strip in both.
+
+**Known caveat: a brief flash.** The Content Security Policy forbids inline script, so the stored choice can only be applied once the module has loaded. A phone set to dark with Light chosen (or the reverse) can show the system theme for a moment on load.
+
 ### Cards
 - **Corner:** 12px. **Background:** Paper. **Border:** 1px Gold Edge. **Padding:** 1rem. **Shadow:** none.
 - Cards hold a serif heading and either a list, a notice list, a figures grid or one muted sentence.

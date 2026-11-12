@@ -135,11 +135,13 @@ export interface FocusTarget {
   action: string | null;
   href: string | null;
   id?: string | null;
+  /** `data-value`, for controls that share one action (the theme buttons). */
+  value?: string | null;
 }
 
 /** Names a focused control so the same control can get focus back after a redraw. */
 export function focusKey(t: FocusTarget): string | null {
-  if (t.action) return `action:${t.action}`;
+  if (t.action) return t.value ? `action:${t.action}:${t.value}` : `action:${t.action}`;
   if (t.id) return `id:${t.id}`;
   const tag = t.tag.toLowerCase();
   if (tag === 'a' && t.href) return `href:${t.href}`;

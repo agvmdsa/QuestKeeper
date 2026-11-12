@@ -1,3 +1,4 @@
+import { applyTheme, loadTheme, saveTheme, parseTheme, type ThemeChoice } from './theme';
 import './styles/tokens.css';
 import './styles/app.css';
 import { getState, openEvents, pair, probeOf, type PairOutcome } from './api';
@@ -8,7 +9,18 @@ import {
 } from './state';
 import { detectLocale, setLocale, t } from './i18n';
 import type { Notice, RemoteState } from './types';
-import { characterView, drawFailedView, listView, mount, pairNeededView, skuaView, type Model, type VNode } from './views';
+import { characterView, drawFailedView, listView, mount, pairNeededView, skuaView, withFooter, type Model, type VNode } from './views';
+
+// First thing: CSP forbids an inline script, so the page may flash the system theme until this runs.
+function storage(): Storage | null {
+  try {
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
+let theme: ThemeChoice = loadTheme(storage());
+applyTheme(document.documentElement, theme);
 
 setLocale(detectLocale(navigator.languages?.length ? navigator.languages : [navigator.language ?? 'en']));
 
@@ -79,23 +91,27 @@ function drawBanner(): void {
 }
 
 function tree(): VNode {
-  if (unpaired) return pairNeededView(pairReason, installHint);
-  const model: Model = { state: state && { ...state, notices }, nowMs: Date.now(), showAll, hfOpen, installHint };
+  const model: Model = { state: state && { ...state, notices }, nowMs: Date.now(), showAll, hfOpen, installHint, theme };
+  if (unpaired) return withFooter(pairNeededView(pairReason, installHint), model);
   const route = parseRoute(location.hash);
-  if (route.view === 'skua') return skuaView(model);
-  return route.view === 'character' ? characterView(model, route.name) : listView(model);
+  if (route.view === 'skua') return withFooter(skuaView(model), model);
+  return withFooter(route.view === 'character' ? characterView(model, route.name) : listView(model), model);
+}
+
+function keyOf(el: HTMLElement): string | null {
+  return focusKey({ tag: el.tagName, action: el.getAttribute('data-action'), href: el.getAttribute('href'), id: el.id, value: el.getAttribute('data-value') });
 }
 
 function focusedKey(): string | null {
   const el = document.activeElement;
   if (!(el instanceof HTMLElement) || !app.contains(el)) return null;
-  return focusKey({ tag: el.tagName, action: el.getAttribute('data-action'), href: el.getAttribute('href'), id: el.id });
+  return keyOf(el);
 }
 
 function restoreFocus(key: string | null): void {
   if (!key) return;
   for (const el of app.querySelectorAll<HTMLElement>('a, button, summary, input')) {
-    if (focusKey({ tag: el.tagName, action: el.getAttribute('data-action'), href: el.getAttribute('href'), id: el.id }) === key) {
+    if (keyOf(el) === key) {
       el.focus({ preventScroll: true });
       return;
     }
@@ -294,6 +310,14 @@ async function start(): Promise<void> {
 }
 
 app.addEventListener('click', (event) => {
+  const themeButton = (event.target as HTMLElement).closest('[data-action="theme"]');
+  if (themeButton) {
+    theme = parseTheme(themeButton.getAttribute('data-value'));
+    saveTheme(storage(), theme);
+    applyTheme(document.documentElement, theme);
+    draw();
+    return;
+  }
   if ((event.target as HTMLElement).closest('[data-action="pair-paste"]')) {
     pairFromPaste();
     return;

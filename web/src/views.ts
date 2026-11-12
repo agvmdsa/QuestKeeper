@@ -1,6 +1,7 @@
 import { characterHref, characterRow, characterRows, expFraction, formatNumber, hardFarmsView, noticeLine } from './state';
 import { t } from './i18n';
 import { skuaEmptyText, skuaHeader, skuaLogRows, skuaSummary } from './skua';
+import { THEMES, type ThemeChoice } from './theme';
 import type { Faction, RemoteState } from './types';
 
 export interface VNode {
@@ -19,6 +20,8 @@ export interface Model {
   hfOpen: boolean;
   /** How to install the page on an iPhone or iPad, or null. */
   installHint: string | null;
+  /** The stored appearance choice; System when absent. */
+  theme?: ThemeChoice;
 }
 
 type Child = VNode | null | false;
@@ -265,4 +268,30 @@ export function drawFailedView(): VNode {
     h('h2', { text: t('failed.title') }),
     h('p', { className: 'muted', text: t('failed.body') }),
   );
+}
+
+/** The Appearance control: three toggle buttons, exactly one pressed. */
+export function themeFooter(model: Pick<Model, 'theme'>): VNode {
+  const current = model.theme ?? 'system';
+  return h(
+    'footer',
+    { className: 'appearance', attrs: { role: 'group', 'aria-label': t('theme.group') } },
+    h('p', { className: 'muted', text: t('theme.group') }),
+    h(
+      'div',
+      { className: 'appearance-row' },
+      ...THEMES.map((choice) =>
+        h('button', {
+          className: 'theme-btn',
+          text: t(`theme.${choice}`),
+          attrs: { type: 'button', 'data-action': 'theme', 'data-value': choice, 'aria-pressed': String(choice === current) },
+        }),
+      ),
+    ),
+  );
+}
+
+/** Puts the Appearance footer under a view, inside the same column and grid. */
+export function withFooter(view: VNode, model: Pick<Model, 'theme'>): VNode {
+  return h('div', {}, ...(view.tag === 'div' ? view.children : [view]), themeFooter(model));
 }

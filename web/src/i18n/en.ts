@@ -1,6 +1,10 @@
 /** Every text the page itself writes. Values may hold {name} placeholders; a plural pair is `base.one` and `base.other`. */
 export const en = {
   'common.back': 'Back to characters',
+  'theme.group': 'Appearance',
+  'theme.system': 'System',
+  'theme.light': 'Light',
+  'theme.dark': 'Dark',
 
   'list.title': 'Characters',
   'list.empty': 'No characters yet. Log a character in while Questkeeper is listening.',

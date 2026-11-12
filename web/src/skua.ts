@@ -1,13 +1,6 @@
+import { t } from './i18n';
 import { relativeTime } from './state';
 import type { SkuaConnection, SkuaLogEntry, SkuaState, SkuaStatus } from './types';
-
-export const SKUA_TITLE = 'Skua';
-export const SKUA_NOT_CONNECTED = 'Skua is not connected.';
-export const SKUA_CONNECTED = 'Skua connected.';
-export const SKUA_MISMATCH = 'Update the Skua plugin and Questkeeper to the same release.';
-export const SKUA_NOTHING_YET = 'Nothing to show yet.';
-export const SKUA_NO_SCRIPT = 'No script running';
-export const SKUA_NOT_LOGGED_IN = 'Not logged in';
 
 const MAX_TEXT = 300;
 const MAX_ENTRIES = 100;
@@ -49,13 +42,13 @@ export function parseSkua(value: unknown): SkuaState | null {
 
 /** "just now", "3 min", "1 h 5 min", "2 d 3 h". */
 export function formatDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms < MINUTE_MS) return 'just now';
+  if (!Number.isFinite(ms) || ms < MINUTE_MS) return t('duration.now');
   const minutes = Math.floor(ms / MINUTE_MS);
-  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 60) return t('duration.minutes', { n: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return minutes % 60 === 0 ? `${hours} h` : `${hours} h ${minutes % 60} min`;
+  if (hours < 24) return minutes % 60 === 0 ? t('duration.hours', { n: hours }) : t('duration.hoursMinutes', { h: hours, m: minutes % 60 });
   const days = Math.floor(hours / 24);
-  return hours % 24 === 0 ? `${days} d` : `${days} d ${hours % 24} h`;
+  return hours % 24 === 0 ? t('duration.days', { n: days }) : t('duration.daysHours', { d: days, h: hours % 24 });
 }
 
 /** The title and lines of the Skua view, or null while Skua is not connected. */
@@ -65,20 +58,20 @@ export function skuaHeader(s: SkuaState, nowMs: number): { title: string; lines:
   const lines: string[] = [];
   if (st) {
     if (!st.loggedIn) {
-      lines.push(SKUA_NOT_LOGGED_IN);
+      lines.push(t('skua.notLoggedIn'));
     } else {
       const where = [st.character, st.server, st.map].filter((p): p is string => Boolean(p)).join(' · ');
       if (where) lines.push(where);
     }
     const since = st.runningSince ? Date.parse(st.runningSince) : Number.NaN;
     if (st.scriptRunning) {
-      const name = st.script || 'a script';
-      lines.push(Number.isNaN(since) ? `Running ${name}` : `Running ${name} for ${formatDuration(nowMs - since)}`);
+      const name = st.script || t('skua.defaultScript');
+      lines.push(Number.isNaN(since) ? t('skua.running', { name }) : t('skua.runningFor', { name, duration: formatDuration(nowMs - since) }));
     } else {
-      lines.push(SKUA_NO_SCRIPT);
+      lines.push(t('skua.noScript'));
     }
   }
-  return { title: SKUA_TITLE, lines };
+  return { title: t('skua.title'), lines };
 }
 
 export function skuaLogRows(s: SkuaState, nowMs: number): { when: string; text: string }[] {
@@ -87,13 +80,13 @@ export function skuaLogRows(s: SkuaState, nowMs: number): { when: string; text: 
 
 /** What the Skua view says instead of a log: empty when there are entries to show. */
 export function skuaEmptyText(s: SkuaState | null): string {
-  if (!s || s.connection === 'NotConnected') return SKUA_NOT_CONNECTED;
-  if (s.connection === 'VersionMismatch') return SKUA_MISMATCH;
-  return s.log.length === 0 ? SKUA_NOTHING_YET : '';
+  if (!s || s.connection === 'NotConnected') return t('skua.notConnected');
+  if (s.connection === 'VersionMismatch') return t('skua.mismatch');
+  return s.log.length === 0 ? t('skua.nothingYet') : '';
 }
 
 /** The one sentence on the list-view card. */
 export function skuaSummary(s: SkuaState): string {
-  if (s.connection === 'Connected') return SKUA_CONNECTED;
-  return s.connection === 'VersionMismatch' ? SKUA_MISMATCH : SKUA_NOT_CONNECTED;
+  if (s.connection === 'Connected') return t('skua.connected');
+  return s.connection === 'VersionMismatch' ? t('skua.mismatch') : t('skua.notConnected');
 }

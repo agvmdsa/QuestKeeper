@@ -3,11 +3,14 @@ import './styles/app.css';
 import { getState, openEvents, pair, probeOf, type PairOutcome } from './api';
 import {
   afterStreamCheck, deviceName, focusKey, iosInstallHint, keepState, KEPT_KEY, linkBanner, pairFailureText, pairingStep, parseNotice, parsePairingInput, parseRoute,
-  parseState, PASTE_REJECTED,
+  parseState,
   recallKept, reconnectDelay, streamErrorStep, takePairingToken, type PairProbe,
 } from './state';
+import { detectLocale, setLocale, t } from './i18n';
 import type { Notice, RemoteState } from './types';
 import { characterView, drawFailedView, listView, mount, pairNeededView, skuaView, type Model, type VNode } from './views';
+
+setLocale(detectLocale(navigator.languages?.length ? navigator.languages : [navigator.language ?? 'en']));
 
 const app = document.getElementById('app')!;
 const banner = document.getElementById('banner')!;
@@ -262,7 +265,7 @@ function pairFromPaste(): void {
   const token = parsePairingInput(input.value);
   input.value = '';
   if (!token) {
-    pairReason = PASTE_REJECTED;
+    pairReason = t('pair.pasteRejected');
     draw();
     return;
   }

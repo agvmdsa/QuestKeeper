@@ -375,4 +375,50 @@ public class SkuaControlStateTests
         stopping.OnStartNotSeen();
         Assert.Equal("stopping", stopping.State);
     }
+
+    [Fact]
+    public void A_running_read_inside_the_state_applies_like_a_change()
+    {
+        var state = NewState();
+
+        state.OnScriptRunningRead(() => true);
+        Assert.Equal("running", state.State);
+
+        state.OnScriptRunningRead(() => false);
+        Assert.Equal("settling", state.State);
+    }
+
+    [Fact]
+    public void A_running_read_that_fails_changes_nothing_and_is_passed_on()
+    {
+        var state = Running();
+
+        Assert.Throws<InvalidOperationException>(() => state.OnScriptRunningRead(() => throw new InvalidOperationException("gone")));
+
+        Assert.Equal("running", state.State);
+    }
+
+    [Fact]
+    public async Task A_running_read_happens_inside_the_state_lock_so_a_later_read_always_wins()
+    {
+        var state = NewState();
+        using var reading = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+
+        // The slow read saw "running"; a newer read of "not running" must not be overwritten by it.
+        var slow = Task.Run(() => state.OnScriptRunningRead(() =>
+        {
+            reading.Set();
+            release.Wait(TimeSpan.FromSeconds(5));
+            return true;
+        }));
+        reading.Wait(TimeSpan.FromSeconds(5));
+        var fresh = Task.Run(() => state.OnScriptRunningRead(() => false));
+        await Task.Delay(100);
+        Assert.False(fresh.IsCompleted);
+        release.Set();
+        await Task.WhenAll(slow, fresh).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal("settling", state.State);
+    }
 }

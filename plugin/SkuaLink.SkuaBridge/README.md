@@ -24,9 +24,14 @@ Exactly this, nothing else:
    cut to 300 chars.
 4. **Stop the running script** (`stop`): answers at once, then calls Skua's `StopScript()` on a pool thread (never on the
    script thread), once at a time. The status shows `stopping`, then `settling`, then `idle`.
+5. **Read a script's options** (`getOptions {id}`): the definitions the script declares and the values saved in its
+   options file (see "Script options").
+6. **Write a script's options** (`setOptions {id, values}`): only names the script declares, only values that fit their
+   type, only into that script's options file inside Skua's options folder, only while no script runs.
+7. **Close a started script's options dialog** on the PC (part of `start`), so Skua saves the values already in the file.
 
-It never accepts a path, code, a script name or option values from SkuaLink, never sends anything to the game, and
-`getOptions` / `setOptions` are answered `not supported` for now (AQW-0089).
+It never accepts a path, code or a script name from SkuaLink, and option values only for options the script itself
+declared; it never sends anything to the game.
 
 ## Corrections to the plan (verified against the 1.4.5.0 DLLs and the 1.4.5.0 tag source)
 
@@ -113,21 +118,78 @@ throwaway project and read in the tag source.
   after a failed write. An older SkuaLink serves an inbound-only pipe, which Windows refuses to a client that asks to read
   (access denied): the plugin then connects outbound only, as before, and reads nothing.
 - Each command goes to one command worker (queue of 16; one more is answered `busy` at once) and is answered exactly once
-  with a `result {reqId, ok, error?, scripts?, hasOptions?, truncated?}`. Every failure is `ok: false` with a short error:
+  with a `result {reqId, ok, error?, scripts?, optionDefs?, options?, hasOptions?, firstRun?, truncated?}`. Every failure is `ok: false` with a short error:
   `unknown script id`, `not found`, `already running`, `stopping`, `settling`, `not running`, `could not list scripts`,
-  `not supported`, `busy`, or Skua's own start error. Nothing reaches Skua as an exception.
+  `busy`, `options not known yet`, `options file not allowed`, `could not read options`, `could not write options`, a
+  validation text (`unknown option X`, `not a valid int for X`, ...), or Skua's own start error. Nothing reaches Skua as an exception.
 - The decisions live in `src/AqwCompanion.Skua/SkuaCommandHandler.cs` (unit-tested on the Mac with a fake Skua); the
   Skua-bound part is `ScriptControl.cs`. Commands run one at a time, so a start's check and its acceptance cannot
   interleave with another start or stop.
 - `SetLoadedScript` is never called while a script runs (Skua restarts the loaded path by itself on restart and relogin).
-- After a successful start, `hasOptions` = `Config.Options.Count > 0 || Config.MultipleOptions.Count > 0`, read after
-  the start; the state becomes `awaitingOptions` with options, `running` without. Until the options window handling
-  (AQW-0089) exists, `awaitingOptions` ends only when the script stops. A start Skua has not reported running
-  after 10 s (its running report may come and go before the start is accepted) settles, so the state never sticks.
+- After a successful start, `hasOptions` = the script declares at least one option (`Config.Options` /
+  `Config.MultipleOptions`, read after the start); the state becomes `awaitingOptions` with options, `running` without
+  (see "Script options" for how `awaitingOptions` ends). A start Skua has not reported running after 10 s (its running
+  report may come and go before the start is accepted) settles, so the state never sticks.
+- A stop accepted before Skua reported the start (state `running` or `awaitingOptions`, Skua not yet running) moves to
+  `stopping`; if Skua then reports the script running, the 3 s poll calls `StopScript()` once, so a script never runs on
+  after an accepted stop.
+- `ScriptRunning` is read inside the control state's lock both by the running event and by the poll, so an older read
+  can never overwrite a newer one.
 - Settling (`SkuaControlState`): when the script stops running the state is `settling` until the map has not changed for
   10 s, then `idle`. Skua raises `MapChanged` only while a script runs, so during the settle the map is compared on the
   3 s status poll (each change restarts the 10 s). `ScriptRunning` changes and the poll both feed the state; the poll
   (`SkuaCommandHandler.Tick`) also runs while SkuaLink is away (it reads only `ScriptRunning`, no Flash).
+
+## Script options (AQW-0089)
+
+From the Skua 1.4.5.0 source: a script declares its options in fields (`Options`, `MultiOptions`, `OptionsStorage`,
+`DontPreconfigure`). On every start `ScriptManager.LoadScriptConfig` puts a new `Config` (`IScriptOptionContainer`) in
+place with those options, loads the values from the options file `Config.OptionsFile` =
+`%AppData%\Skua\options\{OptionsStorage}.cfg` (`ClientFileSources.SkuaOptionsDIR`; `default.cfg` without
+`OptionsStorage`), and, for a script with `Options` and no `DontPreconfigure = true`, calls `Config.Configure()` on a pool
+task once the script thread runs: it loads the file again and shows the modal options dialog (`HostDialog`, `DataContext`
+= `OptionContainerViewModel`) with `ShowDialog` on Skua's UI thread. When that dialog closes in any way, Skua saves the
+values it shows. The script thread already runs meanwhile, with the values loaded from the file. File format: one line
+per option, `Options:Name=Value` for `Options` and `Category:Name=Value` for each `MultiOptions` list (the category is
+the field name); enum values with spaces for underscores (Skua turns them back when reading).
+
+How the plugin uses that (decisions in `src/AqwCompanion.Skua/SkuaCommandHandler.cs` and `SkuaScriptOptions.cs`,
+unit-tested; the Skua-bound part is `ScriptOptions.cs`):
+
+- **Definitions are learnt at a start.** Right after the plugin's own `StartScript()` returns, `Config` describes that
+  script (only kept when `LoadedScript` is still the path just started). The plugin keeps, per script id and for this
+  plugin load, the definitions (category, name, display name, description, type mapped to
+  `bool|int|double|string|enum|other`, default, enum members) and `Config.OptionsFile`. They are not kept across a Skua
+  restart: the first start of a script with options after each Skua start is a discovery again (below).
+- **`getOptions`:** not learnt yet: `ok` with no `optionDefs` (the phone says the first start uses the default options).
+  Learnt: `optionDefs` (empty for a script without options) and the saved values from the options file (only options
+  the script declares, in its order; no file is no values).
+- **`setOptions`:** refused while a script runs, starts or stops (Skua reads the file at the start, and an open dialog
+  would overwrite it when it closes); refused before the definitions are learnt (`options not known yet`); every value is
+  checked with `SkuaOptionsFile.Validate` (known name in its category, at most 200 chars, no line break, no trailing
+  space, fits the type: `True`/`False`, invariant int, invariant double, an enum member). The file is written with the
+  saved values and these applied, only lines for declared options, in Skua's format (`SkuaOptionsFile.Format`). Only a
+  `.cfg` file inside Skua's options folder is ever read or written (never through a link); anything else is refused.
+- **First start of a script with options (discovery):** the plugin waits for the options dialog (up to 5 s), closes it,
+  then stops the script at once and answers `ok, firstRun, optionDefs` (plus the saved values). The phone shows the form;
+  the owner fills it in, `setOptions`, then starts again. A script without options just runs. If no dialog appears within
+  5 s (the script preconfigures itself) the script is stopped the same way. If the dialog is still open after 8 s
+  (`FirstRunOptionsStuckAfter`, so the answer comes well within SkuaLink's 15 s), the script is NOT stopped: the answer
+  is `ok, hasOptions` with the definitions, the state stays `awaitingOptions` with `optionsStuck`, and the phone shows the
+  loud "Waiting for you on the PC" state.
+- **Later starts:** the answer comes at once (`ok, hasOptions, optionDefs`), state `awaitingOptions`; in the background
+  the plugin looks for the dialog every 250 ms and closes it. `awaitingOptions` ends: dialog gone after it was seen ->
+  `running`; no dialog found within 5 s (Skua shows none for a script that preconfigures itself) -> `running`; dialog
+  still open (or the windows could not be looked at) 10 s after the start -> `optionsStuck: true`, no more closing, and
+  `running` once the owner closes it on the PC. A stop, or a start never seen running, ends it too. Windows that cannot be
+  looked at are never taken for "no dialog".
+- **Window glue:** framework WPF only (`UseWPF` in the project: `PresentationFramework`, no Skua.Core or Skua.WPF). On
+  Skua's UI thread through Skua's `IDispatcherService.Invoke` (resolved from the service provider): scan
+  `Application.Current.Windows` for a `Window` whose `DataContext` type is named `OptionContainerViewModel` and whose
+  `Container` property (read by reflection) is the started script's `Config` (a plugin's options window, which uses the
+  same view model with another container, is left alone); close it with `Window.Close()`. Each window call is waited for
+  at most 2 s and only one is in flight at a time (a blocked UI thread counts as "cannot look"). Any failure in this code
+  becomes "cannot look", then `optionsStuck`; nothing reaches Skua as an exception.
 
 ## Threading and safety
 
@@ -207,13 +269,23 @@ Generated from the compiled DLL's member references (System.Reflection.Metadata)
 | `ClientFileSources.SkuaScriptsDIR` (Skua.Core.Models) | read | the scripts folder listed by `listScripts` |
 | `IScriptStatus.SetLoadedScript(string)` | **changes Skua state** | `start`, only when no script runs |
 | `IScriptStatus.StartScript()` | **changes Skua state** | `start` |
-| `IScriptStatus.Config` -> `IScriptOptionContainer.Options`, `.MultipleOptions` | read (counts only) | `hasOptions` after a start |
-| `IScriptStatus.StopScript()` | **changes Skua state** | `stop`, on a pool thread |
+| `IScriptStatus.Config` -> `IScriptOptionContainer.Options`, `.MultipleOptions`, `.OptionsFile` | read | option definitions and the options file, after the plugin's own start; `Config` also identifies the dialog |
+| `IOption.Name`, `.DisplayName`, `.Description`, `.Type`, `.DefaultValue` | read | option definitions |
+| `ClientFileSources.SkuaOptionsDIR` (Skua.Core.Models) | read | the only folder options files are read from or written to |
+| `IServiceProvider.GetService(typeof(IDispatcherService))`, `IDispatcherService.Invoke(Action)` | read / runs plugin code on Skua's UI thread | find and close the options dialog |
+| the options file `%AppData%\Skua\options\{Storage}.cfg` | **written** (file, not a Skua member) | `setOptions`, only while no script runs |
+| `IScriptStatus.StopScript()` | **changes Skua state** | `stop`, on a pool thread; a first start with options (discovery) |
+
+Framework WPF members (not Skua's): `Application.Current`, `Application.Windows`, `FrameworkElement.DataContext`, and
+`Window.Close()` on the one window matched as the started script's options dialog (which makes Skua save the values it
+shows).
 
 Removed in AQW-0076: the `IScriptEvent.QuestAccepted` and `IScriptEvent.QuestTurnedIn` subscriptions and the
 `IScriptQuest.Tree` read (it only named those two log lines). No other Skua member is referenced. In particular
 nothing calls `Send`, `Flash`, `Shops`, `Options`, `RestartScriptAsync`, `Compile`, `CanComplete`, `Inventory.Sell` or
-any setter; `SetLoadedScript`, `StartScript` and `StopScript` are called only by the three commands above. Some getters above are implemented by Skua as Flash reads (`isLoggedIn`,
+any setter; `SetLoadedScript`, `StartScript` and `StopScript` are called only by the `start` and `stop` commands above
+(a discovery start stops its script itself). `Config.Set`, `Save`, `Load` and `Configure` are not called: the options file
+is written directly, in Skua's format. Some getters above are implemented by Skua as Flash reads (`isLoggedIn`,
 `world.strMapName`, `world.myAvatar.items`, `world.myAvatar.factions`, `world.questTree`, `loginInfo.strUsername`); they read game objects and
 change nothing.
 
@@ -236,7 +308,9 @@ dotnet build plugin/SkuaLink.SkuaBridge -c Release
 
 The output is `SkuaLink.SkuaBridge.dll` (plus `.pdb` and `.deps.json`); no Skua assembly is copied. The protocol
 files from `src/AqwCompanion.Skua` are compiled in as source, so the plugin is one DLL whose only non-framework
-references are `Skua.Core.Interfaces` and `Skua.Core.Models`.
+references are `Skua.Core.Interfaces` and `Skua.Core.Models`. Since AQW-0089 the project sets `UseWPF` (the Windows
+Desktop framework reference, no package) for the options dialog: the DLL then also references the framework's
+`PresentationFramework`, which Skua (a WPF app on `net10.0-windows`) already loads.
 
 ## Not verified (owner's Windows checklist)
 
@@ -267,3 +341,21 @@ references are `Skua.Core.Interfaces` and `Skua.Core.Models`.
   - Settling: that 10 s without a map change (seen on the 3 s poll while no script runs) covers Skua's cleanup after a
     stop (for example going to the house), and that a script that stops by itself also settles.
   - A start accepted but never reported running settles after 10 s.
+- Script options (AQW-0089):
+  - The options file path and format on a real Skua: `%AppData%\Skua\options\{OptionsStorage}.cfg`, the lines Skua
+    writes, enum values with spaces, and that a file written by the plugin is read back by Skua unchanged.
+  - That `Config` read right after `StartScript()` returns is the script just started (definitions, `OptionsFile`).
+  - The window match (`DataContext` type name `OptionContainerViewModel` and its `Container` being `Config`) and the
+    close with `Window.Close()` through `IDispatcherService.Invoke`, while Skua's dialog runs in `ShowDialog`; and what
+    the phone shows when either fails (`optionsStuck`).
+  - That the script reads the saved values after the dialog closes (Skua saves what the dialog showed, which it loaded
+    from the file just written), including a script that reads its options before the dialog closes.
+  - First start (discovery): that stopping the script right after closing its dialog leaves Skua clean (settling
+    applies), and that a dialog appearing later than 5 s after the start (slow PC) does not stay on the PC.
+  - A second start of the same script in one Skua session: whether Skua shows the dialog again (the source suggests it
+    does for every start of a script without `DontPreconfigure`), and that with no dialog the state goes to `running`
+    after 5 s.
+  - That a script with `DontPreconfigure = true` shows no dialog and starts with the saved values.
+  - A PC whose culture writes decimals with a comma: the phone sends doubles in invariant culture (`1.5`) and the plugin
+    writes them in the PC's culture (`1,5`), as Skua reads them (`Convert.ChangeType` with the current culture), and
+    reads them back the same way; that the plugin's thread culture is the one Skua's script thread uses is not seen.

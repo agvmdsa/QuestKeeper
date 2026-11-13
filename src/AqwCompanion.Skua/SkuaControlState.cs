@@ -63,24 +63,43 @@ public sealed class SkuaControlState
     {
         lock (_gate)
         {
-            Advance();
-            if (running == _scriptRunning)
-            {
-                return;
-            }
+            ApplyRunning(running);
+        }
+    }
 
-            _scriptRunning = running;
-            if (running)
+    /// <summary>
+    /// Reads Skua's <c>ScriptRunning</c> inside the state's lock and applies it like <see cref="OnScriptRunningChanged"/>:
+    /// two readers (the running event and the poll) are applied in the order they read, so an older read can never
+    /// overwrite a newer one. A read that throws changes nothing and is passed on. The read must be cheap and must not
+    /// call back into this state.
+    /// </summary>
+    public void OnScriptRunningRead(Func<bool> read)
+    {
+        lock (_gate)
+        {
+            ApplyRunning(read());
+        }
+    }
+
+    private void ApplyRunning(bool running)
+    {
+        Advance();
+        if (running == _scriptRunning)
+        {
+            return;
+        }
+
+        _scriptRunning = running;
+        if (running)
+        {
+            if (_state is "idle" or "settling")
             {
-                if (_state is "idle" or "settling")
-                {
-                    _state = "running";
-                }
+                _state = "running";
             }
-            else
-            {
-                StartSettling();
-            }
+        }
+        else
+        {
+            StartSettling();
         }
     }
 

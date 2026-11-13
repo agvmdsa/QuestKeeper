@@ -12,10 +12,10 @@ namespace SkuaLink.SkuaBridge;
 /// <summary>
 /// Adapter inside Skua. It reads properties and subscribes to events, and reports what it sees to SkuaLink over the pipe.
 /// One of those properties, <c>Quests.Active</c>, writes Skua's own quest tree cache when read (Skua's getter, not a game
-/// action), so it is read at most every 15 s. From SkuaLink it accepts exactly three commands: list the scripts in Skua's
-/// scripts folder, start one of them by id, and stop the running script (<see cref="SkuaCommandHandler"/>, through
-/// <see cref="ScriptControl"/>); those are the only Skua methods it calls that change Skua's state, and it never sends
-/// anything to the game. It never lets an exception reach Skua. See README.md for the audited list of Skua members.
+/// action), so it is read at most every 15 s. From SkuaLink it accepts exactly five commands: list the scripts in Skua's
+/// scripts folder, read and write a script's options file, start a script by id (closing its options dialog), and stop the
+/// running script (<see cref="SkuaCommandHandler"/>, through <see cref="ScriptControl"/> and <see cref="ScriptOptions"/>);
+/// those are the only things it does that change Skua's state, and it never sends anything to the game. It never lets an exception reach Skua. See README.md for the audited list of Skua members.
 /// </summary>
 public sealed class SkuaBridgePlugin : ISkuaPlugin
 {
@@ -104,7 +104,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
 
     public string Name => "SkuaLink Bridge";
     public string Author => "SkuaLink";
-    public string Description => "Shows what Skua is doing in SkuaLink, and lets SkuaLink list, start and stop scripts.";
+    public string Description => "Shows what Skua is doing in SkuaLink, and lets SkuaLink list, start and stop scripts and set their options.";
     public List<IOption>? Options => null;
 
     public void Load(IServiceProvider provider, IPluginHelper helper)
@@ -128,7 +128,10 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
 
             _control = new SkuaControlState(Now);
             _control.OnScriptRunningChanged(_running);
-            _commands = new SkuaCommandHandler(new ScriptControl((IScriptStatus?)registered ?? bot.Manager), ScriptControl.Catalog(), _control, Now);
+            var manager = (IScriptStatus?)registered ?? bot.Manager;
+            var dispatcher = provider.GetService(typeof(IDispatcherService)) as IDispatcherService;
+            _commands = new SkuaCommandHandler(
+                new ScriptControl(manager), ScriptControl.Catalog(), _control, Now, new ScriptOptions(manager, dispatcher));
 
             var skuaVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
             _client = new PipeClient(
@@ -361,9 +364,13 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
             // On every notification, outside the dedupe: two quick notifications may both read the same current value
             // and see no transition, yet ClearHandlers may have run in between. Re-attaching is idempotent.
             Resubscribe();
-            var running = _bot?.Manager.ScriptRunning ?? false;
-            _control?.OnScriptRunningChanged(running); // Ignores a repeated value itself.
-            RunningChanged(running);
+            if (_bot is { } bot)
+            {
+                // Read inside the control state's lock (as the poll does), so an older read never overwrites a newer one.
+                _control?.OnScriptRunningRead(() => bot.Manager.ScriptRunning);
+            }
+
+            RunningChanged(_bot?.Manager.ScriptRunning ?? false);
         }
 
         if (all || propertyName == nameof(IScriptStatus.LoadedScript))

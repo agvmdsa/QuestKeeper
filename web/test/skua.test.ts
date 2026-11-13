@@ -150,10 +150,16 @@ describe('factionRows', () => {
     expect(rows(list)!.map((r) => r.name)).toEqual(['alpha', 'gamma', 'Beta', 'zeta', 'Evil', 'Good']);
   });
   it('computes rank, the share of the rank, what is left and the rank text', () => {
-    expect(rows([faction(1, 'Nation', 3, 300, 1200)])).toEqual([{ name: 'Nation', rank: 3, max: false, fraction: 0.25, toNext: 900, label: 'Rank 3' }]);
+    expect(rows([faction(1, 'Nation', 3, 300, 1200)])).toEqual([{ name: 'Nation', rank: 3, max: false, fraction: 0.25, toNext: 900 }]);
   });
   it('treats a step of 0 as the maximum rank: full bar, nothing to next rank', () => {
-    expect(rows([faction(1, 'Good', 10, 0, 0)])).toEqual([{ name: 'Good', rank: 10, max: true, fraction: 1, toNext: 0, label: 'Max rank' }]);
+    expect(rows([faction(1, 'Good', 10, 0, 0)])).toEqual([{ name: 'Good', rank: 10, max: true, fraction: 1, toNext: 0 }]);
+  });
+  it('is the maximum rank at rank 10 or with a step of 0, and otherwise not', () => {
+    expect(rows([faction(1, 'Ten', 10, 40, 500)])![0]).toMatchObject({ max: true, fraction: 1, toNext: 0 });
+    expect(rows([faction(1, 'Zero', 4, 0, 0)])![0]).toMatchObject({ max: true, fraction: 1, toNext: 0 });
+    expect(rows([faction(1, 'Nine', 9, 40, 500)])![0]).toMatchObject({ max: false, toNext: 460 });
+    expect(rows([faction(1, 'Alpha', 9, 400, 500), faction(2, 'Ten', 10, 499, 500), faction(3, 'Beta', 1, 0, 0)])!.map((r) => r.name)).toEqual(['Alpha', 'Beta', 'Ten']);
   });
   it('clamps rep beyond the step to a full bar with nothing left', () => {
     expect(rows([faction(1, 'Odd', 4, 1500, 1000)])![0]).toMatchObject({ max: false, fraction: 1, toNext: 0 });
@@ -183,16 +189,16 @@ describe('effectiveFactions', () => {
     notices: [],
     skua: skuaState,
   });
-  const live = [faction(1, 'zeta', 2, 100, 1000), faction(2, 'Good', 10, 0, 0), faction(3, 'alpha', 5, 950, 1000)];
+  const live = [faction(1, 'zeta', 2, 100, 1000, 5100), faction(2, 'Good', 10, 0, 0, 9000), faction(3, 'alpha', 5, 950, 1000, 4950)];
   const connected = (over: object = {}, s: Partial<SkuaState> = {}) => withStatus({ character: 'Hero', factions: live, ...over }, s);
 
   it('uses the Skua list, mapped and ordered like the capture list, when connected for the selected character', () => {
     const r = effectiveFactions(remote(connected()));
     expect(r.source).toBe('skua');
     expect(r.factions).toEqual([
-      { name: 'alpha', rank: 5, rep: 950, toNext: 50, fraction: 0.95, max: false },
-      { name: 'zeta', rank: 2, rep: 100, toNext: 900, fraction: 0.1, max: false },
-      { name: 'Good', rank: 10, rep: 0, toNext: 0, fraction: 1, max: true },
+      { name: 'alpha', rank: 5, rep: 4950, toNext: 50, fraction: 0.95, max: false },
+      { name: 'zeta', rank: 2, rep: 5100, toNext: 900, fraction: 0.1, max: false },
+      { name: 'Good', rank: 10, rep: 9000, toNext: 0, fraction: 1, max: true },
     ]);
   });
   it.each([
@@ -201,7 +207,6 @@ describe('effectiveFactions', () => {
     ['factions not reported', () => connected({ factions: null })],
     ['an empty Skua list (a transient empty read must not blank the page)', () => connected({ factions: [] })],
     ['another character in Skua', () => connected({ character: 'Other' })],
-    ['a different letter case', () => connected({ character: 'hero' })],
     ['no Skua character', () => connected({ character: null })],
     ['no status', () => skua({ status: null })],
     ['no Skua state', () => null],
@@ -209,6 +214,10 @@ describe('effectiveFactions', () => {
   ])('uses the capture list for %s', (_n, make) => {
     const r = effectiveFactions(remote(make()));
     expect(r).toEqual({ factions: capture, source: 'capture' });
+  });
+  it('matches the Skua character ignoring letter case', () => {
+    expect(effectiveFactions(remote(connected({ character: 'hero' }))).source).toBe('skua');
+    expect(effectiveFactions(remote(connected({ character: 'HERO' }), 'hErO')).source).toBe('skua');
   });
   it('uses the capture list when no character is selected', () => {
     expect(effectiveFactions(remote(connected(), null)).source).toBe('capture');

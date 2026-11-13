@@ -1,8 +1,8 @@
-; Questkeeper installer (Inno Setup 6).
+; SkuaLink installer (Inno Setup 6).
 ;
 ; Built by .github/workflows/release.yml after the single-file publish, with the version from the tag:
-;   iscc /DMyAppVersion=0.2.0 /DMyAppVersionLabel=0.2.0 installer\Questkeeper.iss
-; The publish folder (out\publish) holds Questkeeper.exe, renamed from AqwCompanion.exe by the workflow.
+;   iscc /DMyAppVersion=0.2.0 /DMyAppVersionLabel=0.2.0 installer\SkuaLink.iss
+; The publish folder (out\publish) holds SkuaLink.exe, renamed from AqwCompanion.exe by the workflow.
 ;
 ; Npcap is NOT bundled and NOT downloaded here: its license forbids redistribution without the Nmap Project's permission.
 ; The installer only checks for it (the same two files the app checks) and sends the player to the official download page.
@@ -13,16 +13,16 @@
 #ifndef MyAppVersionLabel
   #define MyAppVersionLabel MyAppVersion
 #endif
-#define MyAppName "Questkeeper"
-#define MyAppExe "Questkeeper.exe"
-#define MyAppUrl "https://github.com/agvmdsa/QuestKeeper"
+#define MyAppName "SkuaLink"
+#define MyAppExe "SkuaLink.exe"
+#define MyAppUrl "https://github.com/agvmdsa/SkuaLink"
 #define NpcapUrl "https://npcap.com/#download"
 ; The folder that already holds the settings and saved data of earlier versions (the assembly kept its first name).
 #define MyDataFolder "AqwCompanion"
 
 [Setup]
 ; Never change this id: it is how Windows knows later versions replace this one.
-AppId={{6F3C1A52-8B7E-4D0A-9C41-2E5D7A90B1C3}
+AppId={{BB950C7C-C50F-463F-9FAD-8EBBECA33840}
 AppName={#MyAppName}
 AppVersion={#MyAppVersionLabel}
 VersionInfoVersion={#MyAppVersion}
@@ -38,7 +38,7 @@ PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist
-OutputBaseFilename=Questkeeper-Setup-v{#MyAppVersionLabel}
+OutputBaseFilename=SkuaLink-Setup-v{#MyAppVersionLabel}
 SetupIconFile=..\src\AqwCompanion.App\Assets\app.ico
 UninstallDisplayIcon={app}\{#MyAppExe}
 Compression=lzma2
@@ -70,7 +70,7 @@ Filename: "{app}\{#MyAppExe}"; Description: "Start {#MyAppName}"; Flags: shellex
 
 [UninstallRun]
 ; "Start with Windows" in the app's settings creates this scheduled task.
-Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""{#MyAppName}"" /F"; Flags: runhidden; RunOnceId: "RemoveQuestkeeperTask"
+Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""{#MyAppName}"" /F"; Flags: runhidden; RunOnceId: "RemoveSkuaLinkTask"
 
 [Code]
 var
@@ -89,14 +89,14 @@ procedure RefreshNpcap;
 begin
   if NpcapInstalled then
   begin
-    NpcapStatus.Caption := 'Npcap is installed. Questkeeper can read the game data.';
+    NpcapStatus.Caption := 'Npcap is installed. SkuaLink can read the game data.';
     NpcapOpenButton.Visible := False;
     NpcapCheckButton.Visible := False;
   end
   else
   begin
     NpcapStatus.Caption := 'Npcap was not found on this computer. You can finish this setup now and install Npcap afterwards, ' +
-      'but Questkeeper shows nothing until it is installed.';
+      'but SkuaLink shows nothing until it is installed.';
     NpcapOpenButton.Visible := True;
     NpcapCheckButton.Visible := True;
   end;
@@ -119,7 +119,7 @@ var
   Intro: TNewStaticText;
 begin
   NpcapPage := CreateCustomPage(wpSelectDir, 'Npcap',
-    'Questkeeper reads the game data with the Npcap packet capture driver.');
+    'SkuaLink reads the game data with the Npcap packet capture driver.');
 
   Intro := TNewStaticText.Create(NpcapPage);
   Intro.Parent := NpcapPage.Surface;
@@ -176,7 +176,7 @@ begin
   begin
     DataDir := ExpandConstant('{localappdata}\{#MyDataFolder}');
     if (not UninstallSilent) and DirExists(DataDir) then
-      if MsgBox('Also remove what Questkeeper saved on this computer (settings, saved characters, logs)?',
+      if MsgBox('Also remove what SkuaLink saved on this computer (settings, saved characters, logs)?',
         mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
         DelTree(DataDir, True, True, True);
   end;

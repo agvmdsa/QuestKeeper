@@ -4,7 +4,7 @@ using AqwCompanion.Skua;
 namespace AqwCompanion.Phone.Skua;
 
 /// <summary>
-/// The Questkeeper side of the Skua link: connection state, the last status and a capped, persisted log.
+/// The SkuaLink side of the Skua link: connection state, the last status and a capped, persisted log.
 /// Events and store calls happen outside the lock; a throwing handler never stops the others.
 /// </summary>
 public sealed class SkuaBridge : ISkuaFeed, IForgettable

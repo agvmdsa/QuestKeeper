@@ -37,7 +37,7 @@ public class SkuaStatusTextTests
     public void A_version_mismatch_tells_the_user_to_use_the_matching_plugin()
     {
         Assert.Equal(
-            "The plugin and Questkeeper do not speak the same version. Use the plugin from the same release as this app.",
+            "The plugin and SkuaLink do not speak the same version. Use the plugin from the same release as this app.",
             SkuaStatusText.For(View(SkuaConnection.VersionMismatch)));
     }
 }

@@ -27,7 +27,7 @@ public partial class SettingsViewModel : ObservableObject
     public const string PhoneCopyLinkText = "Copy local pairing link";
     public const string SkuaTitleText = "Skua";
     public const string SkuaDescriptionText = "Shows what Skua is doing in the Skua tab of the phone page. The plugin only watches: it cannot start, stop or change anything.";
-    public const string SkuaStepsText = "1. Download QuestKeeper.SkuaBridge.dll from the release page. 2. Copy it into Skua's plugins folder. 3. Close and reopen Skua.";
+    public const string SkuaStepsText = "1. Download SkuaLink.SkuaBridge.dll from the release page. 2. Copy it into Skua's plugins folder. 3. Close and reopen Skua.";
     public const string OpenSkuaPluginsFolderText = "Open Skua's plugins folder";
     public const string OpenReleasePageText = "Open the release page";
     public const string SkuaFolderNotFoundText = "Skua's plugins folder was not found. Open Skua once, then try again.";
@@ -43,7 +43,7 @@ public partial class SettingsViewModel : ObservableObject
     public const string CreditsTitleText = "Credits";
 
     public const string PrivacyText =
-        "Questkeeper reads, on this computer only, the data the game sends your own computer when you log in, and a few of your own events while you play: " +
+        "SkuaLink reads, on this computer only, the data the game sends your own computer when you log in, and a few of your own events while you play: " +
         "character name and level, gold, experience, AC, class points, days played, membership days, faction reputation, and your items. " +
         "It never reads or keeps your e-mail address, IP address, password, user or character ids, or anything about other players. " +
         "It never sends anything to the game and never acts for you. Only two things go beyond this computer, and only when you ask for them: the AQW Wiki is contacted when you ask for the Hard Farms list, " +

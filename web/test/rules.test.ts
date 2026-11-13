@@ -35,11 +35,11 @@ describe('names', () => {
   it.each([...shipped.map((f) => relative(root, f)), 'vite.config.ts', 'dev/mock-api.ts'])('%s keeps no name of the Remote', (file) => {
     expect(read(file)).not.toMatch(/qkr(?!-last-state)|Questkeeper Remote|QK Remote/i);
   });
-  it('the installed page is called Questkeeper', () => {
+  it('the installed page is called SkuaLink', () => {
     const manifest = JSON.parse(read('public/manifest.webmanifest')) as { name: string; short_name: string };
-    expect(manifest).toMatchObject({ name: 'Questkeeper', short_name: 'Questkeeper' });
-    expect(read('index.html')).toContain('<title>Questkeeper</title>');
-    expect(read('index.html')).toContain('<meta name="apple-mobile-web-app-title" content="Questkeeper">');
+    expect(manifest).toMatchObject({ name: 'SkuaLink', short_name: 'SkuaLink' });
+    expect(read('index.html')).toContain('<title>SkuaLink</title>');
+    expect(read('index.html')).toContain('<meta name="apple-mobile-web-app-title" content="SkuaLink">');
   });
   it('the service worker cache is named qkp-shell-', () => expect(read('vite.config.ts')).toContain('`qkp-shell-${version}`'));
 });

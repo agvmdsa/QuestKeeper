@@ -258,19 +258,19 @@ public class TrayControllerTests
     public async Task Tooltip_and_menu_text_follow_the_state()
     {
         var setup = new Setup();
-        Assert.Equal("Questkeeper - not capturing", setup.Controller.ToolTip);
+        Assert.Equal("SkuaLink - not capturing", setup.Controller.ToolTip);
         Assert.Equal("Start capture", setup.Controller.CaptureMenuText);
 
         var (source, started) = Holding();
         setup.Rig.Source = source;
         var run = setup.Rig.Session.StartAsync();
         await started.Task.WaitAsync(Wait);
-        Assert.Equal("Questkeeper - waiting for a login", setup.Controller.ToolTip);
+        Assert.Equal("SkuaLink - waiting for a login", setup.Controller.ToolTip);
         Assert.Equal("Stop capture", setup.Controller.CaptureMenuText);
 
         setup.Rig.Session.Stop();
         await run.WaitAsync(Wait);
-        Assert.Equal("Questkeeper - not capturing", setup.Controller.ToolTip);
+        Assert.Equal("SkuaLink - not capturing", setup.Controller.ToolTip);
     }
 
     [Fact]
@@ -281,7 +281,7 @@ public class TrayControllerTests
         setup.Rig.Source = source;
         var run = setup.Rig.Session.StartAsync();
         await started.Task.WaitAsync(Wait);
-        Assert.Equal("Questkeeper - capturing, 1 character", setup.Controller.ToolTip);
+        Assert.Equal("SkuaLink - capturing, 1 character", setup.Controller.ToolTip);
         setup.Rig.Session.Stop();
         await run.WaitAsync(Wait);
 
@@ -290,7 +290,7 @@ public class TrayControllerTests
         var again = setup.Rig.Session.StartAsync();
         await secondStarted.Task.WaitAsync(Wait);
 
-        Assert.Equal("Questkeeper - capturing, 2 characters", setup.Controller.ToolTip);
+        Assert.Equal("SkuaLink - capturing, 2 characters", setup.Controller.ToolTip);
         setup.Rig.Session.Stop();
         await again.WaitAsync(Wait);
     }
@@ -301,21 +301,21 @@ public class TrayControllerTests
         var setup = new Setup();
         setup.Rig.Npcap = NpcapStatus.Missing;
         await setup.Rig.Session.StartAsync();
-        Assert.Equal("Questkeeper - Npcap is not installed", setup.Controller.ToolTip);
+        Assert.Equal("SkuaLink - Npcap is not installed", setup.Controller.ToolTip);
 
         setup.Rig.Npcap = NpcapStatus.Available;
         setup.Rig.Elevation.IsElevated = false;
         await setup.Rig.Session.StartAsync();
-        Assert.Equal("Questkeeper - needs administrator rights", setup.Controller.ToolTip);
+        Assert.Equal("SkuaLink - needs administrator rights", setup.Controller.ToolTip);
 
         setup.Rig.Elevation.IsElevated = true;
         setup.Rig.Source = new FakePacketSource((_, _) => Task.FromException(new InvalidOperationException()));
         await setup.Rig.Session.StartAsync();
-        Assert.Equal("Questkeeper - capture failed", setup.Controller.ToolTip);
+        Assert.Equal("SkuaLink - capture failed", setup.Controller.ToolTip);
 
         setup.Rig.IsWindows = false;
         await setup.Rig.Session.StartAsync();
-        Assert.Equal("Questkeeper - capture not available", setup.Controller.ToolTip);
+        Assert.Equal("SkuaLink - capture not available", setup.Controller.ToolTip);
     }
 
     [Fact]

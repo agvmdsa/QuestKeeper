@@ -81,7 +81,7 @@ public sealed class PhoneHandler(PhoneRegistry registry, PhoneHub hub, IAssetSou
 
         return path switch
         {
-            "/api/ping" => Json(200, JsonSerializer.Serialize(new Dictionary<string, string> { ["app"] = "Questkeeper", ["version"] = appVersion })),
+            "/api/ping" => Json(200, JsonSerializer.Serialize(new Dictionary<string, string> { ["app"] = "SkuaLink", ["version"] = appVersion })),
             "/api/state" => Json(200, hub.CurrentJson),
             "/api/events" => new PhoneResponse(200, "text/event-stream", [], [Pair("Cache-Control", "no-store"), ..Common()], IsEventStream: true, DeviceId: device.Id),
             _ => Error(404, "not found"),

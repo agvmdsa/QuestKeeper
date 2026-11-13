@@ -12,7 +12,7 @@ public sealed class TrayController
     /// <summary>The longest Exit waits for the capture devices to close.</summary>
     public static readonly TimeSpan DefaultStopTimeout = TimeSpan.FromSeconds(3);
 
-    private const string Name = "Questkeeper";
+    private const string Name = "SkuaLink";
 
     private readonly CaptureSession _session;
     private readonly IMainWindowHost _window;

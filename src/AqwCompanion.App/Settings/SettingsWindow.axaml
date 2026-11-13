@@ -150,6 +150,6 @@
       </StackPanel>
     </Border>
 
-    <TextBlock x:Name="SettingsVersion" Classes="muted" Margin="20,10" Text="{Binding Version, StringFormat='Questkeeper {0}'}" />
+    <TextBlock x:Name="SettingsVersion" Classes="muted" Margin="20,10" Text="{Binding Version, StringFormat='SkuaLink {0}'}" />
   </StackPanel>
 </Window>

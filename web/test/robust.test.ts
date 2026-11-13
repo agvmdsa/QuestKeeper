@@ -143,8 +143,8 @@ describe('takePairingToken', () => {
 describe('pairFailureText', () => {
   it('explains each outcome that did not pair', () => {
     expect(pairFailureText('locked')).toBe('Too many attempts. Wait a minute and open the pairing link again.');
-    expect(pairFailureText('invalid')).toBe('The pairing link was not accepted. Create a new one in Questkeeper on your PC.');
-    expect(pairFailureText('failed')).toBe('The pairing link was not accepted. Create a new one in Questkeeper on your PC.');
+    expect(pairFailureText('invalid')).toBe('The pairing link was not accepted. Create a new one in SkuaLink on your PC.');
+    expect(pairFailureText('failed')).toBe('The pairing link was not accepted. Create a new one in SkuaLink on your PC.');
     expect(pairFailureText('paired')).toBeNull();
   });
 });
@@ -191,7 +191,7 @@ describe('fallback views', () => {
   it('adds the reason a pairing link failed', () => {
     const t = texts(pairNeededView('Too many attempts. Wait a minute and open the pairing link again.'));
     expect(t).toContain('Too many attempts. Wait a minute and open the pairing link again.');
-    expect(t.some((x) => x.startsWith('On your PC, open Questkeeper'))).toBe(true);
+    expect(t.some((x) => x.startsWith('On your PC, open SkuaLink'))).toBe(true);
     expect(texts(pairNeededView())).not.toContain('Too many attempts. Wait a minute and open the pairing link again.');
   });
   it('adds the install hint to the "Not paired" card when there is one', () => {

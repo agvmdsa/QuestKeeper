@@ -40,7 +40,7 @@ let state: RemoteState | null = null;
 let notices: Notice[] = [];
 let lastUpdateMs: number | null = null;
 let sseOpen = false;
-// When the stream went down (the page starts without one) and whether the last state request failed: they decide "Can't reach Questkeeper".
+// When the stream went down (the page starts without one) and whether the last state request failed: they decide "Can't reach SkuaLink".
 let downSinceMs: number | null = Date.now();
 let requestFailed = false;
 let unreachableTimer: ReturnType<typeof setTimeout> | undefined;

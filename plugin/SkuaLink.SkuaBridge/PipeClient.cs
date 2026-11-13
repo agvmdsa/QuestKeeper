@@ -3,12 +3,12 @@ using System.Text;
 using System.Threading.Channels;
 using AqwCompanion.Skua;
 
-namespace QuestKeeper.SkuaBridge;
+namespace SkuaLink.SkuaBridge;
 
 /// <summary>
-/// Sends protocol lines to Questkeeper over the local named pipe. Outbound only: the pipe is opened
-/// <see cref="PipeDirection.Out"/>, so nothing can ever be read from Questkeeper. Retries for the whole life of the plugin
-/// (Questkeeper may start after Skua, close, or restart). No public member ever throws.
+/// Sends protocol lines to SkuaLink over the local named pipe. Outbound only: the pipe is opened
+/// <see cref="PipeDirection.Out"/>, so nothing can ever be read from SkuaLink. Retries for the whole life of the plugin
+/// (SkuaLink may start after Skua, close, or restart). No public member ever throws.
 /// </summary>
 internal sealed class PipeClient : IDisposable
 {
@@ -24,7 +24,7 @@ internal sealed class PipeClient : IDisposable
     public static readonly TimeSpan MaxRetryWait = TimeSpan.FromSeconds(30);
     public static readonly TimeSpan DisposeWait = TimeSpan.FromSeconds(2);
 
-    /// <summary>An empty line is skipped by Questkeeper's line reader; writing one now and then finds a closed Questkeeper while nothing happens.</summary>
+    /// <summary>An empty line is skipped by SkuaLink's line reader; writing one now and then finds a closed SkuaLink while nothing happens.</summary>
     public static readonly TimeSpan KeepAliveInterval = TimeSpan.FromSeconds(10);
 
     private static readonly byte[] NewLine = "\n"u8.ToArray();
@@ -60,7 +60,7 @@ internal sealed class PipeClient : IDisposable
         _onConnected = onConnected;
     }
 
-    /// <summary>True while a pipe to Questkeeper is open (hello written and no write has failed since).</summary>
+    /// <summary>True while a pipe to SkuaLink is open (hello written and no write has failed since).</summary>
     public bool IsConnected => Volatile.Read(ref _connected);
 
     public void Start()
@@ -186,7 +186,7 @@ internal sealed class PipeClient : IDisposable
             }
             catch (Exception)
             {
-                // Questkeeper is not there, closed the pipe, or the write failed: drop the connection and try again.
+                // SkuaLink is not there, closed the pipe, or the write failed: drop the connection and try again.
             }
             finally
             {

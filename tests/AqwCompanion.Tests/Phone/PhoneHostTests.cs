@@ -134,7 +134,7 @@ public sealed class PhoneHostTests : IDisposable
         using var response = await _client.GetAsync(Url("/"));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("<title>Questkeeper</title>", await response.Content.ReadAsStringAsync());
+        Assert.Contains("<title>SkuaLink</title>", await response.Content.ReadAsStringAsync());
     }
 
     [Fact]
@@ -717,7 +717,7 @@ public sealed class PhoneHostTests : IDisposable
         var reply = await RawAsync(port, $"GET /api/ping HTTP/1.1\r\nHost: {TailnetName}\r\nCookie: {cookie}\r\nConnection: close\r\n\r\n");
 
         Assert.StartsWith("HTTP/1.1 200", reply, StringComparison.Ordinal);
-        Assert.Contains("\"app\":\"Questkeeper\"", reply, StringComparison.Ordinal);
+        Assert.Contains("\"app\":\"SkuaLink\"", reply, StringComparison.Ordinal);
     }
 
     private PhoneHost NewHostAllowing(Func<string, bool> allowed, out int port)

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { en } from '../src/i18n/en';
 
 const template = readFileSync(new URL('../src/sw.template.js', import.meta.url), 'utf8');
-const SENTENCE = "Can't reach Questkeeper. Check that your PC is on and Questkeeper is running.";
+const SENTENCE = "Can't reach SkuaLink. Check that your PC is on and SkuaLink is running.";
 
 interface Fake {
   handler: (event: unknown) => void;

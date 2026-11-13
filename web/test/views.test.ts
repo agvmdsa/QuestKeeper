@@ -44,7 +44,7 @@ describe('list view', () => {
     expect(texts(listView(model(state())))).toContain('Live - activity just now');
   });
   it('says what to do when no character has logged in', () => {
-    expect(texts(listView(model(null)))).toContain('No characters yet. Log a character in while Questkeeper is listening.');
+    expect(texts(listView(model(null)))).toContain('No characters yet. Log a character in while SkuaLink is listening.');
   });
   it('lists recent notices with their age', () => {
     const t = texts(listView(model(state())));
@@ -83,7 +83,7 @@ describe('character view', () => {
     expect(selected).toContain('1 of 40 owned');
     const other = texts(characterView(model(state()), 'Beta'));
     expect(other).not.toContain('Yokai');
-    expect(other.some((x) => x.startsWith('Factions and Hard Farms are shown for the character selected in Questkeeper'))).toBe(true);
+    expect(other.some((x) => x.startsWith('Factions and Hard Farms are shown for the character selected in SkuaLink'))).toBe(true);
   });
   it('keeps the missing list collapsed and offers the rest on request', () => {
     const view = characterView(model(state()), alpha.name);
@@ -94,7 +94,7 @@ describe('character view', () => {
     expect(all(full).some((n) => n.attrs?.['data-action'] === 'toggle-all' && n.text === 'Show fewer')).toBe(true);
   });
   it('says so when Hard Farms are not loaded', () => {
-    expect(texts(characterView(model(state({ hardFarms: null })), alpha.name))).toContain('Hard Farms are not loaded yet. Import the list in Questkeeper.');
+    expect(texts(characterView(model(state({ hardFarms: null })), alpha.name))).toContain('Hard Farms are not loaded yet. Import the list in SkuaLink.');
   });
   it('credits the AQW Wiki and its licence in a muted line of the Hard Farms card', () => {
     const credit = all(characterView(model(state()), alpha.name)).find((n) => n.text === 'The Hard Farms list comes from the AQW Wiki (CC BY-SA 3.0).');
@@ -107,7 +107,7 @@ describe('character view', () => {
 
 describe('pairing view', () => {
   it('tells the player how to pair', () => {
-    expect(texts(pairNeededView())).toContain('On your PC, open Questkeeper, then Settings, "Watch my characters from my phone", "Pair a phone...", and scan the code or open the link here.');
+    expect(texts(pairNeededView())).toContain('On your PC, open SkuaLink, then Settings, "Watch my characters from my phone", "Pair a phone...", and scan the code or open the link here.');
   });
 });
 

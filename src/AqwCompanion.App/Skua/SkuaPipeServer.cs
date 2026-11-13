@@ -186,10 +186,10 @@ public sealed class SkuaPipeServer(string pipeName, SkuaBridge bridge, Action<Ex
     /// <summary>
     /// Windows: an explicit security descriptor (see <see cref="CreateUserOnlySecurity"/>) instead of
     /// <see cref="PipeOptions.CurrentUserOnly"/>, because .NET builds that one from the token's default owner, which for an
-    /// elevated administrator (Questkeeper always runs elevated for capture) is BUILTIN\Administrators: a normal Skua holds
+    /// elevated administrator (SkuaLink always runs elevated for capture) is BUILTIN\Administrators: a normal Skua holds
     /// that group deny-only and would be refused, and the plugin's own CurrentUserOnly owner check would fail.
     /// Elsewhere (tests on macOS/Linux): CurrentUserOnly as before.
-    /// UNVERIFIED on Windows: a real elevated Questkeeper with a non-elevated Skua (the owner's checklist), including
+    /// UNVERIFIED on Windows: a real elevated SkuaLink with a non-elevated Skua (the owner's checklist), including
     /// whether the pipe's default integrity label lets a medium-integrity client write to it.
     /// </summary>
     private static NamedPipeServerStream CreatePipe(string name) =>

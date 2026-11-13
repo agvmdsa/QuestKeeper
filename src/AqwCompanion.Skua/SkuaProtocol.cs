@@ -8,7 +8,7 @@ public static class SkuaProtocol
 
     /// <summary>At most this many active quests travel in one status.</summary>
     public const int MaxQuests = 30;
-    public const string PipeName = "QuestKeeper.SkuaBridge.v1";
+    public const string PipeName = "SkuaLink.SkuaBridge.v1";
 
     /// <summary>The Skua version the plugin was built and tested against.</summary>
     public const string TestedSkuaVersion = "1.4.5.0";

@@ -50,7 +50,7 @@ public sealed class FeedHandler(Func<byte[]> secret, IFeedSource source, string 
 
         if (path.Equals("/v1/ping", StringComparison.OrdinalIgnoreCase))
         {
-            return Ok(JsonSerializer.Serialize(new { contract = FeedSnapshot.ContractNumber, app = "Questkeeper", version = appVersion }, FeedJson.Options));
+            return Ok(JsonSerializer.Serialize(new { contract = FeedSnapshot.ContractNumber, app = "SkuaLink", version = appVersion }, FeedJson.Options));
         }
 
         if (path.Equals("/v1/state", StringComparison.OrdinalIgnoreCase))

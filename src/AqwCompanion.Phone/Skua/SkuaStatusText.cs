@@ -6,7 +6,7 @@ public static class SkuaStatusText
 {
     private const string NotConnectedText = "Skua is not connected. Copy the plugin into Skua's plugins folder and reopen Skua.";
     private const string ConnectingText = "Skua is connecting...";
-    private const string MismatchText = "The plugin and Questkeeper do not speak the same version. Use the plugin from the same release as this app.";
+    private const string MismatchText = "The plugin and SkuaLink do not speak the same version. Use the plugin from the same release as this app.";
 
     public static string For(SkuaView view) => view.Connection switch
     {

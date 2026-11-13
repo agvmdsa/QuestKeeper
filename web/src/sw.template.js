@@ -19,13 +19,13 @@ const KEPT = /\.(js|css|png|webmanifest)$/;
 const SHELL_WAIT_MS = 3000;
 // This script has no module system and cannot use the page's i18n catalog, so the texts of the page below are plain English constants.
 // They are not part of the catalog. The sentence must stay identical to the catalog's `banner.unreachable` (test/sw.test.ts checks it).
-const UNREACHABLE = "Can't reach Questkeeper. Check that your PC is on and Questkeeper is running.";
+const UNREACHABLE = "Can't reach SkuaLink. Check that your PC is on and SkuaLink is running.";
 const TRY_AGAIN = 'Try again';
 const offline = () => new Response('', { status: 503, statusText: 'Offline' });
 // No inline script or style, even though the site's CSP does not apply to a synthesized answer.
 const unreachablePage = () =>
   new Response(
-    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Questkeeper</title></head><body><h1>Questkeeper</h1><p>${UNREACHABLE}</p><p><a href="/">${TRY_AGAIN}</a></p></body></html>`,
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SkuaLink</title></head><body><h1>SkuaLink</h1><p>${UNREACHABLE}</p><p><a href="/">${TRY_AGAIN}</a></p></body></html>`,
     {
       status: 503,
       statusText: 'Unreachable',

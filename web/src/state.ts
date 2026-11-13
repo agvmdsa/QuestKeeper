@@ -215,7 +215,7 @@ export function relativeTime(iso: string, nowMs: number): string {
   return t('time.daysAgo', { n: Math.floor(hours / 24) });
 }
 
-/** How long the stream may stay down before the banner says Questkeeper cannot be reached (the same as the state request's timeout). */
+/** How long the stream may stay down before the banner says SkuaLink cannot be reached (the same as the state request's timeout). */
 export const UNREACHABLE_AFTER_MS = STATE_TIMEOUT_MS;
 
 /** What the page knows about the link: when the stream went down (null if unknown) and whether the last state request failed or timed out. */
@@ -231,7 +231,7 @@ export function linkAfterFreshData(sseOpen: boolean, link: LinkFacts, nowMs: num
 
 /**
  * Nothing while the event stream is open. Once the last state request failed or the stream has been down for more than 10 s, the
- * calm "Can't reach Questkeeper" warning, with the age of the shown data when it is known. Before that, a first visit with no data
+ * calm "Can't reach SkuaLink" warning, with the age of the shown data when it is known. Before that, a first visit with no data
  * shows "Connecting..."; otherwise the shown data is old, and the banner says how old when the time is known.
  */
 export function linkBanner(sseOpen: boolean, lastUpdateMs: number | null, nowMs: number, hasData = true, link?: LinkFacts): Banner | null {

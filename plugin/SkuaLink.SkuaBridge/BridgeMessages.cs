@@ -1,7 +1,7 @@
 using System.Reflection;
 using AqwCompanion.Skua;
 
-namespace QuestKeeper.SkuaBridge;
+namespace SkuaLink.SkuaBridge;
 
 /// <summary>
 /// The pure part of the plugin: turns plain values read from Skua into protocol values. Nothing here touches Skua,

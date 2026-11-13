@@ -6,7 +6,7 @@ namespace AqwCompanion.Tests.Architecture;
 /// </summary>
 public class InstallerScriptTests
 {
-    private static string Script() => File.ReadAllText(Path.Combine(RepositoryRoot(), "installer", "Questkeeper.iss"));
+    private static string Script() => File.ReadAllText(Path.Combine(RepositoryRoot(), "installer", "SkuaLink.iss"));
 
     [Fact]
     public void The_installer_links_to_the_official_npcap_page_and_never_names_an_npcap_file_to_ship()
@@ -69,8 +69,8 @@ public class InstallerScriptTests
     {
         var workflow = File.ReadAllText(Path.Combine(RepositoryRoot(), ".github", "workflows", "release.yml"));
 
-        Assert.Contains("installer/Questkeeper.iss", workflow);
-        Assert.Contains("Questkeeper-Setup-v", workflow);
+        Assert.Contains("installer/SkuaLink.iss", workflow);
+        Assert.Contains("SkuaLink-Setup-v", workflow);
         Assert.Contains("SHA256SUMS.txt", workflow);
     }
 
@@ -79,7 +79,7 @@ public class InstallerScriptTests
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
-            if (File.Exists(Path.Combine(dir.FullName, "installer", "Questkeeper.iss")))
+            if (File.Exists(Path.Combine(dir.FullName, "installer", "SkuaLink.iss")))
             {
                 return dir.FullName;
             }
@@ -87,6 +87,6 @@ public class InstallerScriptTests
             dir = dir.Parent;
         }
 
-        throw new FileNotFoundException("installer/Questkeeper.iss not found above " + AppContext.BaseDirectory);
+        throw new FileNotFoundException("installer/SkuaLink.iss not found above " + AppContext.BaseDirectory);
     }
 }

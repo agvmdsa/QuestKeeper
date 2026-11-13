@@ -29,7 +29,7 @@ public class FeedHandlerTests
 
         Assert.Equal(200, response.Status);
         Assert.Equal("application/json; charset=utf-8", response.ContentType);
-        Assert.Equal("""{"contract":1,"app":"Questkeeper","version":"9.9.9"}""", Text(response));
+        Assert.Equal("""{"contract":1,"app":"SkuaLink","version":"9.9.9"}""", Text(response));
     }
 
     [Fact]

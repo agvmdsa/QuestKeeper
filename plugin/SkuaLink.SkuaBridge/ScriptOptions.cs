@@ -21,6 +21,9 @@ internal sealed class ScriptOptions : ISkuaOptionsHost
     /// <summary>A file larger than this is not an options file the plugin reads.</summary>
     private const long MaxFileBytes = 256 * 1024;
 
+    /// <summary>A script larger than this is not searched for its <c>OptionsStorage</c>.</summary>
+    private const long MaxSourceBytes = 4 * 1024 * 1024;
+
     private readonly IScriptStatus _manager;
     private readonly IDispatcherService? _dispatcher;
 
@@ -59,6 +62,13 @@ internal sealed class ScriptOptions : ISkuaOptionsHost
         }
 
         return new SkuaLoadedOptions(_manager.LoadedScript, config.OptionsFile, options);
+    }
+
+    /// <summary>A script the catalog resolved (inside Skua's scripts folder, no link); only its text is read, never run.</summary>
+    public string? ReadScriptSource(string path)
+    {
+        var file = new FileInfo(path);
+        return file.Exists && file.Length <= MaxSourceBytes ? File.ReadAllText(path) : null;
     }
 
     public IReadOnlyList<string>? ReadOptionsFile(string path)

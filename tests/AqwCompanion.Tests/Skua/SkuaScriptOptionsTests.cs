@@ -184,6 +184,42 @@ public class SkuaScriptOptionsTests
         Assert.Equal("lots", Assert.Single(saved).Value);
     }
 
+    // ---- storage name from the script source ---------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("public class Butler\n{\n    public string OptionsStorage = \"Butler\";\n}", "Butler")]
+    [InlineData("    public readonly string OptionsStorage=\"Farm Gold\" ;", "Farm Gold")]
+    [InlineData("public string OptionsStorage = \"A\";\npublic string OptionsStorage = \"A\";", "A")]
+    public void The_storage_name_comes_from_the_script_public_field(string source, string expected)
+    {
+        Assert.Equal(expected, SkuaScriptOptions.StorageName(source));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("public class X { }")]
+    [InlineData("// public string OptionsStorage = \"Old\";")]
+    [InlineData("private string OptionsStorage = \"Hidden\";")]
+    [InlineData("public string OptionsStorage = Name + \"x\";")]
+    [InlineData("public string OptionsStorage = \"A\";\npublic string OptionsStorage = \"B\";")]
+    [InlineData("public string OptionsStorage = \"../evil\";")]
+    [InlineData("public string OptionsStorage = \"a/b\";")]
+    [InlineData("public string OptionsStorage = \"a\\\\b\";")]
+    [InlineData("public string OptionsStorage = \"C:x\";")]
+    [InlineData("public string OptionsStorage = \"..\";")]
+    [InlineData("public string OptionsStorage = \" padded \";")]
+    [InlineData("public string OptionsStorage = \"\";")]
+    public void A_storage_name_that_is_not_a_plain_literal_or_not_a_safe_file_name_is_not_used(string source)
+    {
+        Assert.Null(SkuaScriptOptions.StorageName(source));
+    }
+
+    [Fact]
+    public void No_source_has_no_storage_name()
+    {
+        Assert.Null(SkuaScriptOptions.StorageName(null));
+    }
+
     // ---- options file path ------------------------------------------------------------------------------------------
 
     [Fact]

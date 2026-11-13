@@ -244,10 +244,17 @@ public sealed class SkuaCommandHandler
             return Fail(reqId, "not found");
         }
 
+        // A discovery only for a script with neither learnt definitions nor an options file (one from an earlier Skua
+        // session means the owner has configured it: it starts the normal way, with the saved values).
         bool firstRun;
         lock (_lock)
         {
             firstRun = _options is not null && !_known.ContainsKey(command.ScriptId);
+        }
+
+        if (firstRun && (ReadFileOptions(path, out var unreadable) is not null || unreadable))
+        {
+            firstRun = false;
         }
 
         _host.SetLoadedScript(path);
@@ -483,7 +490,15 @@ public sealed class SkuaCommandHandler
 
         if (Known(command.ScriptId, path) is not { } known)
         {
-            return new ResultMessage(reqId, true, null, null, null, null, false, false);
+            // Not learnt in this plugin load: the values of an options file from an earlier session, without definitions.
+            if (ReadFileOptions(path, out var unreadable) is { } file)
+            {
+                return new ResultMessage(reqId, true, null, null, null, file.Values, file.Values.Count > 0, false);
+            }
+
+            return unreadable
+                ? Fail(reqId, "could not read options")
+                : new ResultMessage(reqId, true, null, null, null, null, false, false);
         }
 
         if (ReadSavedValues(known, out var failed) is not { } values)
@@ -523,12 +538,12 @@ public sealed class SkuaCommandHandler
             return Fail(reqId, "stopping");
         }
 
+        var changes = command.Values ?? [];
         if (Known(command.ScriptId, path) is not { } known)
         {
-            return Fail(reqId, "options not known yet");
+            return SetFileOptions(reqId, path, changes);
         }
 
-        var changes = command.Values ?? [];
         if (SkuaOptionsFile.Validate(known.Defs, changes) is { } invalid)
         {
             return Fail(reqId, invalid);
@@ -556,6 +571,83 @@ public sealed class SkuaCommandHandler
         }
 
         return new ResultMessage(reqId, true, null, null, known.Defs, merged, known.Defs.Count > 0, false);
+    }
+
+    /// <summary>
+    /// <c>setOptions</c> without learnt definitions (Skua restarted since the plugin last started the script): only names
+    /// already in the script's options file, checked with the rules that need no type (length, line break, trailing
+    /// space); SkuaLink checks the types from the definitions it keeps. The file keeps its names and order.
+    /// </summary>
+    private ResultMessage SetFileOptions(string reqId, string path, IReadOnlyList<SkuaOptionValue> changes)
+    {
+        if (ReadFileOptions(path, out var unreadable) is not { } file)
+        {
+            return Fail(reqId, unreadable ? "could not read options" : "options not known yet");
+        }
+
+        // Every name in the file as an untyped option: Validate then refuses any other name and checks only the text.
+        var names = SkuaScriptOptions.Untyped(file.Values);
+        if (SkuaOptionsFile.Validate(names, changes) is { } invalid)
+        {
+            return Fail(reqId, invalid);
+        }
+
+        var merged = SkuaScriptOptions.Merge(names, file.Values, changes);
+        try
+        {
+            _options!.WriteOptionsFile(file.OptionsFile, SkuaOptionsFile.Format(merged));
+        }
+        catch (Exception)
+        {
+            return Fail(reqId, "could not write options");
+        }
+
+        return new ResultMessage(reqId, true, null, null, null, merged, merged.Count > 0, false);
+    }
+
+    /// <summary>
+    /// The script's options file found without Skua's <c>Config</c>: named by the <c>OptionsStorage</c> its source
+    /// declares (<see cref="SkuaScriptOptions.StorageName"/>). Null when the name cannot be read from the source or there
+    /// is no file; null with <paramref name="unreadable"/> when the file exists but cannot be read.
+    /// </summary>
+    private FileOptions? ReadFileOptions(string path, out bool unreadable)
+    {
+        unreadable = false;
+        if (_options is null)
+        {
+            return null;
+        }
+
+        string? storage;
+        try
+        {
+            storage = SkuaScriptOptions.StorageName(_options.ReadScriptSource(path));
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+
+        if (storage is null)
+        {
+            return null;
+        }
+
+        var file = SkuaScriptOptions.OptionsFileFor(_options.OptionsRoot, storage);
+        if (!SkuaScriptOptions.IsOptionsFile(_options.OptionsRoot, file))
+        {
+            return null;
+        }
+
+        try
+        {
+            return _options.ReadOptionsFile(file) is { } lines ? new FileOptions(file, SkuaOptionsFile.Parse(lines)) : null;
+        }
+        catch (Exception)
+        {
+            unreadable = true;
+            return null;
+        }
     }
 
     /// <summary>Reads Skua's options right after a start of this script and keeps them; null when they cannot be read.</summary>
@@ -669,6 +761,8 @@ public sealed class SkuaCommandHandler
             }
         }
     }
+
+    private sealed record FileOptions(string OptionsFile, IReadOnlyList<SkuaOptionValue> Values);
 
     private sealed record KnownOptions(string Path, string? OptionsFile, IReadOnlyList<SkuaOptionDef> Defs);
 

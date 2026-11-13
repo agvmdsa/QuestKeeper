@@ -160,17 +160,28 @@ unit-tested; the Skua-bound part is `ScriptOptions.cs`):
   script (only kept when `LoadedScript` is still the path just started). The plugin keeps, per script id and for this
   plugin load, the definitions (category, name, display name, description, type mapped to
   `bool|int|double|string|enum|other`, default, enum members) and `Config.OptionsFile`. They are not kept across a Skua
-  restart: the first start of a script with options after each Skua start is a discovery again (below).
-- **`getOptions`:** not learnt yet: `ok` with no `optionDefs` (the phone says the first start uses the default options).
-  Learnt: `optionDefs` (empty for a script without options) and the saved values from the options file (only options
-  the script declares, in its order; no file is no values).
+  restart or a plugin reload (SkuaLink keeps its own copy of the definitions).
+- **Options file without learnt definitions (fallback):** the plugin finds the script's options file from its source:
+  a plain `public string OptionsStorage = "Name";` line (the public field Skua reads; uncommented, a literal, one value,
+  a safe file name) gives `%AppData%\Skua\options\Name.cfg`. The source is only read (at most 4 MB), never run. A script
+  whose storage name cannot be read this way has no fallback (Skua's `default.cfg` is shared by every script without
+  `OptionsStorage`, so it is never assumed).
+- **`getOptions`:** learnt: `optionDefs` (empty for a script without options) and the saved values from the options file
+  (only options the script declares, in its order; no file is no values). Not learnt but the options file exists: `ok`
+  with no `optionDefs` and the file's values as they are written (no type is known, so enum underscores and the PC's
+  decimal comma are not converted). Neither: `ok` with no `optionDefs` and no values, which means "options not known
+  yet": the next start is a discovery and the phone says the first start uses the default options.
 - **`setOptions`:** refused while a script runs, starts or stops (Skua reads the file at the start, and an open dialog
   would overwrite it when it closes); refused before the definitions are learnt (`options not known yet`); every value is
   checked with `SkuaOptionsFile.Validate` (known name in its category, at most 200 chars, no line break, no trailing
   space, fits the type: `True`/`False`, invariant int, invariant double, an enum member). The file is written with the
-  saved values and these applied, only lines for declared options, in Skua's format (`SkuaOptionsFile.Format`). Only a
+  saved values and these applied, only lines for declared options, in Skua's format (`SkuaOptionsFile.Format`).
+  Without learnt definitions but with the options file (fallback above): only names already in the file are accepted,
+  with the rules that need no type (at most 200 chars, no line break, no trailing space); SkuaLink checks the types from
+  its cached definitions. The file keeps its names and order. With neither: `options not known yet`. Only a
   `.cfg` file inside Skua's options folder is ever read or written (never through a link); anything else is refused.
-- **First start of a script with options (discovery):** the plugin waits for the options dialog (up to 5 s), closes it,
+- **First start of a script with options (discovery)**, only for a script with no learnt definitions AND no options file
+  (a file from an earlier session, or one that exists but cannot be read, means a normal start): the plugin waits for the options dialog (up to 5 s), closes it,
   then stops the script at once and answers `ok, firstRun, optionDefs` (plus the saved values). The phone shows the form;
   the owner fills it in, `setOptions`, then starts again. A script without options just runs. If no dialog appears within
   5 s (the script preconfigures itself) the script is stopped the same way. If the dialog is still open after 8 s
@@ -274,6 +285,7 @@ Generated from the compiled DLL's member references (System.Reflection.Metadata)
 | `ClientFileSources.SkuaOptionsDIR` (Skua.Core.Models) | read | the only folder options files are read from or written to |
 | `IServiceProvider.GetService(typeof(IDispatcherService))`, `IDispatcherService.Invoke(Action)` | read / runs plugin code on Skua's UI thread | find and close the options dialog |
 | the options file `%AppData%\Skua\options\{Storage}.cfg` | **written** (file, not a Skua member) | `setOptions`, only while no script runs |
+| a listed script's `.cs` file | read as text (file, not a Skua member; never compiled or run by the plugin) | its `OptionsStorage` name, when the definitions are not learnt |
 | `IScriptStatus.StopScript()` | **changes Skua state** | `stop`, on a pool thread; a first start with options (discovery) |
 
 Framework WPF members (not Skua's): `Application.Current`, `Application.Windows`, `FrameworkElement.DataContext`, and
@@ -356,6 +368,9 @@ Desktop framework reference, no package) for the options dialog: the DLL then al
     does for every start of a script without `DontPreconfigure`), and that with no dialog the state goes to `running`
     after 5 s.
   - That a script with `DontPreconfigure = true` shows no dialog and starts with the saved values.
+  - The fallback after a Skua restart: that real scripts declare `public string OptionsStorage = "...";` on one line
+    (scripts that build the name another way get a discovery run instead), and that the file found this way is the one
+    Skua uses.
   - A PC whose culture writes decimals with a comma: the phone sends doubles in invariant culture (`1.5`) and the plugin
     writes them in the PC's culture (`1,5`), as Skua reads them (`Convert.ChangeType` with the current culture), and
     reads them back the same way; that the plugin's thread culture is the one Skua's script thread uses is not seen.

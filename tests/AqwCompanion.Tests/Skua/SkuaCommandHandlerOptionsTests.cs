@@ -307,6 +307,186 @@ public class SkuaCommandHandlerOptionsTests
         Assert.Equal(new ResultMessage("r1", false, "could not write options", null, null, null, false, false), result);
     }
 
+    // ---- definitions not in memory (Skua restarted), options file present ---------------------------------------
+
+    private const string ButlerSource = "public class Butler\n{\n    public string OptionsStorage = \"Butler\";\n}";
+
+    /// <summary>A plugin load that never started Butler, while Butler's options file is there from an earlier session.</summary>
+    private (SkuaCommandHandler Handler, FakeHost Host, FakeOptions Options, SkuaControlState Control) AfterRestart(params string[] lines)
+    {
+        var made = NewHandler();
+        made.Options.Sources[At("Tools/Butler.cs")] = ButlerSource;
+        made.Options.Files[ButlerFile] = lines;
+        return made;
+    }
+
+    [Fact]
+    public async Task GetOptions_without_definitions_answers_the_values_of_the_existing_file()
+    {
+        var (handler, _, _, _) = AfterRestart("Options:Follow=Artix", "Options:Speed=Very_Slow", "Class_Options:Kill=True");
+
+        var result = await handler.HandleAsync(new GetOptionsCommand("r1", Butler));
+
+        Assert.Equal(
+            new ResultMessage(
+                "r1", true, null, null, null,
+                [new("Options", "Follow", "Artix"), new("Options", "Speed", "Very_Slow"), new("Class_Options", "Kill", "True")],
+                true, false),
+            result);
+    }
+
+    [Fact]
+    public async Task GetOptions_without_definitions_and_without_a_file_says_the_options_are_not_known()
+    {
+        var (handler, _, options, _) = NewHandler();
+        options.Sources[At("Tools/Butler.cs")] = ButlerSource;
+
+        var result = await handler.HandleAsync(new GetOptionsCommand("r1", Butler));
+
+        Assert.Equal(new ResultMessage("r1", true, null, null, null, null, false, false), result);
+    }
+
+    [Fact]
+    public async Task GetOptions_without_definitions_whose_file_cannot_be_read_answers_an_error()
+    {
+        var (handler, _, options, _) = AfterRestart("Options:Follow=Artix");
+        options.ReadThrows = true;
+
+        var result = await handler.HandleAsync(new GetOptionsCommand("r1", Butler));
+
+        Assert.Equal(new ResultMessage("r1", false, "could not read options", null, null, null, false, false), result);
+    }
+
+    [Fact]
+    public async Task SetOptions_without_definitions_checks_names_against_the_file_and_writes_only_those()
+    {
+        var (handler, _, options, _) = AfterRestart("Options:Follow=Artix", "Options:Count=5", "Class_Options:Kill=True");
+
+        // The plugin does not know the types here: SkuaLink checks them from the definitions it keeps.
+        var result = await handler.HandleAsync(new SetOptionsCommand("r1", Butler, [new("Options", "Count", "7"), new("Class_Options", "Kill", "False")]));
+
+        IReadOnlyList<SkuaOptionValue> expected = [new("Options", "Follow", "Artix"), new("Options", "Count", "7"), new("Class_Options", "Kill", "False")];
+        Assert.Equal(new ResultMessage("r1", true, null, null, null, expected, true, false), result);
+        var write = Assert.Single(options.Writes);
+        Assert.Equal(ButlerFile, write.Path);
+        Assert.Equal(["Options:Follow=Artix", "Options:Count=7", "Class_Options:Kill=False"], write.Lines);
+    }
+
+    [Theory]
+    [InlineData("Options", "Nope", "1", "unknown option Nope")]
+    [InlineData("Other", "Follow", "1", "unknown option Other:Follow")]
+    [InlineData("Options", "Follow", "a\rb", "line break in Follow")]
+    [InlineData("Options", "Follow", "Artix ", "space at the end of Follow")]
+    public async Task SetOptions_without_definitions_refuses_names_not_in_the_file_and_unsafe_values(string category, string name, string value, string error)
+    {
+        var (handler, _, options, _) = AfterRestart("Options:Follow=Artix", "Options:Count=5");
+
+        var result = await handler.HandleAsync(new SetOptionsCommand("r1", Butler, [new(category, name, value)]));
+
+        Assert.Equal(new ResultMessage("r1", false, error, null, null, null, false, false), result);
+        Assert.Empty(options.Writes);
+    }
+
+    [Fact]
+    public async Task SetOptions_without_definitions_refuses_a_value_over_the_cap()
+    {
+        var (handler, _, options, _) = AfterRestart("Options:Follow=Artix");
+
+        var result = await handler.HandleAsync(new SetOptionsCommand("r1", Butler, [new("Options", "Follow", new string('a', 201))]));
+
+        Assert.Equal(new ResultMessage("r1", false, "value too long for Follow", null, null, null, false, false), result);
+        Assert.Empty(options.Writes);
+    }
+
+    [Fact]
+    public async Task SetOptions_without_definitions_and_without_a_file_is_refused()
+    {
+        var (handler, _, options, _) = NewHandler();
+        options.Sources[At("Tools/Butler.cs")] = ButlerSource;
+
+        var result = await handler.HandleAsync(new SetOptionsCommand("r1", Butler, [new("Options", "Follow", "Artix")]));
+
+        Assert.Equal(new ResultMessage("r1", false, "options not known yet", null, null, null, false, false), result);
+        Assert.Empty(options.Writes);
+    }
+
+    [Fact]
+    public async Task SetOptions_after_a_start_uses_the_full_definitions_again()
+    {
+        var (handler, host, options, control) = AfterRestart("Options:Follow=Artix");
+        await handler.HandleAsync(new StartCommand("r0", Butler));
+        await handler.PendingOptions.WaitAsync(TimeSpan.FromSeconds(5));
+        await handler.HandleAsync(new StopCommand("r1"));
+        await handler.PendingStop.WaitAsync(TimeSpan.FromSeconds(5));
+        host.Running = false;
+        handler.Tick();
+        Wait(10);
+        handler.Tick();
+        Assert.Equal("idle", control.State);
+
+        var result = await handler.HandleAsync(new SetOptionsCommand("r2", Butler, [new("Options", "Count", "many")]));
+
+        Assert.Equal(new ResultMessage("r2", false, "not a valid int for Count", null, null, null, false, false), result);
+        Assert.Empty(options.Writes);
+    }
+
+    [Fact]
+    public async Task A_start_with_an_existing_options_file_is_a_normal_start_not_a_discovery()
+    {
+        var (handler, host, options, control) = AfterRestart("Options:Follow=Artix");
+        options.Window = options.ClosableDialog(appearsAfterSeconds: 1);
+
+        var result = await handler.HandleAsync(new StartCommand("r1", Butler));
+        await handler.PendingOptions.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(new ResultMessage("r1", true, null, null, ButlerDefs, null, true, false), result);
+        Assert.Single(options.Closes);
+        Assert.Equal("running", control.State);
+        Assert.Equal(0, host.StopCount);
+        Assert.Empty(options.Writes);
+    }
+
+    [Fact]
+    public async Task A_start_whose_options_file_is_locked_is_not_a_discovery_either()
+    {
+        var (handler, host, options, control) = AfterRestart("Options:Follow=Artix");
+        options.ReadThrows = true;
+
+        var result = await handler.HandleAsync(new StartCommand("r1", Butler));
+        await handler.PendingOptions.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(result.FirstRun);
+        Assert.Equal(0, host.StopCount);
+        Assert.Equal("running", control.State);
+    }
+
+    [Theory]
+    [InlineData("public class Butler { }")]
+    [InlineData("// public string OptionsStorage = \"Butler\";")]
+    public async Task A_script_whose_storage_name_cannot_be_read_from_its_source_is_a_discovery(string source)
+    {
+        var (handler, _, options, _) = AfterRestart("Options:Follow=Artix");
+        options.Sources[At("Tools/Butler.cs")] = source;
+        options.Window = options.ClosableDialog();
+
+        var get = await handler.HandleAsync(new GetOptionsCommand("r0", Butler));
+        var start = await handler.HandleAsync(new StartCommand("r1", Butler));
+
+        Assert.Equal(new ResultMessage("r0", true, null, null, null, null, false, false), get);
+        Assert.True(start.FirstRun);
+    }
+
+    [Fact]
+    public async Task A_source_that_cannot_be_read_counts_as_no_file()
+    {
+        var (handler, _, options, _) = AfterRestart("Options:Follow=Artix");
+        options.SourceThrows = true;
+
+        var get = await handler.HandleAsync(new GetOptionsCommand("r0", Butler));
+
+        Assert.Equal(new ResultMessage("r0", true, null, null, null, null, false, false), get);
+    }
+
     // ---- first start of a script (discovery) ------------------------------------------------------------------------
 
     [Fact]
@@ -640,6 +820,8 @@ public class SkuaCommandHandlerOptionsTests
         public FakeOptions(FakeHost host) => _host = host;
 
         public Dictionary<string, IReadOnlyList<string>> Files { get; } = [];
+        public Dictionary<string, string> Sources { get; } = [];
+        public bool SourceThrows { get; set; }
         public List<string> Reads { get; } = [];
         public List<(string Path, IReadOnlyList<string> Lines)> Writes { get; } = [];
         public List<DateTimeOffset> Closes { get; } = [];
@@ -654,6 +836,9 @@ public class SkuaCommandHandlerOptionsTests
         public CultureInfo FileCulture { get; set; } = CultureInfo.InvariantCulture;
 
         public SkuaLoadedOptions? ReadLoadedOptions() => _host.LoadedOptions();
+
+        public string? ReadScriptSource(string path) =>
+            SourceThrows ? throw new IOException("locked") : Sources.GetValueOrDefault(path);
 
         public IReadOnlyList<string>? ReadOptionsFile(string path)
         {

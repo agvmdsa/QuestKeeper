@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Reflection;
+using System.Text.RegularExpressions;
 
 namespace AqwCompanion.Skua;
 
@@ -40,6 +41,9 @@ public interface ISkuaOptionsHost
     /// <summary>The options of the script Skua loaded at its last start; null when Skua has none.</summary>
     SkuaLoadedOptions? ReadLoadedOptions();
 
+    /// <summary>The text of a script (to find its <c>OptionsStorage</c>); null when it cannot be read.</summary>
+    string? ReadScriptSource(string path);
+
     /// <summary>The lines of an options file; null when it does not exist.</summary>
     IReadOnlyList<string>? ReadOptionsFile(string path);
 
@@ -54,7 +58,7 @@ public interface ISkuaOptionsHost
 }
 
 /// <summary>Pure helpers for script options: definitions from Skua's options, saved values, merges, and the safety checks.</summary>
-public static class SkuaScriptOptions
+public static partial class SkuaScriptOptions
 {
     /// <summary>The type name of the view model Skua's options dialog (<c>HostDialog</c>) shows.</summary>
     public const string DialogViewModelName = "OptionContainerViewModel";
@@ -148,6 +152,13 @@ public static class SkuaScriptOptions
         return values;
     }
 
+    /// <summary>
+    /// The names in an options file as untyped definitions (type <c>string</c>, so <see cref="SkuaOptionsFile.Validate"/>
+    /// checks the name and only the type-free rules), in file order.
+    /// </summary>
+    public static IReadOnlyList<SkuaOptionDef> Untyped(IReadOnlyList<SkuaOptionValue> fileValues) =>
+        fileValues.Select(v => new SkuaOptionDef(v.Category, v.Name, v.Name, "", "string", "")).ToList();
+
     /// <summary>The saved values with the changes applied (a later change of one option wins), in definition order.</summary>
     public static IReadOnlyList<SkuaOptionValue> Merge(
         IReadOnlyList<SkuaOptionDef> defs, IReadOnlyList<SkuaOptionValue> saved, IReadOnlyList<SkuaOptionValue> changes)
@@ -178,6 +189,33 @@ public static class SkuaScriptOptions
             .Select(v => doubles.Contains((v.Category, v.Name)) ? v with { Value = Number(v.Value, CultureInfo.InvariantCulture, culture) } : v)
             .ToList();
     }
+
+    /// <summary>
+    /// The storage name a script declares, which names its options file (<c>{storage}.cfg</c> in Skua's options folder):
+    /// the value of a plain <c>public string OptionsStorage = "...";</c> line (Skua reads that public field). Null when
+    /// there is none, when lines disagree, when it is not a plain literal on one uncommented line, or when it is not a safe
+    /// file name (no path, no <c>..</c>, no characters Windows refuses, no space at either end). Pure: text in, name out.
+    /// </summary>
+    public static string? StorageName(string? source)
+    {
+        if (string.IsNullOrEmpty(source))
+        {
+            return null;
+        }
+
+        try
+        {
+            var names = StorageField().Matches(source).Select(m => m.Groups["name"].Value).Distinct(StringComparer.Ordinal).ToList();
+            return names.Count == 1 && IsSafeFileName(names[0]) ? names[0] : null;
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The options file Skua uses for a storage name (<c>ScriptOptionContainer.OptionsFile</c>).</summary>
+    public static string OptionsFileFor(string root, string storage) => Path.Combine(root, storage + ".cfg");
 
     /// <summary>True only for an absolute path to a <c>.cfg</c> file inside <paramref name="root"/> (after resolving <c>..</c>).</summary>
     public static bool IsOptionsFile(string? root, string? path)
@@ -231,6 +269,16 @@ public static class SkuaScriptOptions
     }
 
     private static string EnumText(string name) => name.Replace('_', ' ');
+
+    [GeneratedRegex(@"^[ \t]*public[ \t]+(?:readonly[ \t]+)?string[ \t]+OptionsStorage[ \t]*=[ \t]*""(?<name>[^""\\\r\n]*)""[ \t]*;", RegexOptions.Multiline | RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex StorageField();
+
+    private static bool IsSafeFileName(string name) =>
+        name.Length is > 0 and <= 100
+        && name.Trim() == name
+        && name is not ("." or "..")
+        && !name.EndsWith('.')
+        && name.All(c => !char.IsControl(c) && c is not ('\\' or '/' or ':' or '*' or '?' or '"' or '<' or '>' or '|'));
 
     private static string Number(string text, CultureInfo from, CultureInfo to) =>
         double.TryParse(text, NumberStyles.Float, from, out var number) && double.IsFinite(number) ? number.ToString(to) : text;

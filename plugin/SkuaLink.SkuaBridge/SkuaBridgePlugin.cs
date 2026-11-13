@@ -10,11 +10,12 @@ using Skua.Core.Models.Quests;
 namespace SkuaLink.SkuaBridge;
 
 /// <summary>
-/// Read-only adapter inside Skua. It only reads properties and subscribes to events, and reports what it sees to
-/// SkuaLink over the outbound pipe. One of those properties, <c>Quests.Active</c>, writes Skua's own quest tree cache
-/// when read (Skua's getter, not a game action), so it is read at most every 15 s. It never calls a Skua method that
-/// changes game or Skua state, receives nothing from SkuaLink, and never lets an exception reach Skua. See README.md
-/// for the audited list of Skua members.
+/// Adapter inside Skua. It reads properties and subscribes to events, and reports what it sees to SkuaLink over the pipe.
+/// One of those properties, <c>Quests.Active</c>, writes Skua's own quest tree cache when read (Skua's getter, not a game
+/// action), so it is read at most every 15 s. From SkuaLink it accepts exactly three commands: list the scripts in Skua's
+/// scripts folder, start one of them by id, and stop the running script (<see cref="SkuaCommandHandler"/>, through
+/// <see cref="ScriptControl"/>); those are the only Skua methods it calls that change Skua's state, and it never sends
+/// anything to the game. It never lets an exception reach Skua. See README.md for the audited list of Skua members.
 /// </summary>
 public sealed class SkuaBridgePlugin : ISkuaPlugin
 {
@@ -25,6 +26,9 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
     private static readonly TimeSpan BoughtSettle = TimeSpan.FromMilliseconds(300);
 
     private const int WorkCapacity = 256;
+
+    /// <summary>Commands waiting for the command worker; one more is answered "busy" at once.</summary>
+    private const int CommandCapacity = 16;
 
     /// <summary>How long Unload waits for the worker to leave. Unload may run on Skua's UI thread, so the wait stays short.</summary>
     private static readonly TimeSpan WorkerStopWait = TimeSpan.FromSeconds(1);
@@ -39,6 +43,10 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
     private Channel<WorkItem>? _work;
     private CancellationTokenSource? _stop;
     private Task? _worker;
+    private Channel<SkuaCommand>? _commandQueue;
+    private SkuaControlState? _control;
+    private SkuaCommandHandler? _commands;
+    private Task? _commandWorker;
     private bool _subscribed;
     private bool _unloaded;
 
@@ -55,6 +63,8 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
     private bool _questsEverRead;
     private long _questsReadAt;
     private IReadOnlyList<SkuaFaction>? _factions;
+    private bool _mapRead;
+    private string? _lastMap;
 
     // Set from any thread (pipe connect, relogin); read and cleared by the worker.
     private volatile bool _questsForced;
@@ -94,7 +104,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
 
     public string Name => "SkuaLink Bridge";
     public string Author => "SkuaLink";
-    public string Description => "Shows what Skua is doing in SkuaLink. Read only.";
+    public string Description => "Shows what Skua is doing in SkuaLink, and lets SkuaLink list, start and stop scripts.";
     public List<IOption>? Options => null;
 
     public void Load(IServiceProvider provider, IPluginHelper helper)
@@ -107,7 +117,8 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
             }
 
             _bot = bot;
-            _managerChanges = provider.GetService(typeof(IScriptManager)) as INotifyPropertyChanged ?? bot.Manager as INotifyPropertyChanged;
+            var registered = provider.GetService(typeof(IScriptManager)) as IScriptManager;
+            _managerChanges = (INotifyPropertyChanged?)registered ?? bot.Manager as INotifyPropertyChanged;
             lock (_stateLock)
             {
                 // Plugins load at Skua start, before any script. If one is already running its start time is unknown.
@@ -115,24 +126,33 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
                 _runningSince = null;
             }
 
+            _control = new SkuaControlState(Now);
+            _control.OnScriptRunningChanged(_running);
+            _commands = new SkuaCommandHandler(new ScriptControl((IScriptStatus?)registered ?? bot.Manager), ScriptControl.Catalog(), _control, Now);
+
             var skuaVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
             _client = new PipeClient(
-                new SkuaHello(BridgeMessages.PluginVersion(typeof(SkuaBridgePlugin).Assembly), skuaVersion),
+                // A new id on every load: SkuaLink tells several Skua apart by it.
+                new SkuaHello(BridgeMessages.PluginVersion(typeof(SkuaBridgePlugin).Assembly), skuaVersion, Guid.NewGuid().ToString("D")),
                 onConnected: () =>
                 {
                     // hello and the last known status are already written; read the current state now.
                     _questsForced = true;
                     RequestStatus();
                     RequestSnapshot();
-                });
+                },
+                onCommand: QueueCommand);
             _work = Channel.CreateBounded<WorkItem>(
                 new BoundedChannelOptions(WorkCapacity) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true, SingleWriter = false });
+            _commandQueue = Channel.CreateBounded<SkuaCommand>(
+                new BoundedChannelOptions(CommandCapacity) { FullMode = BoundedChannelFullMode.Wait, SingleReader = true, SingleWriter = false });
             _stop = new CancellationTokenSource();
 
             Subscribe();
-            _client.Start();
             var stop = _stop.Token;
             _worker = Task.Run(() => WorkAsync(stop), stop);
+            _commandWorker = Task.Run(() => CommandsAsync(stop), stop);
+            _client.Start();
             RequestStatus();
             RequestSnapshot();
         }
@@ -154,6 +174,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
             }
 
             _work?.Writer.TryComplete();
+            _commandQueue?.Writer.TryComplete();
             _stop?.Cancel();
             StopWorker();
             _client?.Dispose(); // Waits up to 2 s for the pipe loop.
@@ -174,7 +195,8 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
     {
         try
         {
-            _worker?.Wait(WorkerStopWait);
+            // A command may be inside Skua's StartScript (compiling); it is not waited for beyond this.
+            Task.WhenAll(new[] { _worker, _commandWorker }.OfType<Task>()).Wait(WorkerStopWait);
         }
         catch (Exception)
         {
@@ -306,6 +328,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
 
     private void MapChanged(string? map)
     {
+        _control?.OnMapChanged();
         if (!string.IsNullOrWhiteSpace(map))
         {
             Log(SkuaLogFormatter.MapChanged(Now(), map));
@@ -338,7 +361,9 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
             // On every notification, outside the dedupe: two quick notifications may both read the same current value
             // and see no transition, yet ClearHandlers may have run in between. Re-attaching is idempotent.
             Resubscribe();
-            RunningChanged(_bot?.Manager.ScriptRunning ?? false);
+            var running = _bot?.Manager.ScriptRunning ?? false;
+            _control?.OnScriptRunningChanged(running); // Ignores a repeated value itself.
+            RunningChanged(running);
         }
 
         if (all || propertyName == nameof(IScriptStatus.LoadedScript))
@@ -443,6 +468,10 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
                 if (Stopwatch.GetTimestamp() >= nextPoll)
                 {
                     nextPoll = Stopwatch.GetTimestamp() + (long)(StatusPollInterval.TotalSeconds * Stopwatch.Frequency);
+
+                    // Also while SkuaLink is away: the settle and a start Skua never reported running must still end.
+                    // ScriptRunning is a plain property, not a Flash read.
+                    Safe(() => _commands?.Tick());
                     Safe(PublishStatus);
                 }
             }
@@ -466,6 +495,16 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
 
         _lastStatusStart = Stopwatch.GetTimestamp();
         var loggedIn = bot.Player.LoggedIn;
+        var map = loggedIn ? bot.Map.Name : null;
+
+        // Skua raises MapChanged only while a script runs, so the settle after a stop sees map changes here (every 3 s).
+        if (_mapRead && map != _lastMap)
+        {
+            _control?.OnMapChanged();
+        }
+
+        _mapRead = true;
+        _lastMap = map;
         bool running;
         DateTimeOffset? since;
         lock (_stateLock)
@@ -478,12 +517,15 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
             loggedIn,
             loggedIn ? bot.Player.Username : null,
             loggedIn ? bot.Servers.LastName : null,
-            loggedIn ? bot.Map.Name : null,
+            map,
             bot.Manager.LoadedScript,
             running,
             since,
             ReadQuests(bot, loggedIn, loggedIn && !_wasLoggedIn),
-            ReadFactions(bot, loggedIn));
+            ReadFactions(bot, loggedIn),
+            _control?.State,
+            _control?.SettleSecondsLeft,
+            _control?.OptionsStuck ?? false);
 
         // Sent only when something changed, quests, ready flags and reputation included (SkuaStatus compares both lists by content).
         if (status != _lastStatus)
@@ -591,6 +633,61 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
 
         _factions = SkuaFactionRead.Next(_factions, read);
         return _factions;
+    }
+
+    // ---- Commands (one command worker: each command answered exactly once, in order) --------------------------------
+
+    /// <summary>Called by the pipe reader for each well-formed command. A full queue answers "busy" at once rather than not at all.</summary>
+    private void QueueCommand(SkuaCommand command)
+    {
+        if (Volatile.Read(ref _unloaded) || _commandQueue is not { } queue)
+        {
+            return;
+        }
+
+        if (!queue.Writer.TryWrite(command))
+        {
+            Answer(new ResultMessage(command.ReqId, false, "busy", null, null, null, false, false));
+        }
+    }
+
+    private async Task CommandsAsync(CancellationToken ct)
+    {
+        var reader = _commandQueue!.Reader;
+        try
+        {
+            while (await reader.WaitToReadAsync(ct).ConfigureAwait(false))
+            {
+                while (reader.TryRead(out var command))
+                {
+                    ResultMessage result;
+                    try
+                    {
+                        result = await _commands!.HandleAsync(command).ConfigureAwait(false);
+                    }
+                    catch (Exception)
+                    {
+                        // The handler never throws; this keeps the one-answer rule even if it did.
+                        result = new ResultMessage(command.ReqId, false, "failed", null, null, null, false, false);
+                    }
+
+                    Answer(result);
+                    RequestStatus();
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Cancelled on Unload; nothing else ends this loop.
+        }
+    }
+
+    private void Answer(ResultMessage result)
+    {
+        if (!Volatile.Read(ref _unloaded))
+        {
+            _client?.Send(result);
+        }
     }
 
     // ---- Helpers ---------------------------------------------------------------------------------------------------

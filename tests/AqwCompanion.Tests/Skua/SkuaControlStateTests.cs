@@ -340,4 +340,39 @@ public class SkuaControlStateTests
         Assert.All(seen, s => Assert.Contains(s, SkuaProtocol.ControlStates));
         Assert.Equal(SkuaProtocol.ControlStates.Order(), seen.Order());
     }
+
+    [Fact]
+    public void A_start_not_seen_running_settles_when_the_script_is_not_running()
+    {
+        var plain = NewState();
+        plain.OnStartAccepted(hasOptions: false);
+        plain.OnStartNotSeen();
+        Assert.Equal("settling", plain.State);
+        Wait(10);
+        Assert.Equal("idle", plain.State);
+
+        var options = NewState();
+        options.OnStartAccepted(hasOptions: true);
+        options.OnOptionsStuck();
+        options.OnStartNotSeen();
+        Assert.Equal("settling", options.State);
+        Assert.False(options.OptionsStuck);
+    }
+
+    [Fact]
+    public void A_start_not_seen_changes_nothing_while_the_script_runs_or_outside_a_start()
+    {
+        var running = Running();
+        running.OnStartNotSeen();
+        Assert.Equal("running", running.State);
+
+        var idle = NewState();
+        idle.OnStartNotSeen();
+        Assert.Equal("idle", idle.State);
+
+        var stopping = Running();
+        stopping.OnStopRequested();
+        stopping.OnStartNotSeen();
+        Assert.Equal("stopping", stopping.State);
+    }
 }

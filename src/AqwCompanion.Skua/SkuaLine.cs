@@ -699,22 +699,7 @@ public static class SkuaLine
     /// </summary>
     private static string Cut(string value) => Cut(value, SkuaProtocol.MaxTextLength);
 
-    private static string Cut(string value, int max)
-    {
-        value = SkuaText.WithoutLoneSurrogates(value);
-        if (value.Length <= max)
-        {
-            return value;
-        }
-
-        var length = max;
-        if (char.IsHighSurrogate(value[length - 1]))
-        {
-            length--;
-        }
-
-        return value[..length];
-    }
+    private static string Cut(string value, int max) => SkuaText.Cut(value, max);
 
     private static string? CutOrNull(string? value) => value is null ? null : Cut(value);
 }

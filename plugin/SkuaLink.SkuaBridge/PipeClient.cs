@@ -6,9 +6,12 @@ using AqwCompanion.Skua;
 namespace SkuaLink.SkuaBridge;
 
 /// <summary>
-/// Sends protocol lines to SkuaLink over the local named pipe. Outbound only: the pipe is opened
-/// <see cref="PipeDirection.Out"/>, so nothing can ever be read from SkuaLink. Retries for the whole life of the plugin
-/// (SkuaLink may start after Skua, close, or restart). No public member ever throws.
+/// Talks to SkuaLink over the local named pipe. The pipe is opened <see cref="PipeDirection.InOut"/>: protocol lines go out
+/// from a bounded queue, and the only thing read back are commands, through <see cref="SkuaCommandReader"/> (a line over
+/// <see cref="SkuaProtocol.MaxCommandLineBytes"/>, an unknown type or anything malformed is dropped). An older SkuaLink
+/// serves an inbound-only pipe, which refuses a client that asks to read; then the pipe is opened
+/// <see cref="PipeDirection.Out"/> and nothing is read. Retries for the whole life of the plugin (SkuaLink may start after
+/// Skua, close, or restart). No public member ever throws.
 /// </summary>
 internal sealed class PipeClient : IDisposable
 {
@@ -39,13 +42,14 @@ internal sealed class PipeClient : IDisposable
     private readonly object _lock = new();
     private readonly string _helloLine;
     private readonly Action? _onConnected;
+    private readonly Action<SkuaCommand>? _onCommand;
     private string? _statusLine;
     private int _statusQueued;
     private bool _connected;
     private Task? _loop;
     private bool _disposed;
 
-    public PipeClient(SkuaHello hello, Action? onConnected = null)
+    public PipeClient(SkuaHello hello, Action? onConnected = null, Action<SkuaCommand>? onCommand = null)
     {
         _queue = Channel.CreateBounded<string?>(
             new BoundedChannelOptions(Capacity) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true, SingleWriter = false },
@@ -58,6 +62,7 @@ internal sealed class PipeClient : IDisposable
             });
         _helloLine = SkuaLine.ToLine(new HelloMessage(hello));
         _onConnected = onConnected;
+        _onCommand = onCommand;
     }
 
     /// <summary>True while a pipe to SkuaLink is open (hello written and no write has failed since).</summary>
@@ -155,11 +160,11 @@ internal sealed class PipeClient : IDisposable
         while (!ct.IsCancellationRequested)
         {
             NamedPipeClientStream? pipe = null;
+            CancellationTokenSource? connection = null;
+            Task? reading = null;
             try
             {
-                pipe = new NamedPipeClientStream(
-                    ".", SkuaProtocol.PipeName, PipeDirection.Out, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-                await pipe.ConnectAsync(ConnectTimeoutMs, ct).ConfigureAwait(false);
+                pipe = await ConnectAsync(ct).ConfigureAwait(false);
                 wait = FirstRetryWait;
 
                 await WriteAsync(pipe, _helloLine, ct).ConfigureAwait(false);
@@ -168,16 +173,32 @@ internal sealed class PipeClient : IDisposable
                     await WriteAsync(pipe, status, ct).ConfigureAwait(false);
                 }
 
+                // One reader per connection, ended with it: when SkuaLink closes the pipe the reader returns, and the
+                // connection is dropped and made again like after a failed write.
+                connection = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                if (pipe.CanRead && _onCommand is { } onCommand)
+                {
+                    reading = SkuaCommandReader.ReadAsync(pipe, onCommand, connection.Token);
+                }
+
                 Volatile.Write(ref _connected, true);
                 Notify();
 
                 if (unsent is not null)
                 {
-                    await WriteAsync(pipe, unsent, ct).ConfigureAwait(false);
+                    await WriteAsync(pipe, unsent, connection.Token).ConfigureAwait(false);
                     unsent = null;
                 }
 
-                await DrainAsync(pipe, line => unsent = line, ct).ConfigureAwait(false);
+                var draining = DrainAsync(pipe, line => unsent = line, connection.Token);
+                if (reading is not null && await Task.WhenAny(draining, reading).ConfigureAwait(false) == reading)
+                {
+                    // SkuaLink closed the pipe: stop writing to it. The drain then fails with a cancellation and the
+                    // connection is made again below.
+                    await connection.CancelAsync().ConfigureAwait(false);
+                }
+
+                await draining.ConfigureAwait(false);
                 return; // The queue was completed: the client is being disposed.
             }
             catch (Exception) when (ct.IsCancellationRequested)
@@ -191,14 +212,7 @@ internal sealed class PipeClient : IDisposable
             finally
             {
                 Volatile.Write(ref _connected, false);
-                try
-                {
-                    pipe?.Dispose();
-                }
-                catch (Exception)
-                {
-                    // Disposing a broken pipe may itself fail; nothing to do.
-                }
+                await EndAsync(pipe, connection, reading).ConfigureAwait(false);
             }
 
             try
@@ -211,6 +225,83 @@ internal sealed class PipeClient : IDisposable
             }
 
             wait = TimeSpan.FromTicks(Math.Min(wait.Ticks * 2, MaxRetryWait.Ticks));
+        }
+    }
+
+    /// <summary>
+    /// Asks for a two-way pipe first. A SkuaLink older than the commands serves an inbound-only pipe, and Windows refuses a
+    /// client that asks to read from it (access denied): then the pipe is opened outbound only, as before.
+    /// </summary>
+    private static async Task<NamedPipeClientStream> ConnectAsync(CancellationToken ct)
+    {
+        var pipe = NewPipe(PipeDirection.InOut);
+        try
+        {
+            await pipe.ConnectAsync(ConnectTimeoutMs, ct).ConfigureAwait(false);
+            return pipe;
+        }
+        catch (UnauthorizedAccessException) when (!ct.IsCancellationRequested)
+        {
+            Quietly(pipe.Dispose);
+        }
+        catch (Exception)
+        {
+            Quietly(pipe.Dispose);
+            throw;
+        }
+
+        pipe = NewPipe(PipeDirection.Out);
+        try
+        {
+            await pipe.ConnectAsync(ConnectTimeoutMs, ct).ConfigureAwait(false);
+            return pipe;
+        }
+        catch (Exception)
+        {
+            Quietly(pipe.Dispose);
+            throw;
+        }
+    }
+
+    private static NamedPipeClientStream NewPipe(PipeDirection direction) =>
+        new(".", SkuaProtocol.PipeName, direction, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+
+    /// <summary>Ends one connection: stops its reader, waits for it (the reader never throws) and disposes the pipe.</summary>
+    private static async Task EndAsync(NamedPipeClientStream? pipe, CancellationTokenSource? connection, Task? reading)
+    {
+        try
+        {
+            if (connection is not null)
+            {
+                await connection.CancelAsync().ConfigureAwait(false);
+            }
+
+            // Disposing the pipe also ends a read the cancellation could not interrupt.
+            Quietly(() => pipe?.Dispose());
+            if (reading is not null)
+            {
+                await reading.ConfigureAwait(false);
+            }
+        }
+        catch (Exception)
+        {
+            // Ending a broken connection may itself fail; nothing to do.
+        }
+        finally
+        {
+            Quietly(() => connection?.Dispose());
+        }
+    }
+
+    private static void Quietly(Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception)
+        {
+            // Disposing a broken pipe may itself fail; nothing to do.
         }
     }
 

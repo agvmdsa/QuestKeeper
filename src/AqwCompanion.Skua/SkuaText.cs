@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -46,6 +47,50 @@ public static partial class SkuaText
     {
         var quoted = QuotedPath().Replace(value, m => m.Groups["q"].Value + FileName(m.Groups["p"].Value) + m.Groups["q"].Value);
         return UnquotedPath().Replace(quoted, m => FileName(m.Value));
+    }
+
+    /// <summary>
+    /// Removes lone surrogates (<see cref="WithoutLoneSurrogates"/>), then cuts the text to <paramref name="max"/> chars
+    /// without splitting a pair.
+    /// </summary>
+    public static string Cut(string value, int max = SkuaProtocol.MaxTextLength)
+    {
+        value = WithoutLoneSurrogates(value);
+        if (value.Length <= max)
+        {
+            return value;
+        }
+
+        var length = max;
+        if (char.IsHighSurrogate(value[length - 1]))
+        {
+            length--;
+        }
+
+        return value[..length];
+    }
+
+    /// <summary>
+    /// The message of an error as the plugin reports it: the inner error of a reflection call (Skua invokes scripts by
+    /// reflection), every absolute path reduced to its file name (<see cref="WithFileNamesOnly"/>, so the Windows user name in
+    /// a local folder does not leave the plugin), trimmed and cut to <see cref="SkuaProtocol.MaxTextLength"/>; the error's
+    /// type name when it has no message.
+    /// </summary>
+    public static string ErrorText(Exception exception)
+    {
+        var actual = exception is TargetInvocationException { InnerException: { } inner } ? inner : exception;
+        string? message;
+        try
+        {
+            message = actual.Message;
+        }
+        catch (Exception)
+        {
+            message = null;
+        }
+
+        var text = string.IsNullOrWhiteSpace(message) ? "" : WithFileNamesOnly(message).Trim();
+        return Cut(text.Length > 0 ? text : actual.GetType().Name);
     }
 
     private static string FileName(string path)

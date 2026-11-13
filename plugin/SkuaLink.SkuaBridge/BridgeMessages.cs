@@ -11,11 +11,13 @@ internal static class BridgeMessages
 {
     /// <summary>
     /// The status line. Character, server and map are only reported while logged in (Skua keeps the last values after a
-    /// logout); the active quests and the factions are always empty while logged out.
+    /// logout); the active quests and the factions are always empty while logged out. The control state
+    /// (<see cref="SkuaControlState"/>) is reported whether logged in or not.
     /// </summary>
     public static SkuaStatus Status(
         bool loggedIn, string? username, string? server, string? map, string? loadedScriptPath, bool running, DateTimeOffset? runningSince,
-        IReadOnlyList<SkuaQuest>? quests, IReadOnlyList<SkuaFaction>? factions) =>
+        IReadOnlyList<SkuaQuest>? quests, IReadOnlyList<SkuaFaction>? factions,
+        string? control = null, int? settleSecondsLeft = null, bool optionsStuck = false) =>
         new(
             loggedIn,
             loggedIn ? Blank(username) : null,
@@ -25,7 +27,10 @@ internal static class BridgeMessages
             running,
             running ? runningSince : null,
             loggedIn ? quests : [],
-            loggedIn ? factions : []);
+            loggedIn ? factions : [],
+            control,
+            control == "settling" ? settleSecondsLeft : null,
+            optionsStuck);
 
     /// <summary>
     /// How many were bought: the quantity now minus the quantity in the snapshot taken before, when positive; otherwise
@@ -46,15 +51,10 @@ internal static class BridgeMessages
     }
 
     /// <summary>
-    /// The message of the error that stopped a script. Skua invokes ScriptMain by reflection, so the real error is usually
-    /// the inner one. Absolute paths in it are reduced to their file name (<see cref="SkuaText.WithFileNamesOnly"/>), so the
-    /// Windows user name in a local folder does not leave the plugin.
+    /// The message of the error that stopped a script, or that a start returned (<see cref="SkuaText.ErrorText"/>: the inner
+    /// error of Skua's reflection call, every absolute path reduced to its file name, cut to the text cap).
     /// </summary>
-    public static string ErrorText(Exception exception)
-    {
-        var actual = exception is TargetInvocationException { InnerException: { } inner } ? inner : exception;
-        return Blank(actual.Message is { } message ? SkuaText.WithFileNamesOnly(message) : null) ?? actual.GetType().Name;
-    }
+    public static string ErrorText(Exception exception) => SkuaText.ErrorText(exception);
 
     /// <summary>The plugin's own version as the release names it (MinVer's informational version without build metadata).</summary>
     public static string PluginVersion(Assembly assembly)

@@ -121,6 +121,22 @@ public sealed class SkuaControlState
         }
     }
 
+    /// <summary>
+    /// An accepted start was not seen running in time (Skua's running report may come and go before the start is accepted, or
+    /// never come): when no script runs, a <c>running</c> or <c>awaitingOptions</c> state settles, so it never sticks.
+    /// </summary>
+    public void OnStartNotSeen()
+    {
+        lock (_gate)
+        {
+            Advance();
+            if (_state is "running" or "awaitingOptions" && !_scriptRunning)
+            {
+                StartSettling();
+            }
+        }
+    }
+
     /// <summary>The options dialog closed; the script runs with the saved options.</summary>
     public void OnOptionsDialogClosed() => LeaveAwaitingOptions();
 

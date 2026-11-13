@@ -1,3 +1,4 @@
+using System.Reflection;
 using AqwCompanion.Skua;
 
 namespace AqwCompanion.Tests.Skua;
@@ -51,5 +52,39 @@ public class SkuaTextTests
     public void Text_without_an_absolute_path_is_left_alone(string message)
     {
         Assert.Equal(message, SkuaText.WithFileNamesOnly(message));
+    }
+
+    [Fact]
+    public void Error_text_is_the_inner_message_of_a_reflection_call_with_paths_reduced()
+    {
+        var error = new TargetInvocationException(new InvalidOperationException(@"Could not find 'C:\Users\Someone\Skua\Scripts\Farm.cs'."));
+
+        Assert.Equal("Could not find 'Farm.cs'.", SkuaText.ErrorText(error));
+    }
+
+    [Fact]
+    public void Error_text_without_a_message_is_the_type_name()
+    {
+        Assert.Equal(nameof(BlankException), SkuaText.ErrorText(new BlankException()));
+    }
+
+    [Fact]
+    public void Error_text_is_cut_to_the_text_cap_without_splitting_a_pair()
+    {
+        var text = SkuaText.ErrorText(new Exception(new string('e', SkuaProtocol.MaxTextLength - 1) + Smile + "tail"));
+
+        Assert.Equal(new string('e', SkuaProtocol.MaxTextLength - 1), text);
+    }
+
+    [Fact]
+    public void Cut_keeps_short_text_and_drops_lone_surrogates()
+    {
+        Assert.Equal("ab", SkuaText.Cut("a" + High + "b"));
+        Assert.Equal("abc", SkuaText.Cut("abcdef", 3));
+    }
+
+    private sealed class BlankException : Exception
+    {
+        public override string Message => "  ";
     }
 }

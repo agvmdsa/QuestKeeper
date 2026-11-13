@@ -1,9 +1,32 @@
 # SkuaLink.SkuaBridge
 
-A read-only Skua plugin. It runs inside Skua 1.4.5.0 and reports Skua's state and a short event log to SkuaLink over a
-local named pipe (`SkuaLink.SkuaBridge.v1`, current Windows user only, outbound only). Status: **connect and status
-verified by the owner on Windows on 2026-11-11 with an earlier build; the quest reading, the re-attach across script
-runs and the rest are not yet verified** (only the owner's Windows can prove it).
+A Skua plugin. It runs inside Skua 1.4.5.0, reports Skua's state and a short event log to SkuaLink over a local named
+pipe (`SkuaLink.SkuaBridge.v1`, current Windows user only, two-way since AQW-0088), and accepts a fixed set of commands
+from SkuaLink. Status: **connect and status verified by the owner on Windows on 2026-11-11 with an earlier build; the
+quest reading, the re-attach across script runs, the commands and the rest are not yet verified** (only the owner's
+Windows can prove it).
+
+## What the plugin can do
+
+Exactly this, nothing else:
+
+1. **Report** (as before): `hello`, `status` and `log` lines, see "What it sends".
+2. **List scripts** (`listScripts`): the `.cs` files under Skua's scripts folder (`ClientFileSources.SkuaScriptsDIR`,
+   `%AppData%\Skua\Scripts`), except Skua's compile cache `Cached-Scripts`, hidden/system files and links, sorted by
+   folder then name, at most `SkuaProtocol.MaxScripts` (the answer says `truncated` when cut). Each script travels as
+   `{id, name, folder}`: `id` is the first 8 bytes of the SHA-256 of the path relative to the scripts folder, lowercase
+   hex; no full path leaves the plugin.
+3. **Start a listed script** (`start {id}`): only an id from the plugin's own listing (an id it has not listed yet gets one
+   fresh scan). The path is checked again (inside the scripts folder plus a separator, ends in `.cs`, not under
+   `Cached-Scripts`, neither the file nor a folder on the way a link) and must still exist. Refused while a script runs
+   (`already running`) or while `stopping` / `settling`; only then `SetLoadedScript(path)` and `await StartScript()`. The
+   error Skua returns (compile error, version error) becomes the answer's `error`, absolute paths reduced to file names,
+   cut to 300 chars.
+4. **Stop the running script** (`stop`): answers at once, then calls Skua's `StopScript()` on a pool thread (never on the
+   script thread), once at a time. The status shows `stopping`, then `settling`, then `idle`.
+
+It never accepts a path, code, a script name or option values from SkuaLink, never sends anything to the game, and
+`getOptions` / `setOptions` are answered `not supported` for now (AQW-0089).
 
 ## Corrections to the plan (verified against the 1.4.5.0 DLLs and the 1.4.5.0 tag source)
 
@@ -60,14 +83,17 @@ throwaway project and read in the tag source.
 
 ## What it sends
 
-- `hello` on every (re)connect: plugin version (informational version without build metadata) and Skua's version.
+- `hello` on every (re)connect: plugin version (informational version without build metadata), Skua's version, and
+  `instanceId`, a random GUID made once per plugin load (SkuaLink tells several Skua apart by it).
 - `status` on every (re)connect and whenever it changes: logged in; character, server, map (only while logged in);
   script file name without folder or extension (no local path leaves the plugin); running; running since; the active
   quests (`quests`: id, name, ready to turn in; at most 30, in Skua's order, a blank name sent as `#id`; empty while
   logged out; re-read at most every 15 s, see below); the faction reputation (`factions`: id, name, rank, total rep,
   rep inside the rank, size of the rank step; at most 60, in Skua's order, a blank name sent as `#id`; empty while
   logged out; read on every status, so about every 3 s). A change in either list, a ready flag or a reputation number
-  sends a new status; nothing changed sends nothing.
+  sends a new status; nothing changed sends nothing. Also `control` (`idle`, `running`, `stopping`, `settling`,
+  `awaitingOptions`) with `settleSecondsLeft` while settling and `optionsStuck` (see "Commands and control state").
+- `result` once per command (see below).
 - `log`: bought (quantity = now minus snapshot when positive, else none), sold (name from the snapshot taken before the
   sale), dropped (`Drop: X` for an item offered in the drop list, Skua's `dropItem`, the usual farming case; `Received: X`
   for an item put straight into the inventory, Skua's `addItems`, such as a reward; accepting a drop-list item raises no
@@ -77,6 +103,31 @@ throwaway project and read in the tag source.
   Windows user name leaves the plugin). Quest accepted / turned in are no longer sent (the active quests travel in the status instead); the two
   kinds stay in the protocol so logs kept by an older version still load.
 - Never: gold, inventory contents, monster kills (`MonsterKilled` is not subscribed).
+
+## Commands and control state (AQW-0088)
+
+- The pipe is opened `InOut`. The plugin reads only through the shared bounded reader (`SkuaCommandReader` over
+  `BoundedLineReader` in `src/AqwCompanion.Skua`): a line over 4 KB (`SkuaProtocol.MaxCommandLineBytes`) is dropped, as
+  is an unknown `type`, a line of another version, anything that is not a command, and anything malformed; unknown fields
+  are ignored. The reader never throws; when SkuaLink closes the pipe it ends and the connection is made again like
+  after a failed write. An older SkuaLink serves an inbound-only pipe, which Windows refuses to a client that asks to read
+  (access denied): the plugin then connects outbound only, as before, and reads nothing.
+- Each command goes to one command worker (queue of 16; one more is answered `busy` at once) and is answered exactly once
+  with a `result {reqId, ok, error?, scripts?, hasOptions?, truncated?}`. Every failure is `ok: false` with a short error:
+  `unknown script id`, `not found`, `already running`, `stopping`, `settling`, `not running`, `could not list scripts`,
+  `not supported`, `busy`, or Skua's own start error. Nothing reaches Skua as an exception.
+- The decisions live in `src/AqwCompanion.Skua/SkuaCommandHandler.cs` (unit-tested on the Mac with a fake Skua); the
+  Skua-bound part is `ScriptControl.cs`. Commands run one at a time, so a start's check and its acceptance cannot
+  interleave with another start or stop.
+- `SetLoadedScript` is never called while a script runs (Skua restarts the loaded path by itself on restart and relogin).
+- After a successful start, `hasOptions` = `Config.Options.Count > 0 || Config.MultipleOptions.Count > 0`, read after
+  the start; the state becomes `awaitingOptions` with options, `running` without. Until the options window handling
+  (AQW-0089) exists, `awaitingOptions` ends only when the script stops. A start Skua has not reported running
+  after 10 s (its running report may come and go before the start is accepted) settles, so the state never sticks.
+- Settling (`SkuaControlState`): when the script stops running the state is `settling` until the map has not changed for
+  10 s, then `idle`. Skua raises `MapChanged` only while a script runs, so during the settle the map is compared on the
+  3 s status poll (each change restarts the 10 s). `ScriptRunning` changes and the poll both feed the state; the poll
+  (`SkuaCommandHandler.Tick`) also runs while SkuaLink is away (it reads only `ScriptRunning`, no Flash).
 
 ## Threading and safety
 
@@ -114,14 +165,14 @@ empty and the next login reads at once. **Reading `Active` is unverified on a re
 `Active` is meaningful outside a running script, nor whether "ready" matches the game has been checked inside Skua. The
 decision rules live in `src/AqwCompanion.Skua/SkuaQuestRefresh.cs` and are unit-tested without Skua.
 
-## Read-only audit: every Skua member the plugin touches
+## Audit: every Skua member the plugin touches
 
 Generated from the compiled DLL's member references (System.Reflection.Metadata) and checked against the source.
 
 | Skua member | Kind | Where it is used |
 |---|---|---|
 | `ISkuaPlugin` (implemented: `Name`, `Author`, `Description`, `Options`, `Load`, `Unload`) | implemented by the plugin | plugin entry point |
-| `IServiceProvider.GetService(typeof(IScriptInterface))`, `GetService(typeof(IScriptManager))` | read (service lookup) | `Load` |
+| `IServiceProvider.GetService(typeof(IScriptInterface))`, `GetService(typeof(IScriptManager))` | read (service lookup) | `Load`; the `IScriptManager` (or `bot.Manager`) drives the commands |
 | `IScriptInterface.Events` | read | subscribe / re-attach / unsubscribe |
 | `IScriptEvent.ItemBought` | event subscription | log "Bought" |
 | `IScriptEvent.ItemSold` | event subscription | log "Sold" |
@@ -153,16 +204,21 @@ Generated from the compiled DLL's member references (System.Reflection.Metadata)
 | `IScriptInterface.Reputation` | read | |
 | `IScriptFaction.FactionList` | read (one Flash read of `world.myAvatar.factions`, no cache; on every status) | status factions |
 | `Faction.ID`, `Faction.Name`, `Faction.Rank`, `Faction.TotalRep`, `Faction.Rep`, `Faction.RequiredRep` | read | status factions |
+| `ClientFileSources.SkuaScriptsDIR` (Skua.Core.Models) | read | the scripts folder listed by `listScripts` |
+| `IScriptStatus.SetLoadedScript(string)` | **changes Skua state** | `start`, only when no script runs |
+| `IScriptStatus.StartScript()` | **changes Skua state** | `start` |
+| `IScriptStatus.Config` -> `IScriptOptionContainer.Options`, `.MultipleOptions` | read (counts only) | `hasOptions` after a start |
+| `IScriptStatus.StopScript()` | **changes Skua state** | `stop`, on a pool thread |
 
 Removed in AQW-0076: the `IScriptEvent.QuestAccepted` and `IScriptEvent.QuestTurnedIn` subscriptions and the
 `IScriptQuest.Tree` read (it only named those two log lines). No other Skua member is referenced. In particular
-nothing calls `Send`, `Flash`, `Shops`, `Options`, `StartScript`, `StopScript`, `SetLoadedScript`, `CanComplete`,
-`Inventory.Sell` or any setter. Some getters above are implemented by Skua as Flash reads (`isLoggedIn`,
+nothing calls `Send`, `Flash`, `Shops`, `Options`, `RestartScriptAsync`, `Compile`, `CanComplete`, `Inventory.Sell` or
+any setter; `SetLoadedScript`, `StartScript` and `StopScript` are called only by the three commands above. Some getters above are implemented by Skua as Flash reads (`isLoggedIn`,
 `world.strMapName`, `world.myAvatar.items`, `world.myAvatar.factions`, `world.questTree`, `loginInfo.strUsername`); they read game objects and
 change nothing.
 
-The plugin is read-only with respect to game and script state: it never calls anything that sends a packet or changes
-game or script state. One side effect inside Skua remains: `IScriptQuest.Active` goes through `IScriptQuest.Tree`, which
+Apart from the commands (load, start and stop a script, on SkuaLink's request), the plugin never calls anything that
+sends a packet or changes game or script state. One side effect inside Skua remains: `IScriptQuest.Active` goes through `IScriptQuest.Tree`, which
 is not a pure getter. It writes Skua's own shared 100 ms cache of the quest tree it just read (`_cachedTree`,
 `_lastTreeUpdate`, no lock), and Skua clears that cache itself after accepting or turning in a quest. So a plugin read
 racing a script's own quest actions can, at most, make the script's immediately following tree read (for example its
@@ -198,3 +254,16 @@ references are `Skua.Core.Interfaces` and `Skua.Core.Models`.
 - The faction list read every 3 s: its cost with ~50 factions, that it matches the game's Reputation panel, and that
   `Rep` / `RequiredRep` are the in-rank progress and the rank step (0 at rank 10) as the source says.
 - Only one Skua instance is reported at a time (SkuaLink serves one connection); a second Skua keeps retrying quietly.
+- Commands (AQW-0088):
+  - The two-way pipe connects to the new SkuaLink, and a SkuaLink without commands (inbound-only pipe) still gets the
+    reports: that Windows refuses the `InOut` client with access denied (`UnauthorizedAccessException`) is from the
+    Win32 rules, not seen.
+  - Listing: the folder, the names and folders shown, `Cached-Scripts` left out, the time a large scripts folder takes.
+  - Start: the script really starts from the plugin (no Skua UI involved), Skua's loader label (it is not updated by
+    `SetLoadedScript`), and the text of a compile error or version error as it reaches the phone.
+  - `hasOptions` read from `Config` right after `StartScript` describes the script just started (not the previous one).
+  - Stop duration: how long Skua takes from `stop` until `ScriptRunning` turns false, and a script that ignores the
+    stop (Skua gives up after about 40 s and the state stays `stopping` until it really ends; a new `stop` tries again).
+  - Settling: that 10 s without a map change (seen on the 3 s poll while no script runs) covers Skua's cleanup after a
+    stop (for example going to the house), and that a script that stops by itself also settles.
+  - A start accepted but never reported running settles after 10 s.

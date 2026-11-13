@@ -42,7 +42,7 @@ public class SkuaPhoneJsonTests
 
         var json = PhoneJson.Serialize(new PhoneState(Snapshot(), [], view));
 
-        Assert.Contains("\"runningSince\":null,\"quests\":[{\"id\":5,\"name\":\"Slay the Beast\",\"ready\":true}],\"factions\":null}", json);
+        Assert.Contains("\"runningSince\":null,\"quests\":[{\"id\":5,\"name\":\"Slay the Beast\",\"ready\":true}],\"factions\":null,\"control\":null,\"settleSecondsLeft\":null,\"optionsStuck\":false}", json);
     }
 
     [Fact]
@@ -68,7 +68,7 @@ public class SkuaPhoneJsonTests
 
         var json = PhoneJson.Serialize(new PhoneState(Snapshot(), [], view));
 
-        Assert.Contains("\"quests\":null,\"factions\":[{\"id\":1,\"name\":\"Nation\",\"rank\":3,\"totalRep\":5000,\"rep\":300,\"requiredRep\":1200}]}", json);
+        Assert.Contains("\"quests\":null,\"factions\":[{\"id\":1,\"name\":\"Nation\",\"rank\":3,\"totalRep\":5000,\"rep\":300,\"requiredRep\":1200}],\"control\":null,\"settleSecondsLeft\":null,\"optionsStuck\":false}", json);
     }
 
     [Fact]

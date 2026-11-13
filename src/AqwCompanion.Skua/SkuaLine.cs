@@ -9,34 +9,78 @@ public static class SkuaLine
 {
     public static string ToLine(SkuaMessage message)
     {
-        if (message is not StatusMessage { Status: var status } || ((status.Quests?.Count ?? 0) == 0 && (status.Factions?.Count ?? 0) == 0))
+        var line = Write(message, Limits.All);
+        if (Fits(line))
         {
-            return Write(message, int.MaxValue, int.MaxValue);
+            return line;
         }
 
-        // Names are cut, but 30 quests and 60 factions with long names in escaped non-ASCII could still pass the line cap,
-        // and a line over the cap is refused whole. The last factions, then the last quests, are left out until the line fits.
-        var quests = Math.Min(status.Quests?.Count ?? 0, SkuaProtocol.MaxQuests);
-        var factions = Math.Min(status.Factions?.Count ?? 0, SkuaProtocol.MaxFactions);
-        var line = Write(message, quests, factions);
-        while ((quests > 0 || factions > 0) && Encoding.UTF8.GetByteCount(line) > SkuaProtocol.MaxLineBytes)
+        // Texts are cut, but long lists of long names in escaped non-ASCII could still pass the line cap, and a line over the
+        // cap is refused whole. The last entries of one list after another are left out until the line fits: for a status the
+        // factions, then the quests; for a result the scripts, then the option values, then the option definitions.
+        var limits = Limits.All;
+        switch (message)
         {
-            if (factions > 0)
-            {
-                factions--;
-            }
-            else
-            {
-                quests--;
-            }
+            case StatusMessage { Status: var status }:
+                line = Shrink(message, ref limits, Math.Min(status.Factions?.Count ?? 0, SkuaProtocol.MaxFactions), (l, n) => l with { Factions = n });
+                if (!Fits(line))
+                {
+                    line = Shrink(message, ref limits, Math.Min(status.Quests?.Count ?? 0, SkuaProtocol.MaxQuests), (l, n) => l with { Quests = n });
+                }
 
-            line = Write(message, quests, factions);
+                break;
+            case ResultMessage result:
+                line = Shrink(message, ref limits, Math.Min(result.Scripts?.Count ?? 0, SkuaProtocol.MaxScripts), (l, n) => l with { Scripts = n });
+                if (!Fits(line))
+                {
+                    line = Shrink(message, ref limits, result.Values?.Count ?? 0, (l, n) => l with { Values = n });
+                }
+
+                if (!Fits(line))
+                {
+                    line = Shrink(message, ref limits, result.OptionDefs?.Count ?? 0, (l, n) => l with { Defs = n });
+                }
+
+                break;
         }
 
         return line;
     }
 
-    private static string Write(SkuaMessage message, int maxQuests, int maxFactions)
+    /// <summary>How many entries of each list are written at most (on top of the protocol caps).</summary>
+    private readonly record struct Limits(int Quests, int Factions, int Scripts, int Defs, int Values)
+    {
+        public static readonly Limits All = new(int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue);
+    }
+
+    private static bool Fits(string line) => Encoding.UTF8.GetByteCount(line) <= SkuaProtocol.MaxLineBytes;
+
+    /// <summary>
+    /// Writes the line with the largest number of entries below <paramref name="count"/> (all of them are known not to fit)
+    /// that fits, or with none of this list when even that does not fit. A binary search: one more entry never shortens the line.
+    /// </summary>
+    private static string Shrink(SkuaMessage message, ref Limits limits, int count, Func<Limits, int, Limits> with)
+    {
+        var low = 0;
+        var high = count - 1;
+        while (low < high)
+        {
+            var mid = low + ((high - low + 1) / 2);
+            if (Fits(Write(message, with(limits, mid))))
+            {
+                low = mid;
+            }
+            else
+            {
+                high = mid - 1;
+            }
+        }
+
+        limits = with(limits, low);
+        return Write(message, limits);
+    }
+
+    private static string Write(SkuaMessage message, Limits limits)
     {
         using var stream = new MemoryStream();
         using (var w = new Utf8JsonWriter(stream))
@@ -49,6 +93,11 @@ public static class SkuaLine
                     w.WriteString("type", "hello");
                     w.WriteString("plugin", Cut(h.Hello.PluginVersion));
                     w.WriteString("skua", Cut(h.Hello.SkuaVersion));
+                    if (h.Hello.InstanceId is { } instanceId)
+                    {
+                        w.WriteString("instanceId", Cut(instanceId));
+                    }
+
                     break;
                 case StatusMessage s:
                     w.WriteString("type", "status");
@@ -70,7 +119,7 @@ public static class SkuaLine
                     if (s.Status.Quests is { } quests)
                     {
                         w.WriteStartArray("quests");
-                        foreach (var quest in quests.Take(Math.Min(maxQuests, SkuaProtocol.MaxQuests)))
+                        foreach (var quest in quests.Take(Math.Min(limits.Quests, SkuaProtocol.MaxQuests)))
                         {
                             w.WriteStartObject();
                             w.WriteNumber("id", quest.Id);
@@ -85,7 +134,7 @@ public static class SkuaLine
                     if (s.Status.Factions is { } factions)
                     {
                         w.WriteStartArray("factions");
-                        foreach (var faction in factions.Take(Math.Min(maxFactions, SkuaProtocol.MaxFactions)))
+                        foreach (var faction in factions.Take(Math.Min(limits.Factions, SkuaProtocol.MaxFactions)))
                         {
                             w.WriteStartObject();
                             w.WriteNumber("id", faction.Id);
@@ -100,6 +149,21 @@ public static class SkuaLine
                         w.WriteEndArray();
                     }
 
+                    if (s.Status.Control is { } control && SkuaProtocol.ControlStates.Contains(control))
+                    {
+                        w.WriteString("control", control);
+                    }
+
+                    if (s.Status.SettleSecondsLeft is { } left && left >= 0)
+                    {
+                        w.WriteNumber("settleSecondsLeft", left);
+                    }
+
+                    if (s.Status.OptionsStuck)
+                    {
+                        w.WriteBoolean("optionsStuck", true);
+                    }
+
                     break;
                 case LogMessage l:
                     w.WriteString("type", "log");
@@ -112,6 +176,33 @@ public static class SkuaLine
                         w.WriteNumber("count", Math.Clamp(l.Entry.Count, 1, SkuaProtocol.MaxCount));
                     }
                     break;
+                case ListScriptsCommand c:
+                    w.WriteString("type", "listScripts");
+                    w.WriteString("reqId", Cut(c.ReqId));
+                    break;
+                case GetOptionsCommand c:
+                    w.WriteString("type", "getOptions");
+                    w.WriteString("reqId", Cut(c.ReqId));
+                    w.WriteString("id", Cut(c.ScriptId));
+                    break;
+                case SetOptionsCommand c:
+                    w.WriteString("type", "setOptions");
+                    w.WriteString("reqId", Cut(c.ReqId));
+                    w.WriteString("id", Cut(c.ScriptId));
+                    WriteValues(w, "values", c.Values, int.MaxValue);
+                    break;
+                case StartCommand c:
+                    w.WriteString("type", "start");
+                    w.WriteString("reqId", Cut(c.ReqId));
+                    w.WriteString("id", Cut(c.ScriptId));
+                    break;
+                case StopCommand c:
+                    w.WriteString("type", "stop");
+                    w.WriteString("reqId", Cut(c.ReqId));
+                    break;
+                case ResultMessage r:
+                    WriteResult(w, r, limits);
+                    break;
                 default:
                     throw new ArgumentException("This message is never sent.", nameof(message));
             }
@@ -122,9 +213,99 @@ public static class SkuaLine
         return Encoding.UTF8.GetString(stream.ToArray());
     }
 
+    private static void WriteResult(Utf8JsonWriter w, ResultMessage r, Limits limits)
+    {
+        w.WriteString("type", "result");
+        w.WriteString("reqId", Cut(r.ReqId));
+        w.WriteBoolean("ok", r.Ok);
+        if (r.Error is { } error)
+        {
+            w.WriteString("error", Cut(error));
+        }
+
+        if (r.Scripts is { } scripts)
+        {
+            w.WriteStartArray("scripts");
+            foreach (var script in scripts.Take(Math.Min(limits.Scripts, SkuaProtocol.MaxScripts)))
+            {
+                w.WriteStartObject();
+                w.WriteString("id", Cut(script.Id));
+                w.WriteString("name", Cut(script.Name));
+                w.WriteString("folder", Cut(script.Folder));
+                w.WriteEndObject();
+            }
+
+            w.WriteEndArray();
+        }
+
+        if (r.OptionDefs is { } defs)
+        {
+            w.WriteStartArray("optionDefs");
+            foreach (var def in defs.Take(limits.Defs))
+            {
+                w.WriteStartObject();
+                w.WriteString("category", Cut(def.Category));
+                w.WriteString("name", Cut(def.Name));
+                w.WriteString("displayName", Cut(def.DisplayName));
+                w.WriteString("description", Cut(def.Description));
+                w.WriteString("type", OptionType(def.Type));
+                w.WriteString("default", Cut(def.Default, SkuaProtocol.MaxOptionValueLength));
+                if (def.Choices is { } choices)
+                {
+                    w.WriteStartArray("choices");
+                    foreach (var choice in choices.Select(SkuaText.WithoutLoneSurrogates).Where(c => c.Length <= SkuaProtocol.MaxOptionValueLength))
+                    {
+                        w.WriteStringValue(choice);
+                    }
+
+                    w.WriteEndArray();
+                }
+
+                w.WriteEndObject();
+            }
+
+            w.WriteEndArray();
+        }
+
+        if (r.Values is { } values)
+        {
+            WriteValues(w, "options", values, limits.Values);
+        }
+
+        w.WriteBoolean("hasOptions", r.HasOptions);
+        w.WriteBoolean("firstRun", r.FirstRun);
+    }
+
+    /// <summary>A value over <see cref="SkuaProtocol.MaxOptionValueLength"/> is left out rather than cut: a cut value is another value.</summary>
+    private static void WriteValues(Utf8JsonWriter w, string name, IReadOnlyList<SkuaOptionValue> values, int max)
+    {
+        w.WriteStartArray(name);
+        foreach (var value in values
+                     .Select(v => v with { Value = SkuaText.WithoutLoneSurrogates(v.Value) })
+                     .Where(v => v.Value.Length <= SkuaProtocol.MaxOptionValueLength)
+                     .Take(max))
+        {
+            w.WriteStartObject();
+            w.WriteString("category", Cut(value.Category));
+            w.WriteString("name", Cut(value.Name));
+            w.WriteString("value", value.Value);
+            w.WriteEndObject();
+        }
+
+        w.WriteEndArray();
+    }
+
+    private static string OptionType(string type) => SkuaProtocol.OptionTypes.Contains(type) ? type : "other";
+
     public static SkuaMessage? Parse(string line)
     {
-        if (string.IsNullOrWhiteSpace(line) || Encoding.UTF8.GetByteCount(line) > SkuaProtocol.MaxLineBytes)
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return null;
+        }
+
+        var bytes = Encoding.UTF8.GetByteCount(line);
+        if (bytes > SkuaProtocol.MaxLineBytes)
         {
             return null;
         }
@@ -148,13 +329,27 @@ public static class SkuaLine
                 return new UnsupportedVersionMessage(version);
             }
 
-            return Str(root, "type") switch
+            var type = Str(root, "type");
+            if (type is "listScripts" or "getOptions" or "setOptions" or "start" or "stop" && bytes > SkuaProtocol.MaxCommandLineBytes)
+            {
+                return null;
+            }
+
+            return type switch
             {
                 "hello" => Str(root, "plugin") is { } plugin && Str(root, "skua") is { } skua
-                    ? new HelloMessage(new SkuaHello(Cut(plugin), Cut(skua)))
+                    ? new HelloMessage(new SkuaHello(Cut(plugin), Cut(skua), Optional(() => NonEmpty(root, "instanceId"))))
                     : null,
                 "status" => ParseStatus(root),
                 "log" => ParseLog(root),
+                "listScripts" => NonEmpty(root, "reqId") is { } reqId ? new ListScriptsCommand(reqId) : null,
+                "getOptions" => NonEmpty(root, "reqId") is { } reqId && NonEmpty(root, "id") is { } id ? new GetOptionsCommand(reqId, id) : null,
+                "setOptions" => NonEmpty(root, "reqId") is { } reqId && NonEmpty(root, "id") is { } id && ParseList(root, "values", int.MaxValue, ParseValue) is { } values
+                    ? new SetOptionsCommand(reqId, id, values)
+                    : null,
+                "start" => NonEmpty(root, "reqId") is { } reqId && NonEmpty(root, "id") is { } id ? new StartCommand(reqId, id) : null,
+                "stop" => NonEmpty(root, "reqId") is { } reqId ? new StopCommand(reqId) : null,
+                "result" => ParseResult(root),
                 _ => null,
             };
         }
@@ -200,9 +395,120 @@ public static class SkuaLine
             since = parsed;
         }
 
+        var control = Optional(() => Str(root, "control"));
         return new StatusMessage(new SkuaStatus(
             loggedIn.GetBoolean(), CutOrNull(Str(root, "character")), CutOrNull(Str(root, "server")), CutOrNull(Str(root, "map")), CutOrNull(Str(root, "script")),
-            running.GetBoolean(), since, ParseQuests(root), ParseFactions(root)));
+            running.GetBoolean(), since, ParseQuests(root), ParseFactions(root),
+            control is not null && SkuaProtocol.ControlStates.Contains(control) ? control : null,
+            Count(root, "settleSecondsLeft"),
+            IsTrue(root, "optionsStuck")));
+    }
+
+    private static SkuaMessage? ParseResult(JsonElement root)
+    {
+        if (NonEmpty(root, "reqId") is not { } reqId
+            || !root.TryGetProperty("ok", out var ok) || ok.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            return null;
+        }
+
+        return new ResultMessage(
+            reqId, ok.GetBoolean(), Optional(() => CutOrNull(Str(root, "error"))),
+            ParseList(root, "scripts", SkuaProtocol.MaxScripts, ParseScript),
+            ParseList(root, "optionDefs", int.MaxValue, ParseOptionDef),
+            ParseList(root, "options", int.MaxValue, ParseValue),
+            IsTrue(root, "hasOptions"), IsTrue(root, "firstRun"));
+    }
+
+    /// <summary>
+    /// The list, or null when the field is absent or not an array. A damaged entry is left out on its own (an escaped lone
+    /// surrogate included); at most <paramref name="max"/> are kept.
+    /// </summary>
+    private static List<T>? ParseList<T>(JsonElement root, string name, int max, Func<JsonElement, T?> parse)
+        where T : class
+    {
+        if (!root.TryGetProperty(name, out var array) || array.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var list = new List<T>();
+        foreach (var entry in array.EnumerateArray())
+        {
+            if (list.Count >= max)
+            {
+                break;
+            }
+
+            if (Optional(() => parse(entry)) is { } item)
+            {
+                list.Add(item);
+            }
+        }
+
+        return list;
+    }
+
+    private static SkuaScriptInfo? ParseScript(JsonElement entry) =>
+        entry.ValueKind == JsonValueKind.Object && NonEmpty(entry, "id") is { } id && Str(entry, "name") is { } name && Str(entry, "folder") is { } folder
+            ? new SkuaScriptInfo(id, Cut(name), Cut(folder))
+            : null;
+
+    private static SkuaOptionValue? ParseValue(JsonElement entry) =>
+        entry.ValueKind == JsonValueKind.Object && Str(entry, "category") is { } category && NonEmpty(entry, "name") is { } name
+        && Str(entry, "value") is { Length: <= SkuaProtocol.MaxOptionValueLength } value
+            ? new SkuaOptionValue(Cut(category), name, value)
+            : null;
+
+    private static SkuaOptionDef? ParseOptionDef(JsonElement entry)
+    {
+        if (entry.ValueKind != JsonValueKind.Object
+            || Str(entry, "category") is not { } category
+            || NonEmpty(entry, "name") is not { } name
+            || Str(entry, "displayName") is not { } displayName
+            || Str(entry, "description") is not { } description
+            || Str(entry, "type") is not { } type
+            || Str(entry, "default") is not { } defaultValue)
+        {
+            return null;
+        }
+
+        return new SkuaOptionDef(
+            Cut(category), name, Cut(displayName), Cut(description), OptionType(type), Cut(defaultValue, SkuaProtocol.MaxOptionValueLength),
+            ParseList(entry, "choices", int.MaxValue, ParseChoice));
+    }
+
+    private static string? ParseChoice(JsonElement entry)
+    {
+        if (entry.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var text = entry.GetString();
+        return text is null || text.Contains('\uFFFD') || text.Length > SkuaProtocol.MaxOptionValueLength ? null : text;
+    }
+
+    /// <summary>A non-empty string value, cut, or null.</summary>
+    private static string? NonEmpty(JsonElement root, string name) => Str(root, name) is { Length: > 0 } text ? Cut(text) : null;
+
+    private static bool IsTrue(JsonElement root, string name) => root.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.True;
+
+    /// <summary>
+    /// Reads an optional part: an escaped lone surrogate in it (<c>GetString</c> throws <see cref="InvalidOperationException"/>)
+    /// loses only that part, never the line.
+    /// </summary>
+    private static T? Optional<T>(Func<T?> read)
+        where T : class
+    {
+        try
+        {
+            return read();
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -376,15 +682,17 @@ public static class SkuaLine
     /// <see cref="SkuaText.WithoutLoneSurrogates"/>), then the text is cut to <see cref="SkuaProtocol.MaxTextLength"/>
     /// without splitting a pair.
     /// </summary>
-    private static string Cut(string value)
+    private static string Cut(string value) => Cut(value, SkuaProtocol.MaxTextLength);
+
+    private static string Cut(string value, int max)
     {
         value = SkuaText.WithoutLoneSurrogates(value);
-        if (value.Length <= SkuaProtocol.MaxTextLength)
+        if (value.Length <= max)
         {
             return value;
         }
 
-        var length = SkuaProtocol.MaxTextLength;
+        var length = max;
         if (char.IsHighSurrogate(value[length - 1]))
         {
             length--;

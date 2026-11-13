@@ -67,11 +67,12 @@ public sealed record StopCommand(string ReqId) : SkuaCommand(ReqId);
 
 /// <summary>
 /// The plugin's one answer to a command. Each list is null when the command does not report it and empty when there is
-/// nothing; two results are equal when their lists hold the same entries in the same order.
+/// nothing; two results are equal when their lists hold the same entries in the same order. <paramref name="Truncated"/>
+/// says the script list was cut (by <see cref="SkuaProtocol.MaxScripts"/> or by the result line cap).
 /// </summary>
 public sealed record ResultMessage(
     string ReqId, bool Ok, string? Error, IReadOnlyList<SkuaScriptInfo>? Scripts, IReadOnlyList<SkuaOptionDef>? OptionDefs,
-    IReadOnlyList<SkuaOptionValue>? Values, bool HasOptions, bool FirstRun) : SkuaMessage
+    IReadOnlyList<SkuaOptionValue>? Values, bool HasOptions, bool FirstRun, bool Truncated = false) : SkuaMessage
 {
     public bool Equals(ResultMessage? other) =>
         other is not null
@@ -83,7 +84,8 @@ public sealed record ResultMessage(
         && SkuaLists.Same(OptionDefs, other.OptionDefs)
         && SkuaLists.Same(Values, other.Values)
         && HasOptions == other.HasOptions
-        && FirstRun == other.FirstRun;
+        && FirstRun == other.FirstRun
+        && Truncated == other.Truncated;
 
     public override int GetHashCode()
     {
@@ -96,6 +98,7 @@ public sealed record ResultMessage(
         SkuaLists.Add(ref hash, Values);
         hash.Add(HasOptions);
         hash.Add(FirstRun);
+        hash.Add(Truncated);
         return hash.ToHashCode();
     }
 }

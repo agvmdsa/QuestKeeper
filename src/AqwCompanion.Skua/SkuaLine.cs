@@ -9,36 +9,33 @@ public static class SkuaLine
 {
     public static string ToLine(SkuaMessage message)
     {
+        var max = message is ResultMessage ? SkuaProtocol.MaxResultLineBytes : SkuaProtocol.MaxLineBytes;
         var line = Write(message, Limits.All);
-        if (Fits(line))
+        if (Fits(line, max))
         {
             return line;
         }
 
         // Texts are cut, but long lists of long names in escaped non-ASCII could still pass the line cap, and a line over the
-        // cap is refused whole. The last entries of one list after another are left out until the line fits: for a status the
-        // factions, then the quests; for a result the scripts, then the option values, then the option definitions.
+        // cap is refused whole. For a status the last factions, then the last quests, are left out until the line fits. For a
+        // result the last scripts are left out (the result says Truncated); a result that still does not fit becomes an error
+        // rather than losing option values or definitions, which would mislead the form built from them.
         var limits = Limits.All;
         switch (message)
         {
             case StatusMessage { Status: var status }:
-                line = Shrink(message, ref limits, Math.Min(status.Factions?.Count ?? 0, SkuaProtocol.MaxFactions), (l, n) => l with { Factions = n });
-                if (!Fits(line))
+                line = Shrink(message, ref limits, max, Math.Min(status.Factions?.Count ?? 0, SkuaProtocol.MaxFactions), (l, n) => l with { Factions = n });
+                if (!Fits(line, max))
                 {
-                    line = Shrink(message, ref limits, Math.Min(status.Quests?.Count ?? 0, SkuaProtocol.MaxQuests), (l, n) => l with { Quests = n });
+                    line = Shrink(message, ref limits, max, Math.Min(status.Quests?.Count ?? 0, SkuaProtocol.MaxQuests), (l, n) => l with { Quests = n });
                 }
 
                 break;
             case ResultMessage result:
-                line = Shrink(message, ref limits, Math.Min(result.Scripts?.Count ?? 0, SkuaProtocol.MaxScripts), (l, n) => l with { Scripts = n });
-                if (!Fits(line))
+                line = Shrink(message, ref limits, max, Math.Min(result.Scripts?.Count ?? 0, SkuaProtocol.MaxScripts), (l, n) => l with { Scripts = n });
+                if (!Fits(line, max))
                 {
-                    line = Shrink(message, ref limits, result.Values?.Count ?? 0, (l, n) => l with { Values = n });
-                }
-
-                if (!Fits(line))
-                {
-                    line = Shrink(message, ref limits, result.OptionDefs?.Count ?? 0, (l, n) => l with { Defs = n });
+                    line = Write(new ResultMessage(result.ReqId, false, "result too large", null, null, null, false, false), Limits.All);
                 }
 
                 break;
@@ -47,26 +44,36 @@ public static class SkuaLine
         return line;
     }
 
+    /// <summary>
+    /// The line for a command, or null when it is over <see cref="SkuaProtocol.MaxCommandLineBytes"/> (the plugin would drop
+    /// it): the sender answers the request itself instead of waiting for a result that never comes.
+    /// </summary>
+    public static string? ToCommandLine(SkuaCommand command)
+    {
+        var line = Write(command, Limits.All);
+        return Fits(line, SkuaProtocol.MaxCommandLineBytes) ? line : null;
+    }
+
     /// <summary>How many entries of each list are written at most (on top of the protocol caps).</summary>
     private readonly record struct Limits(int Quests, int Factions, int Scripts, int Defs, int Values)
     {
         public static readonly Limits All = new(int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue);
     }
 
-    private static bool Fits(string line) => Encoding.UTF8.GetByteCount(line) <= SkuaProtocol.MaxLineBytes;
+    private static bool Fits(string line, int max) => Encoding.UTF8.GetByteCount(line) <= max;
 
     /// <summary>
     /// Writes the line with the largest number of entries below <paramref name="count"/> (all of them are known not to fit)
     /// that fits, or with none of this list when even that does not fit. A binary search: one more entry never shortens the line.
     /// </summary>
-    private static string Shrink(SkuaMessage message, ref Limits limits, int count, Func<Limits, int, Limits> with)
+    private static string Shrink(SkuaMessage message, ref Limits limits, int max, int count, Func<Limits, int, Limits> with)
     {
         var low = 0;
         var high = count - 1;
         while (low < high)
         {
             var mid = low + ((high - low + 1) / 2);
-            if (Fits(Write(message, with(limits, mid))))
+            if (Fits(Write(message, with(limits, mid)), max))
             {
                 low = mid;
             }
@@ -274,6 +281,10 @@ public static class SkuaLine
 
         w.WriteBoolean("hasOptions", r.HasOptions);
         w.WriteBoolean("firstRun", r.FirstRun);
+        if (r.Truncated || (r.Scripts?.Count ?? 0) > Math.Min(limits.Scripts, SkuaProtocol.MaxScripts))
+        {
+            w.WriteBoolean("truncated", true);
+        }
     }
 
     /// <summary>A value over <see cref="SkuaProtocol.MaxOptionValueLength"/> is left out rather than cut: a cut value is another value.</summary>
@@ -304,8 +315,9 @@ public static class SkuaLine
             return null;
         }
 
+        // Only a result may be longer than MaxLineBytes; the type is known only after parsing, so the larger cap comes first.
         var bytes = Encoding.UTF8.GetByteCount(line);
-        if (bytes > SkuaProtocol.MaxLineBytes)
+        if (bytes > SkuaProtocol.MaxResultLineBytes)
         {
             return null;
         }
@@ -330,7 +342,8 @@ public static class SkuaLine
             }
 
             var type = Str(root, "type");
-            if (type is "listScripts" or "getOptions" or "setOptions" or "start" or "stop" && bytes > SkuaProtocol.MaxCommandLineBytes)
+            if ((type != "result" && bytes > SkuaProtocol.MaxLineBytes)
+                || (type is "listScripts" or "getOptions" or "setOptions" or "start" or "stop" && bytes > SkuaProtocol.MaxCommandLineBytes))
             {
                 return null;
             }
@@ -417,7 +430,9 @@ public static class SkuaLine
             ParseList(root, "scripts", SkuaProtocol.MaxScripts, ParseScript),
             ParseList(root, "optionDefs", int.MaxValue, ParseOptionDef),
             ParseList(root, "options", int.MaxValue, ParseValue),
-            IsTrue(root, "hasOptions"), IsTrue(root, "firstRun"));
+            IsTrue(root, "hasOptions"), IsTrue(root, "firstRun"),
+            IsTrue(root, "truncated")
+            || (root.TryGetProperty("scripts", out var scripts) && scripts.ValueKind == JsonValueKind.Array && scripts.GetArrayLength() > SkuaProtocol.MaxScripts));
     }
 
     /// <summary>

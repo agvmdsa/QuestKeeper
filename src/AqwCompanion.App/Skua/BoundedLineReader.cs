@@ -8,7 +8,12 @@ public readonly record struct LineResult(string? Text, bool TooLong);
 
 public static class BoundedLineReader
 {
-    public static async IAsyncEnumerable<LineResult> ReadAsync(Stream stream, [EnumeratorCancellation] CancellationToken ct)
+    /// <summary>
+    /// Reads lines of at most <paramref name="maxLineBytes"/> bytes; a longer line is reported once as too long. A reader that
+    /// takes command results passes <see cref="SkuaProtocol.MaxResultLineBytes"/>.
+    /// </summary>
+    public static async IAsyncEnumerable<LineResult> ReadAsync(
+        Stream stream, [EnumeratorCancellation] CancellationToken ct, int maxLineBytes = SkuaProtocol.MaxLineBytes)
     {
         var buffer = new byte[4096];
         var line = new List<byte>(256);
@@ -48,7 +53,7 @@ public static class BoundedLineReader
                 }
                 else if (!overflow)
                 {
-                    if (line.Count >= SkuaProtocol.MaxLineBytes)
+                    if (line.Count >= maxLineBytes)
                     {
                         overflow = true;
                         line.Clear();

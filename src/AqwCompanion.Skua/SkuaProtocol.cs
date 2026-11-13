@@ -3,7 +3,11 @@ namespace AqwCompanion.Skua;
 public static class SkuaProtocol
 {
     public const int Version = 1;
+    /// <summary>The line cap for everything except results.</summary>
     public const int MaxLineBytes = 16 * 1024;
+
+    /// <summary>The line cap for a result (plugin to app only), so a whole script list fits one line.</summary>
+    public const int MaxResultLineBytes = 256 * 1024;
     public const int MaxTextLength = 300;
 
     /// <summary>At most this many active quests travel in one status.</summary>
@@ -14,8 +18,11 @@ public static class SkuaProtocol
     /// <summary>The highest count a merged drop line carries.</summary>
     public const int MaxCount = 99999;
 
-    /// <summary>At most this many scripts travel in one result (the 16 KB line cap may leave more out).</summary>
-    public const int MaxScripts = 500;
+    /// <summary>
+    /// At most this many scripts travel in one result; a list cut by this cap or by <see cref="MaxResultLineBytes"/> is
+    /// marked <see cref="ResultMessage.Truncated"/>.
+    /// </summary>
+    public const int MaxScripts = 2000;
 
     /// <summary>An option value longer than this is left out, never cut (a cut value would be a different value).</summary>
     public const int MaxOptionValueLength = 200;

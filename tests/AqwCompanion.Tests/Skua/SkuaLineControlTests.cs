@@ -21,8 +21,9 @@ public class SkuaLineControlTests
 
     private static ResultMessage Result(
         string reqId = "r1", bool ok = true, string? error = null, IReadOnlyList<SkuaScriptInfo>? scripts = null,
-        IReadOnlyList<SkuaOptionDef>? defs = null, IReadOnlyList<SkuaOptionValue>? values = null, bool hasOptions = false, bool firstRun = false) =>
-        new(reqId, ok, error, scripts, defs, values, hasOptions, firstRun);
+        IReadOnlyList<SkuaOptionDef>? defs = null, IReadOnlyList<SkuaOptionValue>? values = null, bool hasOptions = false, bool firstRun = false,
+        bool truncated = false) =>
+        new(reqId, ok, error, scripts, defs, values, hasOptions, firstRun, truncated);
 
     private static T RoundTrip<T>(SkuaMessage message) where T : SkuaMessage => Assert.IsType<T>(SkuaLine.Parse(SkuaLine.ToLine(message)));
 
@@ -33,7 +34,9 @@ public class SkuaLineControlTests
     [Fact]
     public void The_new_caps_have_their_agreed_values()
     {
-        Assert.Equal(500, SkuaProtocol.MaxScripts);
+        Assert.Equal(2000, SkuaProtocol.MaxScripts);
+        Assert.Equal(256 * 1024, SkuaProtocol.MaxResultLineBytes);
+        Assert.Equal(16 * 1024, SkuaProtocol.MaxLineBytes);
         Assert.Equal(200, SkuaProtocol.MaxOptionValueLength);
         Assert.Equal(4 * 1024, SkuaProtocol.MaxCommandLineBytes);
         Assert.Equal(8, SkuaProtocol.MaxInstances);
@@ -510,49 +513,165 @@ public class SkuaLineControlTests
     }
 
     [Fact]
-    public void At_most_500_scripts_are_written_and_the_line_cap_binds_first()
+    public void At_most_2000_scripts_are_written_and_a_cut_list_is_marked_truncated()
     {
-        // Even the smallest entry is about 33 bytes, so 500 never fit in 16 KB: the line guard leaves the rest out.
-        var small = Enumerable.Range(1, 520).Select(i => new SkuaScriptInfo($"{i}", "s", "")).ToList();
+        var small = Enumerable.Range(1, 2100).Select(i => new SkuaScriptInfo($"{i}", "s", "")).ToList();
 
-        var line = SkuaLine.ToLine(Result(scripts: small));
-        var written = Assert.IsType<ResultMessage>(SkuaLine.Parse(line));
+        var written = RoundTrip<ResultMessage>(Result(scripts: small));
 
-        Assert.True(Encoding.UTF8.GetByteCount(line) <= SkuaProtocol.MaxLineBytes);
-        Assert.InRange(written.Scripts!.Count, 400, SkuaProtocol.MaxScripts);
-        Assert.Equal(small.Take(written.Scripts.Count), written.Scripts);
+        Assert.Equal(SkuaProtocol.MaxScripts, written.Scripts!.Count);
+        Assert.Equal(small.Take(SkuaProtocol.MaxScripts), written.Scripts);
+        Assert.True(written.Truncated);
     }
 
     [Fact]
-    public void A_script_list_too_large_for_the_line_cap_leaves_the_last_scripts_out()
+    public void A_full_list_of_2000_realistic_scripts_fits_one_result_line_and_is_not_truncated()
     {
         var scripts = Enumerable.Range(1, SkuaProtocol.MaxScripts)
             .Select(i => new SkuaScriptInfo($"{i:x16}", $"Some fairly long script name {i}.cs", "Other/Some folder")).ToList();
 
+        var line = SkuaLine.ToLine(Result(scripts: scripts));
+        var parsed = Assert.IsType<ResultMessage>(SkuaLine.Parse(line));
+
+        Assert.True(Encoding.UTF8.GetByteCount(line) > SkuaProtocol.MaxLineBytes);
+        Assert.True(Encoding.UTF8.GetByteCount(line) <= SkuaProtocol.MaxResultLineBytes);
+        Assert.Equal(scripts, parsed.Scripts);
+        Assert.False(parsed.Truncated);
+        Assert.DoesNotContain("truncated", line);
+    }
+
+    [Fact]
+    public void A_script_list_too_large_for_the_result_cap_leaves_the_last_scripts_out_and_says_so()
+    {
+        var name = new string('\u00e9', SkuaProtocol.MaxTextLength);
+        var scripts = Enumerable.Range(1, SkuaProtocol.MaxScripts).Select(i => new SkuaScriptInfo($"{i:x16}", name, "Other")).ToList();
+
         var line = SkuaLine.ToLine(Result(scripts: scripts, hasOptions: true));
         var parsed = Assert.IsType<ResultMessage>(SkuaLine.Parse(line));
 
-        Assert.True(Encoding.UTF8.GetByteCount(line) <= SkuaProtocol.MaxLineBytes);
+        Assert.True(Encoding.UTF8.GetByteCount(line) <= SkuaProtocol.MaxResultLineBytes);
         Assert.InRange(parsed.Scripts!.Count, 1, SkuaProtocol.MaxScripts - 1);
         Assert.Equal(scripts.Take(parsed.Scripts.Count), parsed.Scripts);
+        Assert.True(parsed.Truncated);
+        Assert.True(parsed.Ok);
         Assert.True(parsed.HasOptions);
     }
 
     [Fact]
-    public void Option_lists_too_large_for_the_line_cap_lose_their_last_entries_but_the_line_is_sent()
+    public void A_result_still_too_large_without_scripts_becomes_a_result_too_large_error()
     {
         var text = new string('\u00e9', SkuaProtocol.MaxTextLength);
-        var defs = Enumerable.Range(1, 60).Select(i => new SkuaOptionDef("Options", $"N{i}", text, text, "string", "")).ToList();
-        var values = Enumerable.Range(1, 60).Select(i => new SkuaOptionValue("Options", $"N{i}", new string('\u00e9', SkuaProtocol.MaxOptionValueLength))).ToList();
+        var defs = Enumerable.Range(1, 300).Select(i => new SkuaOptionDef("Options", $"N{i}", text, text, "string", "")).ToList();
+        var values = Enumerable.Range(1, 300).Select(i => new SkuaOptionValue("Options", $"N{i}", new string('\u00e9', SkuaProtocol.MaxOptionValueLength))).ToList();
+        var scripts = new List<SkuaScriptInfo> { new("1", "A.cs", "") };
 
-        var line = SkuaLine.ToLine(Result(reqId: "keep", defs: defs, values: values, hasOptions: true));
+        var line = SkuaLine.ToLine(Result(reqId: "keep", scripts: scripts, defs: defs, values: values, hasOptions: true, firstRun: true));
         var parsed = Assert.IsType<ResultMessage>(SkuaLine.Parse(line));
 
-        Assert.True(Encoding.UTF8.GetByteCount(line) <= SkuaProtocol.MaxLineBytes);
-        Assert.Equal("keep", parsed.ReqId);
-        Assert.Equal(defs.Take(parsed.OptionDefs!.Count), parsed.OptionDefs);
-        Assert.Equal(values.Take(parsed.Values!.Count), parsed.Values);
-        Assert.True(parsed.OptionDefs.Count < 60 || parsed.Values.Count < 60);
+        Assert.Equal(new ResultMessage("keep", false, "result too large", null, null, null, false, false), parsed);
+    }
+
+    [Fact]
+    public void Truncated_matches_its_fixture_both_ways_and_is_omitted_when_false()
+    {
+        BothWays("result-truncated.json", Result(scripts: [new SkuaScriptInfo(ScriptId, "Butler.cs", "Other")], truncated: true));
+        Assert.DoesNotContain("truncated", SkuaLine.ToLine(Result(scripts: [])));
+    }
+
+    [Theory]
+    [InlineData("\"truncated\":\"true\"", false)]
+    [InlineData("\"truncated\":1", false)]
+    [InlineData("\"truncated\":null", false)]
+    [InlineData("\"truncated\":true", true)]
+    public void Truncated_is_true_only_for_a_json_true(string field, bool expected)
+    {
+        Assert.Equal(expected, Assert.IsType<ResultMessage>(SkuaLine.Parse(ResultLine(field))).Truncated);
+    }
+
+    [Fact]
+    public void Results_compare_and_hash_the_truncated_flag()
+    {
+        var a = Result(scripts: []);
+
+        Assert.NotEqual(a, a with { Truncated = true });
+        Assert.NotEqual(a.GetHashCode(), (a with { Truncated = true }).GetHashCode());
+    }
+
+    [Fact]
+    public void Only_results_may_use_the_larger_line_cap()
+    {
+        var pad = new string('p', SkuaProtocol.MaxLineBytes);
+
+        Assert.NotNull(SkuaLine.Parse(ResultLine("\"pad\":\"" + pad + "\"")));
+        Assert.Null(SkuaLine.Parse(StatusLine("\"pad\":\"" + pad + "\"")));
+        Assert.Null(SkuaLine.Parse("{\"v\":1,\"type\":\"log\",\"at\":\"2026-11-11T12:00:05.0000000+00:00\",\"kind\":\"Sold\",\"text\":\"x\",\"pad\":\"" + pad + "\"}"));
+        Assert.Null(SkuaLine.Parse("{\"v\":1,\"type\":\"hello\",\"plugin\":\"1\",\"skua\":\"1\",\"pad\":\"" + pad + "\"}"));
+        Assert.Null(SkuaLine.Parse("{\"v\":1,\"type\":\"nope\",\"pad\":\"" + pad + "\"}"));
+        Assert.Null(SkuaLine.Parse(ResultLine("\"pad\":\"" + new string('p', SkuaProtocol.MaxResultLineBytes) + "\"")));
+    }
+
+    [Fact]
+    public void A_result_line_at_the_result_cap_is_read_and_one_byte_over_is_refused()
+    {
+        static string Line(int padding) => ResultLine("\"pad\":\"" + new string('p', padding) + "\"");
+        var shell = Encoding.UTF8.GetByteCount(Line(0));
+
+        Assert.NotNull(SkuaLine.Parse(Line(SkuaProtocol.MaxResultLineBytes - shell)));
+        Assert.Null(SkuaLine.Parse(Line(SkuaProtocol.MaxResultLineBytes - shell + 1)));
+    }
+
+    // ---- Sending a command -------------------------------------------------------------------------------------
+
+    [Fact]
+    public void A_command_line_is_the_same_as_its_line_when_it_fits()
+    {
+        SkuaCommand[] commands = [new ListScriptsCommand("r1"), new GetOptionsCommand("r2", ScriptId), new StartCommand("r4", ScriptId), new StopCommand("r5"),
+            new SetOptionsCommand("r3", ScriptId, [new SkuaOptionValue("Options", "PlayerName", "Artix")])];
+
+        Assert.All(commands, c => Assert.Equal(SkuaLine.ToLine(c), SkuaLine.ToCommandLine(c)));
+    }
+
+    [Fact]
+    public void A_command_too_large_for_the_plugin_gives_no_line_and_one_at_the_cap_is_sent()
+    {
+        // 15 values of 200 'v' are under 4 KB; escaped non-ASCII (6 bytes a char) makes the same count far larger.
+        var fits = Enumerable.Range(1, 15).Select(i => new SkuaOptionValue("Options", $"N{i}", new string('v', SkuaProtocol.MaxOptionValueLength))).ToList();
+        var escaped = fits.Select(v => v with { Value = new string('\u00e9', SkuaProtocol.MaxOptionValueLength) }).ToList();
+
+        var line = SkuaLine.ToCommandLine(new SetOptionsCommand("r", ScriptId, fits));
+        Assert.NotNull(line);
+        Assert.True(Encoding.UTF8.GetByteCount(line) <= SkuaProtocol.MaxCommandLineBytes);
+        Assert.NotNull(SkuaLine.Parse(line));
+
+        Assert.True(Encoding.UTF8.GetByteCount(SkuaLine.ToLine(new SetOptionsCommand("r", ScriptId, escaped))) > SkuaProtocol.MaxCommandLineBytes);
+        Assert.Null(SkuaLine.ToCommandLine(new SetOptionsCommand("r", ScriptId, escaped)));
+    }
+
+    [Fact]
+    public void Exactly_at_the_command_cap_is_sent()
+    {
+        var shell = Encoding.UTF8.GetByteCount(SkuaLine.ToLine(new SetOptionsCommand("", "x", [new SkuaOptionValue("O", "N", "")])));
+        // Grow the request id so the line lands exactly on the cap (ids are cut to MaxTextLength, values to 200: use many values).
+        var values = new List<SkuaOptionValue>();
+        var size = shell;
+        var entry = Encoding.UTF8.GetByteCount(",{\"category\":\"O\",\"name\":\"N\",\"value\":\"\"}");
+        while (size + entry <= SkuaProtocol.MaxCommandLineBytes)
+        {
+            values.Add(new SkuaOptionValue("O", "N", ""));
+            size += entry;
+        }
+
+        values.Add(new SkuaOptionValue("O", "N", ""));
+        var rest = SkuaProtocol.MaxCommandLineBytes - size;
+        Assert.InRange(rest, 0, SkuaProtocol.MaxOptionValueLength);
+        values[^1] = values[^1] with { Value = new string('v', rest) };
+
+        var exact = new SetOptionsCommand("", "x", values);
+        Assert.Equal(SkuaProtocol.MaxCommandLineBytes, Encoding.UTF8.GetByteCount(SkuaLine.ToLine(exact)));
+        Assert.NotNull(SkuaLine.ToCommandLine(exact));
+
+        values[^1] = values[^1] with { Value = new string('v', rest + 1) };
+        Assert.Null(SkuaLine.ToCommandLine(new SetOptionsCommand("", "x", values)));
     }
 
     [Theory]

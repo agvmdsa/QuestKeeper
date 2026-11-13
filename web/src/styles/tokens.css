@@ -1,4 +1,4 @@
-/* Questkeeper's AQW parchment palette (sampled from the AQW site), plus a dark variant built from the same hues.
+/* SkuaLink's AQW parchment palette (sampled from the AQW site), plus a dark variant built from the same hues.
    Contrast is enforced by web/test/tokens.test.ts. The accent orange is a FILL with --on-accent text only (1.9:1 on cream). */
 :root {
   color-scheme: light dark;

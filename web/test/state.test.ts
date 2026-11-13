@@ -70,20 +70,20 @@ describe('linkBanner', () => {
   });
 });
 
-describe('linkBanner when Questkeeper cannot be reached', () => {
-  const SENTENCE = "Can't reach Questkeeper. Check that your PC is on and Questkeeper is running.";
+describe('linkBanner when SkuaLink cannot be reached', () => {
+  const SENTENCE = "Can't reach SkuaLink. Check that your PC is on and SkuaLink is running.";
   it('keeps the old wording for a short reconnect', () => {
     expect(linkBanner(false, NOW - 180_000, NOW, true, { downSinceMs: NOW - 9_900, requestFailed: false })?.text).toBe('Old data - last update 3 min ago. Reconnecting...');
     expect(linkBanner(false, NOW - 180_000, NOW, true, { downSinceMs: NOW - 10_000, requestFailed: false })?.text).toBe('Old data - last update 3 min ago. Reconnecting...');
   });
   it('turns to unreachable once the connection has been down for more than 10 s', () => {
     expect(linkBanner(false, NOW - 180_000, NOW, true, { downSinceMs: NOW - 10_001, requestFailed: false })).toEqual({
-      tone: 'warn', text: "Can't reach Questkeeper. Last update 3 min ago. Check that your PC is on and Questkeeper is running.",
+      tone: 'warn', text: "Can't reach SkuaLink. Last update 3 min ago. Check that your PC is on and SkuaLink is running.",
     });
   });
   it('turns to unreachable at once when the last state request failed or timed out', () => {
     expect(linkBanner(false, NOW - 7_200_000, NOW, true, { downSinceMs: NOW - 1_000, requestFailed: true })?.text).toBe(
-      "Can't reach Questkeeper. Last update 2 h ago. Check that your PC is on and Questkeeper is running.",
+      "Can't reach SkuaLink. Last update 2 h ago. Check that your PC is on and SkuaLink is running.",
     );
   });
   it('leaves the age out when stored data has no known time or there is none', () => {
@@ -111,7 +111,7 @@ describe('linkAfterFreshData', () => {
   });
   it('still says unreachable once the fresh data is itself older than 10 s of silence', () => {
     const link = linkAfterFreshData(false, { downSinceMs: NOW - 60_000, requestFailed: true }, NOW);
-    expect(linkBanner(false, NOW, NOW + 10_001, true, link)?.text).toContain("Can't reach Questkeeper");
+    expect(linkBanner(false, NOW, NOW + 10_001, true, link)?.text).toContain("Can't reach SkuaLink");
   });
   it('keeps the clock untouched while the stream is open', () => {
     expect(linkAfterFreshData(true, { downSinceMs: null, requestFailed: true }, NOW)).toEqual({ downSinceMs: null, requestFailed: false });

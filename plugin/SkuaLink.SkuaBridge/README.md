@@ -1,7 +1,7 @@
-# QuestKeeper.SkuaBridge
+# SkuaLink.SkuaBridge
 
-A read-only Skua plugin. It runs inside Skua 1.4.5.0 and reports Skua's state and a short event log to Questkeeper over a
-local named pipe (`QuestKeeper.SkuaBridge.v1`, current Windows user only, outbound only). Status: **connect and status
+A read-only Skua plugin. It runs inside Skua 1.4.5.0 and reports Skua's state and a short event log to SkuaLink over a
+local named pipe (`SkuaLink.SkuaBridge.v1`, current Windows user only, outbound only). Status: **connect and status
 verified by the owner on Windows on 2026-11-11 with an earlier build; the quest reading, the re-attach across script
 runs and the rest are not yet verified** (only the owner's Windows can prove it).
 
@@ -80,13 +80,13 @@ throwaway project and read in the tag source.
   during a long disconnect cannot push log lines out or queue repeated writes.
 - Every string sent loses its lone surrogates (an unpaired UTF-16 half that Skua or the game may hand over), because
   the JSON writer refuses them and the whole message would be lost.
-- While Questkeeper is not connected the plugin does no Flash reads at all: no status poll, no inventory snapshot, no
+- While SkuaLink is not connected the plugin does no Flash reads at all: no status poll, no inventory snapshot, no
   quest read (log lines still queue, unnamed where a read would be needed). When the pipe connects, `hello` and
   the last known status are written, then one status read and one snapshot are requested.
 - Pipe client: one connect attempt each time (timeout 0: on Windows a longer connect timeout spins a pool thread for the
   whole timeout while the pipe does not exist), then waits 1 s doubling to 30 s, retrying for the plugin's whole life; on
   each connect it writes `hello`, the latest status, then the queue; a write error drops the connection and reconnects;
-  an empty line every 10 s while idle finds a closed Questkeeper (Questkeeper's reader skips empty lines). `Dispose`
+  an empty line every 10 s while idle finds a closed SkuaLink (SkuaLink's reader skips empty lines). `Dispose`
   cancels, waits up to 2 s, then disposes its token source. `Unload` first waits up to 1 s for the background task to
   finish the read it may be in (bounded, since `Unload` may run on Skua's UI thread), then disposes the pipe client.
 - No snapshot on a map change (it does not change the inventory).
@@ -162,16 +162,16 @@ The Skua DLLs are not committed. Put `Skua.Core.Interfaces.dll` and `Skua.Core.M
 release in `lib/skua/` (or pass `-p:SkuaLibDir=...`), then:
 
 ```
-dotnet build plugin/QuestKeeper.SkuaBridge -c Release
+dotnet build plugin/SkuaLink.SkuaBridge -c Release
 ```
 
-The output is `QuestKeeper.SkuaBridge.dll` (plus `.pdb` and `.deps.json`); no Skua assembly is copied. The protocol
+The output is `SkuaLink.SkuaBridge.dll` (plus `.pdb` and `.deps.json`); no Skua assembly is copied. The protocol
 files from `src/AqwCompanion.Skua` are compiled in as source, so the plugin is one DLL whose only non-framework
 references are `Skua.Core.Interfaces` and `Skua.Core.Models`.
 
 ## Not verified (owner's Windows checklist)
 
-- The plugin loads in Skua 1.4.5.0 and connects to Questkeeper (including an elevated Questkeeper and a non-elevated Skua).
+- The plugin loads in Skua 1.4.5.0 and connects to SkuaLink (including an elevated SkuaLink and a non-elevated Skua).
 - Whether the game has applied a purchase to the inventory when `buyItem` arrives; the plugin reads it 300 ms later.
   If not, "Bought" shows without a quantity and possibly as `item #id`.
 - Bought quantity can be wrong or missing for back-to-back buys of the same item: the "before" comes from the last
@@ -182,4 +182,4 @@ references are `Skua.Core.Interfaces` and `Skua.Core.Models`.
   connected.
 - The quest card updates within about 18 s of accepting or turning in a quest.
 - The ready flag appears when the game shows the quest as completable.
-- Only one Skua instance is reported at a time (Questkeeper serves one connection); a second Skua keeps retrying quietly.
+- Only one Skua instance is reported at a time (SkuaLink serves one connection); a second Skua keeps retrying quietly.

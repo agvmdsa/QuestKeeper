@@ -5,7 +5,7 @@
         xmlns:diagnostics="using:AqwCompanion.App.Diagnostics"
         x:Class="AqwCompanion.App.Debug.DebugWindow"
         x:DataType="dbg:DebugViewModel"
-        Title="Questkeeper - debug"
+        Title="SkuaLink - debug"
         Icon="/Assets/app.png"
         Width="860" Height="620" MinWidth="560" MinHeight="360">
   <ScrollViewer x:Name="DebugScroll" HorizontalScrollBarVisibility="Disabled">

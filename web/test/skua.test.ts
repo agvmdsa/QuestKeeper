@@ -127,7 +127,7 @@ describe('skua view model', () => {
     expect(skuaEmptyText(null)).toBe('Skua is not connected.');
     expect(skuaEmptyText(skua({ connection: 'NotConnected' }))).toBe('Skua is not connected.');
     expect(skuaEmptyText(skua({ log: [] }))).toBe('Nothing to show yet.');
-    expect(skuaEmptyText(skua({ connection: 'VersionMismatch' }))).toBe('Update the Skua plugin and Questkeeper to the same release.');
+    expect(skuaEmptyText(skua({ connection: 'VersionMismatch' }))).toBe('Update the Skua plugin and SkuaLink to the same release.');
     expect(skuaEmptyText(skua())).toBe('');
     expect(skuaSummary(skua())).toBe('Skua connected.');
   });
@@ -140,7 +140,7 @@ describe('log filters', () => {
     ['QuestAccepted', null], ['QuestTurnedIn', null], ['Mystery', null], ['', null], ['constructor', null], ['__proto__', null],
   ])('%s -> %s', (kind, filter) => expect(filterOf(kind)).toBe(filter));
 
-  it('places every log kind Questkeeper knows (the shared C# fixture), so a new kind cannot fall under Everything unnoticed', () => {
+  it('places every log kind SkuaLink knows (the shared C# fixture), so a new kind cannot fall under Everything unnoticed', () => {
     const kinds = JSON.parse(readFileSync(new URL('../../tests/AqwCompanion.Tests/Skua/fixtures/log-kinds.json', import.meta.url), 'utf8')) as string[];
     const onlyUnderEverything = ['QuestAccepted', 'QuestTurnedIn'];
     expect(kinds.length).toBeGreaterThan(0);
@@ -316,7 +316,7 @@ describe('views', () => {
       expect(headings(view)).toEqual(['Skua']);
     }
     expect(texts(skuaView(model(null)))).toContain('Skua is not connected.');
-    expect(texts(skuaView(model(skua({ connection: 'VersionMismatch' }))))).toContain('Update the Skua plugin and Questkeeper to the same release.');
+    expect(texts(skuaView(model(skua({ connection: 'VersionMismatch' }))))).toContain('Update the Skua plugin and SkuaLink to the same release.');
   });
   it('shows Nothing to show yet. for a connected empty log', () => {
     expect(texts(skuaView(model(skua({ log: [] }))))).toContain('Nothing to show yet.');

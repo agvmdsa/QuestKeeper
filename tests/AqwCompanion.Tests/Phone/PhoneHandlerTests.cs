@@ -292,7 +292,7 @@ public class PhoneHandlerTests : IDisposable
 
         var ping = _handler.Handle(Req("GET", "/api/ping", [Cookie(token)]));
         Assert.Equal(200, ping.Status);
-        Assert.Equal("{\"app\":\"Questkeeper\",\"version\":\"9.9.9\"}", Text(ping));
+        Assert.Equal("{\"app\":\"SkuaLink\",\"version\":\"9.9.9\"}", Text(ping));
 
         var events = _handler.Handle(Req("GET", "/api/events", [Cookie(token)]));
         Assert.True(events.IsEventStream);
@@ -310,7 +310,7 @@ public class PhoneHandlerTests : IDisposable
         var ping = NewHandler(version).Handle(Req("GET", "/api/ping", [Cookie(token)]));
 
         using var json = JsonDocument.Parse(Text(ping));
-        Assert.Equal("Questkeeper", json.RootElement.GetProperty("app").GetString());
+        Assert.Equal("SkuaLink", json.RootElement.GetProperty("app").GetString());
         Assert.Equal(version, json.RootElement.GetProperty("version").GetString());
         Assert.Equal(2, json.RootElement.EnumerateObject().Count());
     }

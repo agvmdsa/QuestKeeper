@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Fetches the Skua interface assemblies the Questkeeper plugin compiles against.
+  Fetches the Skua interface assemblies the SkuaLink plugin compiles against.
 .DESCRIPTION
   Plan A (default): download the official x64 .msi from the Skua release and unpack it
   with "msiexec /a" (administrative install, nothing is installed). The .msi's SHA-256 must match
@@ -13,7 +13,7 @@
 [CmdletBinding()]
 param(
     [string]$Version = '1.4.5.0',
-    [string]$Destination = (Join-Path $PSScriptRoot '..\..\plugin\QuestKeeper.SkuaBridge\lib\skua'),
+    [string]$Destination = (Join-Path $PSScriptRoot '..\..\plugin\SkuaLink.SkuaBridge\lib\skua'),
     [switch]$FromSource
 )
 

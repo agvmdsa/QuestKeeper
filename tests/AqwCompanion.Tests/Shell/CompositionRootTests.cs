@@ -207,7 +207,7 @@ public class CompositionRootTests
         Assert.Same(controller, services.GetRequiredService<TrayController>());
         Assert.IsType<AvaloniaMainWindowHost>(services.GetRequiredService<IMainWindowHost>());
         Assert.Same(services.GetRequiredService<IMainWindowHost>(), services.GetRequiredService<AvaloniaMainWindowHost>());
-        Assert.Equal("Questkeeper - not capturing", controller.ToolTip);
+        Assert.Equal("SkuaLink - not capturing", controller.ToolTip);
         Assert.False(controller.IsExiting);
     }
 

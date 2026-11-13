@@ -21,12 +21,12 @@ public sealed class LoggingSetupTests : IDisposable
     {
         using (var logger = LoggingSetup.CreateLogger(_paths, "9.8.7-test"))
         {
-            logger.Information("Starting {SafeProduct} {SafeVersion}", "Questkeeper", "1.2.3");
+            logger.Information("Starting {SafeProduct} {SafeVersion}", "SkuaLink", "1.2.3");
         }
 
         var file = Assert.Single(Directory.GetFiles(_paths.LogDirectory, "log-*.txt"));
         var text = File.ReadAllText(file);
-        Assert.Contains("[INF] 9.8.7-test Starting Questkeeper 1.2.3", text);
+        Assert.Contains("[INF] 9.8.7-test Starting SkuaLink 1.2.3", text);
     }
 
     [Fact]

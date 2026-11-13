@@ -60,8 +60,8 @@ public sealed class NoticeEngine(NoticeOptions? options = null)
 
         var who = now.Selected ?? "";
         found.Add(now.Capture.Listening
-            ? new Notice($"capture-back:{at.UtcTicks}", NoticeKind.CaptureBack, who, "Capture running", "Questkeeper is listening to the game again.", at)
-            : new Notice($"capture-lost:{at.UtcTicks}", NoticeKind.CaptureLost, who, "Capture stopped", "Questkeeper is no longer listening to the game.", at));
+            ? new Notice($"capture-back:{at.UtcTicks}", NoticeKind.CaptureBack, who, "Capture running", "SkuaLink is listening to the game again.", at)
+            : new Notice($"capture-lost:{at.UtcTicks}", NoticeKind.CaptureLost, who, "Capture stopped", "SkuaLink is no longer listening to the game.", at));
     }
 
     private static void Logins(FeedSnapshot before, FeedSnapshot now, DateTimeOffset at, List<Notice> found)

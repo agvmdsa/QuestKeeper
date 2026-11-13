@@ -87,12 +87,12 @@ jobs:
 
       - name: Get the Skua assemblies
         shell: pwsh
-        run: ./tools/skua/get-skua-assemblies.ps1 -Version 1.4.5.0 -Destination plugin/QuestKeeper.SkuaBridge/lib/skua
+        run: ./tools/skua/get-skua-assemblies.ps1 -Version 1.4.5.0 -Destination plugin/SkuaLink.SkuaBridge/lib/skua
 
       - name: Build the plugin
-        run: dotnet build plugin/QuestKeeper.SkuaBridge -c Release
+        run: dotnet build plugin/SkuaLink.SkuaBridge -c Release
 
-  # Compiles the installer on every change, so a mistake in installer/Questkeeper.iss shows up here and not when a release is tagged.
+  # Compiles the installer on every change, so a mistake in installer/SkuaLink.iss shows up here and not when a release is tagged.
   installer:
     runs-on: windows-latest
     steps:
@@ -123,10 +123,10 @@ jobs:
       - name: Build the installer
         shell: pwsh
         run: |
-          Rename-Item out/publish/AqwCompanion.exe Questkeeper.exe
+          Rename-Item out/publish/AqwCompanion.exe SkuaLink.exe
           choco install innosetup --no-progress -y
           $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
           if (-not (Test-Path $iscc)) { Write-Error "ISCC.exe not found at $iscc"; exit 1 }
-          & $iscc /DMyAppVersion=0.0.0 installer/Questkeeper.iss
+          & $iscc /DMyAppVersion=0.0.0 installer/SkuaLink.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not (Test-Path "dist/Questkeeper-Setup-v0.0.0.exe")) { Write-Error "The installer was not produced"; exit 1 }
+          if (-not (Test-Path "dist/SkuaLink-Setup-v0.0.0.exe")) { Write-Error "The installer was not produced"; exit 1 }

@@ -70,7 +70,7 @@ public class TrayWindowTests
         using var services = CompositionRoot.Build(paths);
         using var setup = new TrayIconSetup(services.GetRequiredService<TrayController>());
 
-        Assert.Equal("Questkeeper - not capturing", setup.Icon.ToolTipText);
+        Assert.Equal("SkuaLink - not capturing", setup.Icon.ToolTipText);
         Assert.Equal(5, setup.Icon.Menu!.Items.Count);
     }
 }

@@ -3,7 +3,7 @@ using Serilog;
 
 namespace AqwCompanion.App.Skua;
 
-/// <summary>Opens the release page of Questkeeper in the system browser. Only the exact address in <see cref="ReleasePage.Url"/> is ever launched.</summary>
+/// <summary>Opens the release page of SkuaLink in the system browser. Only the exact address in <see cref="ReleasePage.Url"/> is ever launched.</summary>
 public interface IReleasePageLauncher
 {
     /// <summary>True when the URL is the release page and was handed to the system; false for any other text or a failed start. Never throws.</summary>
@@ -12,7 +12,7 @@ public interface IReleasePageLauncher
 
 public static class ReleasePage
 {
-    public const string Url = "https://github.com/agvmdsa/QuestKeeper/releases/latest";
+    public const string Url = "https://github.com/agvmdsa/SkuaLink/releases/latest";
 }
 
 public sealed class ProcessReleasePageLauncher : IReleasePageLauncher

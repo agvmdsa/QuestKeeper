@@ -7,13 +7,13 @@ using Skua.Core.Interfaces;
 using Skua.Core.Models.Items;
 using Skua.Core.Models.Quests;
 
-namespace QuestKeeper.SkuaBridge;
+namespace SkuaLink.SkuaBridge;
 
 /// <summary>
 /// Read-only adapter inside Skua. It only reads properties and subscribes to events, and reports what it sees to
-/// Questkeeper over the outbound pipe. One of those properties, <c>Quests.Active</c>, writes Skua's own quest tree cache
+/// SkuaLink over the outbound pipe. One of those properties, <c>Quests.Active</c>, writes Skua's own quest tree cache
 /// when read (Skua's getter, not a game action), so it is read at most every 15 s. It never calls a Skua method that
-/// changes game or Skua state, receives nothing from Questkeeper, and never lets an exception reach Skua. See README.md
+/// changes game or Skua state, receives nothing from SkuaLink, and never lets an exception reach Skua. See README.md
 /// for the audited list of Skua members.
 /// </summary>
 public sealed class SkuaBridgePlugin : ISkuaPlugin
@@ -91,9 +91,9 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
         _onManagerChanged = (_, e) => Safe(() => ManagerChanged(e.PropertyName));
     }
 
-    public string Name => "QuestKeeper Bridge";
-    public string Author => "QuestKeeper";
-    public string Description => "Shows what Skua is doing in Questkeeper. Read only.";
+    public string Name => "SkuaLink Bridge";
+    public string Author => "SkuaLink";
+    public string Description => "Shows what Skua is doing in SkuaLink. Read only.";
     public List<IOption>? Options => null;
 
     public void Load(IServiceProvider provider, IPluginHelper helper)
@@ -525,7 +525,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
     }
 
     /// <summary>
-    /// The active quests with their ready flag, on the worker only while Questkeeper is connected (PublishStatus checks).
+    /// The active quests with their ready flag, on the worker only while SkuaLink is connected (PublishStatus checks).
     /// Every read of <c>Quests.Active</c> rebuilds Skua's own shared quest-tree cache (unlocked), so it is read at most every
     /// 15 s, or at once after the pipe connects, a login or a relogin; between reads the last list is reported. One read
     /// gives both the list and the ready flag (<c>Quest.Status == "c"</c>, exactly what Skua's <c>CanComplete</c> checks).
@@ -565,7 +565,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
 
     // ---- Helpers ---------------------------------------------------------------------------------------------------
 
-    /// <summary>While Questkeeper is absent the plugin does no Flash reads at all (no status poll, no quests, no snapshot); log lines still queue.</summary>
+    /// <summary>While SkuaLink is absent the plugin does no Flash reads at all (no status poll, no quests, no snapshot); log lines still queue.</summary>
     private bool Connected => _client?.IsConnected == true;
 
     private void Log(SkuaLogEntry entry) => _client?.Send(new LogMessage(entry));

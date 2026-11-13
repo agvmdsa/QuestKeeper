@@ -47,7 +47,7 @@ describe('parsePairingInput', () => {
   ])('refuses %s', (_name, text) => expect(parsePairingInput(text)).toBeNull());
 
   it('says what to do with a paste it refused', () =>
-    expect(t('pair.pasteRejected')).toBe('That is not a pairing link. Copy the whole link from Questkeeper on your PC and paste it here.'));
+    expect(t('pair.pasteRejected')).toBe('That is not a pairing link. Copy the whole link from SkuaLink on your PC and paste it here.'));
 });
 
 describe('probeOf', () => {
@@ -131,7 +131,7 @@ describe('the paste field of the Not paired card', () => {
   });
   it('explains why an app on the Home Screen needs it', () => {
     expect(all(view).map((n) => n.text)).toContain(
-      'Using Questkeeper from your Home Screen? The code opens the browser instead. Copy the pairing link (Copy link in Questkeeper on your PC) and paste it here.',
+      'Using SkuaLink from your Home Screen? The code opens the browser instead. Copy the pairing link (Copy link in SkuaLink on your PC) and paste it here.',
     );
   });
 });

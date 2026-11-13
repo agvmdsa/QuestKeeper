@@ -44,12 +44,12 @@ public class FolderLauncherTests
         var urls = new List<string>();
         var launcher = new ProcessReleasePageLauncher(info => { urls.Add(info.FileName); return true; });
 
-        Assert.False(launcher.Open("https://github.com/agvmdsa/QuestKeeper/releases/latest/"));
+        Assert.False(launcher.Open("https://github.com/agvmdsa/SkuaLink/releases/latest/"));
         Assert.False(launcher.Open("https://example.com"));
         Assert.False(launcher.Open(""));
         Assert.True(launcher.Open(ReleasePage.Url));
 
-        Assert.Equal(["https://github.com/agvmdsa/QuestKeeper/releases/latest"], urls);
+        Assert.Equal(["https://github.com/agvmdsa/SkuaLink/releases/latest"], urls);
     }
 
     [Fact]

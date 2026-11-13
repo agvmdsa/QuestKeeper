@@ -478,7 +478,7 @@ public class SettingsViewModelTests
 
         vm.OpenReleasePageCommand.Execute(null);
 
-        Assert.Equal(["https://github.com/agvmdsa/QuestKeeper/releases/latest"], release.Opened);
+        Assert.Equal(["https://github.com/agvmdsa/SkuaLink/releases/latest"], release.Opened);
     }
 
     [Fact]

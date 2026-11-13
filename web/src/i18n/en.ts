@@ -89,6 +89,8 @@ export const en = {
   'skua.quests.title.other': 'Active quests · {n}',
   'skua.quests.ready': 'Ready to turn in',
   'skua.quests.none': 'No active quests.',
+  'skua.reputation.title': 'Reputation',
+  'skua.reputation.none': 'No reputation yet.',
   'skua.filter.group': 'Filter the log',
   'skua.filter.all': 'Everything',
   'skua.filter.shop': 'Shop',

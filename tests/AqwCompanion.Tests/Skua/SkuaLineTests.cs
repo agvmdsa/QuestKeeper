@@ -156,6 +156,189 @@ public class SkuaLineTests
         Assert.Null(parsed.Status.Quests);
     }
 
+    // ---- Factions (AQW-0081) ------------------------------------------------------------------------------------
+
+    private static SkuaStatus Hero(IReadOnlyList<SkuaFaction>? factions) => new(true, "Hero", null, null, null, false, null, null, factions);
+
+    [Fact]
+    public void A_status_with_factions_matches_its_fixture_both_ways()
+    {
+        var message = new StatusMessage(new SkuaStatus(
+            true, "Hero", "Artix", "battleon", "Farm.cs", true, Noon, null,
+            [new SkuaFaction(1, "Nation", 3, 5000, 300, 1200), new SkuaFaction(20, "Good", 10, 302500, 0, 0)]));
+
+        Assert.Equal(Fixture("status-with-factions.json"), SkuaLine.ToLine(message));
+        Assert.Equal(message, SkuaLine.Parse(Fixture("status-with-factions.json")));
+    }
+
+    [Fact]
+    public void A_status_without_factions_leaves_the_field_out_and_parses_back_to_null()
+    {
+        var line = SkuaLine.ToLine(new StatusMessage(Hero(null)));
+
+        Assert.DoesNotContain("factions", line);
+        Assert.Null(Assert.IsType<StatusMessage>(SkuaLine.Parse(line)).Status.Factions);
+        Assert.Null(Assert.IsType<StatusMessage>(SkuaLine.Parse(Fixture("status.json"))).Status.Factions);
+        Assert.Null(Assert.IsType<StatusMessage>(SkuaLine.Parse(Fixture("status-with-quests.json"))).Status.Factions);
+    }
+
+    [Fact]
+    public void No_factions_travel_as_an_empty_list_not_as_absent()
+    {
+        var message = new StatusMessage(Hero([]));
+
+        var line = SkuaLine.ToLine(message);
+        var parsed = Assert.IsType<StatusMessage>(SkuaLine.Parse(line));
+
+        Assert.Contains("\"factions\":[]", line);
+        Assert.NotNull(parsed.Status.Factions);
+        Assert.Empty(parsed.Status.Factions);
+        Assert.Equal(message, parsed);
+        Assert.NotEqual(message, message with { Status = message.Status with { Factions = null } });
+    }
+
+    [Fact]
+    public void Statuses_compare_their_faction_lists_by_content()
+    {
+        var a = Hero([new SkuaFaction(1, "Nation", 3, 5000, 300, 1200)]);
+        var same = a with { Factions = [new SkuaFaction(1, "Nation", 3, 5000, 300, 1200)] };
+        var more = a with { Factions = [new SkuaFaction(1, "Nation", 3, 5010, 310, 1200)] };
+
+        Assert.Equal(a, same);
+        Assert.Equal(a.GetHashCode(), same.GetHashCode());
+        Assert.NotEqual(a, more);
+        Assert.NotEqual(a, a with { Factions = [] });
+        Assert.NotEqual(a, a with { Factions = [new SkuaFaction(1, "Nation", 3, 5000, 300, 1200), new SkuaFaction(2, "Evil", 1, 10, 10, 900)] });
+        Assert.Equal(Hero(null), Hero(null));
+    }
+
+    [Fact]
+    public void Quests_and_factions_both_travel_in_one_status()
+    {
+        var message = new StatusMessage(new SkuaStatus(
+            true, "Hero", null, null, null, false, null, [new SkuaQuest(5, "Slay", true)], [new SkuaFaction(1, "Nation", 3, 5000, 300, 1200)]));
+
+        Assert.Equal(message, SkuaLine.Parse(SkuaLine.ToLine(message)));
+    }
+
+    [Fact]
+    public void At_most_sixty_factions_are_written_and_read()
+    {
+        Assert.Equal(60, SkuaProtocol.MaxFactions);
+        var factions = Enumerable.Range(1, 70).Select(i => new SkuaFaction(i, $"F{i}", 1, i, i, 900)).ToList();
+
+        var parsed = Assert.IsType<StatusMessage>(SkuaLine.Parse(SkuaLine.ToLine(new StatusMessage(Hero(factions)))));
+        Assert.Equal(SkuaProtocol.MaxFactions, parsed.Status.Factions!.Count);
+        Assert.Equal(60, parsed.Status.Factions[^1].Id);
+
+        var entries = string.Join(',', Enumerable.Range(1, 70).Select(i => FactionJson($"\"id\":{i},\"name\":\"F{i}\",\"rank\":1,\"totalRep\":1,\"rep\":1,\"requiredRep\":900")));
+        var read = Assert.IsType<StatusMessage>(SkuaLine.Parse(FactionsLine($"[{entries}]")));
+        Assert.Equal(SkuaProtocol.MaxFactions, read.Status.Factions!.Count);
+    }
+
+    [Fact]
+    public void A_long_faction_name_is_cut_without_splitting_a_surrogate_pair()
+    {
+        var name = new string('a', SkuaProtocol.MaxTextLength - 1) + "\U0001F600" + "tail";
+
+        var parsed = Assert.IsType<StatusMessage>(SkuaLine.Parse(SkuaLine.ToLine(new StatusMessage(Hero([new SkuaFaction(1, name, 1, 1, 1, 1)])))));
+        var cut = parsed.Status.Factions!.Single().Name;
+
+        Assert.True(cut.Length <= SkuaProtocol.MaxTextLength);
+        Assert.False(char.IsHighSurrogate(cut[^1]));
+
+        var read = Assert.IsType<StatusMessage>(SkuaLine.Parse(FactionsLine(
+            $"[{FactionJson($"\"id\":1,\"name\":\"{new string('n', 400)}\",\"rank\":1,\"totalRep\":1,\"rep\":1,\"requiredRep\":1")}]")));
+        Assert.Equal(SkuaProtocol.MaxTextLength, read.Status.Factions!.Single().Name.Length);
+    }
+
+    [Fact]
+    public void A_lone_surrogate_in_a_faction_name_is_removed_on_the_way_out()
+    {
+        var lone = ((char)0xD800).ToString();
+
+        var line = SkuaLine.ToLine(new StatusMessage(Hero([new SkuaFaction(1, "Na" + lone + "tion", 1, 1, 1, 1)])));
+        var parsed = Assert.IsType<StatusMessage>(SkuaLine.Parse(line));
+
+        Assert.Equal("Nation", parsed.Status.Factions!.Single().Name);
+    }
+
+    [Fact]
+    public void Sixty_long_non_ascii_faction_names_still_fit_the_line_cap_by_leaving_the_last_factions_out()
+    {
+        var factions = Enumerable.Range(1, 60).Select(i => new SkuaFaction(i, new string('é', SkuaProtocol.MaxTextLength), 1, 1, 1, 1)).ToList();
+        var quests = new List<SkuaQuest> { new(5, "Slay", true) };
+
+        var line = SkuaLine.ToLine(new StatusMessage(Hero(factions) with { Quests = quests }));
+        var parsed = Assert.IsType<StatusMessage>(SkuaLine.Parse(line));
+
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(line) <= SkuaProtocol.MaxLineBytes);
+        Assert.InRange(parsed.Status.Factions!.Count, 1, 59);
+        Assert.Equal(Enumerable.Range(1, parsed.Status.Factions.Count), parsed.Status.Factions.Select(f => f.Id));
+        Assert.Equal(quests, parsed.Status.Quests);
+    }
+
+    [Theory]
+    [InlineData("\"id\":-1,\"name\":\"neg\",\"rank\":1,\"totalRep\":1,\"rep\":1,\"requiredRep\":1")]
+    [InlineData("\"id\":1,\"name\":\"neg rank\",\"rank\":-1,\"totalRep\":1,\"rep\":1,\"requiredRep\":1")]
+    [InlineData("\"id\":1,\"name\":\"neg total\",\"rank\":1,\"totalRep\":-1,\"rep\":1,\"requiredRep\":1")]
+    [InlineData("\"id\":1,\"name\":\"neg rep\",\"rank\":1,\"totalRep\":1,\"rep\":-1,\"requiredRep\":1")]
+    [InlineData("\"id\":1,\"name\":\"neg required\",\"rank\":1,\"totalRep\":1,\"rep\":1,\"requiredRep\":-1")]
+    [InlineData("\"id\":1.5,\"name\":\"frac\",\"rank\":1,\"totalRep\":1,\"rep\":1,\"requiredRep\":1")]
+    [InlineData("\"id\":1,\"name\":\"frac rep\",\"rank\":1,\"totalRep\":1,\"rep\":0.5,\"requiredRep\":1")]
+    [InlineData("\"id\":\"7\",\"name\":\"text id\",\"rank\":1,\"totalRep\":1,\"rep\":1,\"requiredRep\":1")]
+    [InlineData("\"id\":1,\"name\":\"text rank\",\"rank\":\"1\",\"totalRep\":1,\"rep\":1,\"requiredRep\":1")]
+    [InlineData("\"id\":1,\"name\":\"big\",\"rank\":1,\"totalRep\":2147483648,\"rep\":1,\"requiredRep\":1")]
+    [InlineData("\"id\":99999999999,\"name\":\"big id\",\"rank\":1,\"totalRep\":1,\"rep\":1,\"requiredRep\":1")]
+    [InlineData("\"name\":\"no id\",\"rank\":1,\"totalRep\":1,\"rep\":1,\"requiredRep\":1")]
+    [InlineData("\"id\":1,\"rank\":1,\"totalRep\":1,\"rep\":1,\"requiredRep\":1")]
+    [InlineData("\"id\":1,\"name\":null,\"rank\":1,\"totalRep\":1,\"rep\":1,\"requiredRep\":1")]
+    [InlineData("\"id\":1,\"name\":\"bad \\ud800 name\",\"rank\":1,\"totalRep\":1,\"rep\":1,\"requiredRep\":1")]
+    [InlineData("\"id\":1,\"name\":\"no rank\",\"totalRep\":1,\"rep\":1,\"requiredRep\":1")]
+    [InlineData("\"id\":1,\"name\":\"no total\",\"rank\":1,\"rep\":1,\"requiredRep\":1")]
+    [InlineData("\"id\":1,\"name\":\"no rep\",\"rank\":1,\"totalRep\":1,\"requiredRep\":1")]
+    [InlineData("\"id\":1,\"name\":\"no required\",\"rank\":1,\"totalRep\":1,\"rep\":1")]
+    public void A_malformed_faction_is_dropped_and_the_rest_of_the_status_kept(string badFields)
+    {
+        var good = FactionJson("\"id\":1,\"name\":\"Nation\",\"rank\":3,\"totalRep\":5000,\"rep\":300,\"requiredRep\":1200");
+
+        foreach (var bad in new[] { FactionJson(badFields), "7", "null", "[1]", "\"f\"" })
+        {
+            var parsed = Assert.IsType<StatusMessage>(SkuaLine.Parse(FactionsLine($"[{bad},{good}]")));
+
+            Assert.Equal("Hero", parsed.Status.Character);
+            Assert.Equal([new SkuaFaction(1, "Nation", 3, 5000, 300, 1200)], parsed.Status.Factions);
+        }
+    }
+
+    [Fact]
+    public void The_largest_int32_values_are_kept()
+    {
+        var parsed = Assert.IsType<StatusMessage>(SkuaLine.Parse(FactionsLine(
+            $"[{FactionJson("\"id\":2147483647,\"name\":\"Max\",\"rank\":2147483647,\"totalRep\":2147483647,\"rep\":2147483647,\"requiredRep\":2147483647")}]")));
+
+        Assert.Equal([new SkuaFaction(int.MaxValue, "Max", int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue)], parsed.Status.Factions);
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("\"factions\"")]
+    [InlineData("5")]
+    [InlineData("true")]
+    public void A_factions_field_that_is_not_an_array_counts_as_absent(string value)
+    {
+        var parsed = Assert.IsType<StatusMessage>(SkuaLine.Parse(FactionsLine(value)));
+
+        Assert.Equal("Hero", parsed.Status.Character);
+        Assert.Null(parsed.Status.Factions);
+    }
+
+    private static string FactionJson(string fields) => "{" + fields + "}";
+
+    private static string FactionsLine(string factionsJson) =>
+        "{\"v\":1,\"type\":\"status\",\"loggedIn\":true,\"character\":\"Hero\",\"server\":null,\"map\":null,\"script\":null,\"running\":false,\"runningSince\":null,\"factions\":" + factionsJson + "}";
+
     private static string StatusLine(string questsJson) =>
         "{\"v\":1,\"type\":\"status\",\"loggedIn\":true,\"character\":\"Hero\",\"server\":null,\"map\":null,\"script\":null,\"running\":false,\"runningSince\":null,\"quests\":" + questsJson + "}";
 

@@ -66,6 +66,16 @@ export interface SkuaQuest {
   ready: boolean;
 }
 
+/** A faction as the Skua plugin reads it: rep is earned inside the current rank, requiredRep the size of the rank step (0 at the maximum rank). */
+export interface SkuaFaction {
+  id: number;
+  name: string;
+  rank: number;
+  totalRep: number;
+  rep: number;
+  requiredRep: number;
+}
+
 export interface SkuaStatus {
   loggedIn: boolean;
   character: string | null;
@@ -76,6 +86,8 @@ export interface SkuaStatus {
   runningSince: string | null;
   /** null: the plugin does not report quests (an older plugin); empty: no active quests. */
   quests: SkuaQuest[] | null;
+  /** null: the plugin does not report reputation (an older plugin); empty: no factions. */
+  factions: SkuaFaction[] | null;
 }
 
 export interface SkuaLogEntry {

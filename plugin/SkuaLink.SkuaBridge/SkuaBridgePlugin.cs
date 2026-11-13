@@ -54,6 +54,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
     private IReadOnlyList<SkuaQuest>? _quests;
     private bool _questsEverRead;
     private long _questsReadAt;
+    private IReadOnlyList<SkuaFaction>? _factions;
 
     // Set from any thread (pipe connect, relogin); read and cleared by the worker.
     private volatile bool _questsForced;
@@ -481,9 +482,10 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
             bot.Manager.LoadedScript,
             running,
             since,
-            ReadQuests(bot, loggedIn, loggedIn && !_wasLoggedIn));
+            ReadQuests(bot, loggedIn, loggedIn && !_wasLoggedIn),
+            ReadFactions(bot, loggedIn));
 
-        // Sent only when something changed, quests and their ready flags included (SkuaStatus compares quest lists by content).
+        // Sent only when something changed, quests, ready flags and reputation included (SkuaStatus compares both lists by content).
         if (status != _lastStatus)
         {
             _lastStatus = status;
@@ -561,6 +563,34 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
 
         _quests = SkuaQuestRefresh.Next(_quests, read);
         return _quests;
+    }
+
+    /// <summary>
+    /// The factions, read on every status (the 3 s poll and the event-driven refreshes), on the worker only while SkuaLink
+    /// is connected (PublishStatus checks). <c>Reputation.FactionList</c> is a plain getter: one Flash read of
+    /// <c>world.myAvatar.factions</c>, deserialized into a fresh list; it writes no Skua cache. Empty while logged out. A
+    /// failed read keeps the last list (Skua's getter itself answers an empty list on a failure, so this is a guard).
+    /// </summary>
+    private IReadOnlyList<SkuaFaction>? ReadFactions(IScriptInterface bot, bool loggedIn)
+    {
+        if (!loggedIn)
+        {
+            _factions = null;
+            return [];
+        }
+
+        List<(int Id, string? Name, int Rank, int TotalRep, int Rep, int RequiredRep)>? read;
+        try
+        {
+            read = bot.Reputation.FactionList?.Where(f => f is not null).Select(f => (f.ID, (string?)f.Name, f.Rank, f.TotalRep, f.Rep, f.RequiredRep)).ToList();
+        }
+        catch (Exception)
+        {
+            read = null;
+        }
+
+        _factions = SkuaFactionRead.Next(_factions, read);
+        return _factions;
     }
 
     // ---- Helpers ---------------------------------------------------------------------------------------------------

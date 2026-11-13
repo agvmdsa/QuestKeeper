@@ -112,3 +112,50 @@ public sealed class SkuaLogStore(string path) : ISkuaLogStore
     private static bool IsExpected(Exception ex) =>
         ex is IOException or UnauthorizedAccessException or JsonException or NotSupportedException or ArgumentException or System.Security.SecurityException;
 }
+
+/// <summary>The Skua logs in one folder: <c>skua-log.&lt;character&gt;.json</c> per character and the legacy <c>skua-log.json</c>. Never throws.</summary>
+public sealed class SkuaLogStores(string folder) : ISkuaLogStores
+{
+    public ISkuaLogStore ForCharacter(string character) => new SkuaLogStore(Path.Combine(folder, SkuaLogFiles.FileName(character)));
+
+    public ISkuaLogStore Legacy { get; } = new SkuaLogStore(Path.Combine(folder, SkuaLogFiles.LegacyFileName));
+
+    /// <summary>Deletes every <c>skua-log.*.json</c> (and its <c>.tmp</c>) in the folder, the legacy log included; nothing else.</summary>
+    public void DeleteAll()
+    {
+        List<string> files;
+        try
+        {
+            if (!Directory.Exists(folder))
+            {
+                return;
+            }
+
+            files = [.. Directory.EnumerateFiles(folder, SkuaLogFiles.Prefix + "*").Where(IsSkuaLog)];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or System.Security.SecurityException)
+        {
+            Log.Error("Skua log delete failed: {ExceptionType}", ex.GetType().Name);
+            return;
+        }
+
+        foreach (var file in files)
+        {
+            try
+            {
+                File.Delete(file);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or System.Security.SecurityException)
+            {
+                Log.Error("Skua log delete failed: {ExceptionType}", ex.GetType().Name);
+            }
+        }
+    }
+
+    private static bool IsSkuaLog(string path)
+    {
+        var name = Path.GetFileName(path);
+        return name.StartsWith(SkuaLogFiles.Prefix, StringComparison.Ordinal)
+            && (name.EndsWith(SkuaLogFiles.Suffix, StringComparison.Ordinal) || name.EndsWith(SkuaLogFiles.Suffix + ".tmp", StringComparison.Ordinal));
+    }
+}

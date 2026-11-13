@@ -4,10 +4,11 @@ using AqwCompanion.Skua;
 namespace AqwCompanion.Phone.Skua;
 
 /// <summary>
-/// The SkuaLink side of the Skua link: connection state, the last status and a capped, persisted log.
-/// Events and store calls happen outside the lock; a throwing handler never stops the others.
+/// The state of one Skua: connection state, the last status and a capped, persisted log. <see cref="SkuaHub"/> keeps one per
+/// Skua (and one per character it plays, for the log file). Events and store calls happen outside the lock; a throwing
+/// handler never stops the others.
 /// </summary>
-public sealed class SkuaBridge : ISkuaFeed, IForgettable
+public sealed class SkuaBridge : IForgettable
 {
     public const int Capacity = 500;
     public const int PhoneLogLimit = 100;
@@ -175,6 +176,33 @@ public sealed class SkuaBridge : ISkuaFeed, IForgettable
             Save(snapshot, epoch, seq);
         }
 
+        RaiseChanged();
+    }
+
+    /// <summary>
+    /// Adds entries kept elsewhere (the lines of the same Skua before its character was known, or the legacy log) to the log:
+    /// the union, newest first, cut to <see cref="Capacity"/>, saved at once. Nothing to add, or quiesced: nothing happens.
+    /// </summary>
+    public void Import(IReadOnlyList<SkuaLogEntry> entries)
+    {
+        lock (_lock)
+        {
+            if (_quiesced || entries.Count == 0)
+            {
+                return;
+            }
+
+            var merged = _log.Concat(entries).OrderByDescending(e => e.At).Take(Capacity).ToList();
+            _log.Clear();
+            foreach (var entry in merged)
+            {
+                _log.AddLast(entry);
+            }
+
+            _dirty = true;
+        }
+
+        Flush();
         RaiseChanged();
     }
 

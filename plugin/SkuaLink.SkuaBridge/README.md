@@ -346,7 +346,13 @@ Desktop framework reference, no package) for the options dialog: the DLL then al
 - The ready flag appears when the game shows the quest as completable.
 - The faction list read every 3 s: its cost with ~50 factions, that it matches the game's Reputation panel, and that
   `Rep` / `RequiredRep` are the in-rank progress and the rank step (0 at rank 10) as the source says.
-- Only one Skua instance is reported at a time (SkuaLink serves one connection); a second Skua keeps retrying quietly.
+- Several Skua at once (AQW-0090): SkuaLink now keeps up to 8 connections on the same pipe name (9 pipe instances with
+  the user-only descriptor: 8 connections and one waiting spare). Not seen on Windows: that 8 plugins connect at once
+  and each one's commands reach only that Skua; that a ninth Skua, closed at once by SkuaLink, keeps retrying every
+  second without errors in Skua; that a restarted Skua (new instance id) comes back as the same entry once its character
+  logs in; that a Skua whose plugin fell back to the send-only pipe still reports while its commands time out ("Skua did
+  not answer"); that the per-character log files (`skua-log.<character>.json`) appear in SkuaLink's data folder and the
+  old `skua-log.json` is folded into the first character that logs in.
 - Commands (AQW-0088):
   - The two-way pipe connects to the new SkuaLink, and a SkuaLink without commands (inbound-only pipe) still gets the
     reports: that Windows refuses the `InOut` client with access denied (`UnauthorizedAccessException`) is from the

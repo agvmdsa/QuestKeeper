@@ -59,6 +59,7 @@ public sealed class PhoneHub : IDisposable
             _snapshot = source.Current;
             _snapshotJson = PhoneJson.SerializeSnapshot(_snapshot);
             _engine.Process(_snapshot, _now());   // the baseline: nothing existing is announced
+            SkuaBaseline();
         }
     }
 
@@ -68,7 +69,7 @@ public sealed class PhoneHub : IDisposable
         {
             lock (_lock)
             {
-                return new PhoneState(_snapshot, _log.Recent, _skua?.Current);
+                return new PhoneState(_snapshot, _log.Recent, _skua?.Current.Primary);
             }
         }
     }
@@ -123,6 +124,7 @@ public sealed class PhoneHub : IDisposable
                 _engine.Reset();
                 _log.Clear();
                 _engine.Process(snapshot, _now());
+                SkuaBaseline();
                 _snapshot = snapshot;
                 _snapshotJson = json;
                 PublishState();
@@ -188,12 +190,14 @@ public sealed class PhoneHub : IDisposable
 
     private void OnSkuaChanged(object? sender, EventArgs e)
     {
-        // Runs on the raiser's thread: nothing may escape. The state is rebuilt from the feed's current view.
+        // Runs on the raiser's thread: nothing may escape. The state is rebuilt from the feed's current view, read once.
         try
         {
             lock (_lock)
             {
-                PublishState();
+                var view = _skua!.Current;
+                PublishNotices(_engine.ProcessSkua(view, _now()));
+                PublishState(view);
             }
         }
         catch (Exception ex)
@@ -223,7 +227,26 @@ public sealed class PhoneHub : IDisposable
         }
     }
 
-    private void PublishState() => Publish(new HubMessage("state", PhoneJson.Serialize(new PhoneState(_snapshot, _log.Recent, _skua?.Current))));
+    private void PublishState() => PublishState(_skua?.Current);
+
+    private void PublishState(SkuaHubView? skua) =>
+        Publish(new HubMessage("state", PhoneJson.Serialize(new PhoneState(_snapshot, _log.Recent, skua?.Primary))));
+
+    /// <summary>Under the lock: the Skua instances as they are now raise no notice (a Skua already disconnected is not announced).</summary>
+    private void SkuaBaseline()
+    {
+        try
+        {
+            if (_skua is not null)
+            {
+                _engine.ProcessSkua(_skua.Current, _now());
+            }
+        }
+        catch (Exception ex)
+        {
+            Report(ex);
+        }
+    }
 
     private void Publish(HubMessage message)
     {

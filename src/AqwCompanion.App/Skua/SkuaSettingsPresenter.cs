@@ -44,7 +44,7 @@ public sealed class SkuaSettingsPresenter : IDisposable
     {
         if (!_disposed)
         {
-            _settings.SetSkuaStatus(SkuaStatusText.For(_feed.Current));
+            _settings.SetSkuaStatus(SkuaStatusText.For(_feed.Current.Primary));
         }
     });
 }

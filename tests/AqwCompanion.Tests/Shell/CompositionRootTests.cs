@@ -142,14 +142,15 @@ public class CompositionRootTests
     }
 
     [Fact]
-    public void The_skua_bridge_is_shared_with_the_feed_and_forgets_before_the_phone_controller()
+    public void The_skua_hub_is_shared_with_the_feed_and_the_command_channel_and_forgets_before_the_phone_controller()
     {
         var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
 
         using var services = CompositionRoot.Build(paths);
 
-        var bridge = services.GetRequiredService<SkuaBridge>();
+        var bridge = services.GetRequiredService<SkuaHub>();
         Assert.Same(bridge, services.GetRequiredService<ISkuaFeed>());
+        Assert.Same(bridge, services.GetRequiredService<ISkuaCommandChannel>());
         Assert.NotNull(services.GetRequiredService<SkuaBridgeHost>());
         var participants = CompositionRoot.ForgetParticipants(services).ToList();
         var bridgeIndex = participants.FindIndex(p => ReferenceEquals(p, bridge));

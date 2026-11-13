@@ -153,4 +153,42 @@ public sealed class SkuaLogStoreTests : IDisposable
         Assert.Null(Record.Exception(() => store.Save([new SkuaLogEntry(DateTimeOffset.UnixEpoch, SkuaLogKind.Died, "x")])));
         Assert.Null(Record.Exception(store.Delete));
     }
+
+    [Fact]
+    public void Each_character_has_its_own_file_and_the_legacy_store_is_skua_log_json()
+    {
+        var stores = new SkuaLogStores(_paths.Root);
+        var entry = new SkuaLogEntry(DateTimeOffset.UnixEpoch, SkuaLogKind.Sold, "sold");
+
+        stores.ForCharacter("Hero").Save([entry]);
+        stores.Legacy.Save([entry with { Text = "legacy" }]);
+
+        Assert.True(File.Exists(Path.Combine(_paths.Root, "skua-log.hero.json")));
+        Assert.Equal(["sold"], stores.ForCharacter("hero").Load().Select(e => e.Text));
+        Assert.Empty(stores.ForCharacter("Zed").Load());
+        Assert.Equal(["legacy"], new SkuaLogStore(_paths.SkuaLogPath).Load().Select(e => e.Text));
+    }
+
+    [Fact]
+    public void Delete_all_removes_every_skua_log_and_nothing_else()
+    {
+        var stores = new SkuaLogStores(_paths.Root);
+        var entry = new SkuaLogEntry(DateTimeOffset.UnixEpoch, SkuaLogKind.Sold, "sold");
+        stores.ForCharacter("Hero").Save([entry]);
+        stores.ForCharacter("Dark Lord").Save([entry]);
+        stores.Legacy.Save([entry]);
+        File.WriteAllText(Path.Combine(_paths.Root, "skua-log.zed.json.tmp"), "x");
+        File.WriteAllText(Path.Combine(_paths.Root, "settings.json"), "{}");
+        File.WriteAllText(Path.Combine(_paths.Root, "skua-script-prefs.json"), "{}");
+
+        stores.DeleteAll();
+
+        Assert.Equal(["settings.json", "skua-script-prefs.json"], Directory.GetFiles(_paths.Root).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void Delete_all_without_a_folder_does_nothing()
+    {
+        new SkuaLogStores(Path.Combine(_paths.Root, "missing")).DeleteAll();
+    }
 }

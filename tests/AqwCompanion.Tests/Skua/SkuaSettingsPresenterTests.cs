@@ -10,7 +10,7 @@ public class SkuaSettingsPresenterTests
 {
     private sealed class Feed : ISkuaFeed
     {
-        public SkuaView Current { get; set; } = SkuaView.Empty;
+        public SkuaHubView Current { get; set; } = SkuaHubView.Empty;
 
         public int Handlers { get; private set; }
 
@@ -40,11 +40,12 @@ public class SkuaSettingsPresenterTests
         queue.Dequeue()();
         Assert.Equal(SkuaStatusText.For(SkuaView.Empty), vm.SkuaStatusText);
 
-        feed.Current = new SkuaView(SkuaConnection.VersionMismatch, null, null, []);
+        feed.Current = new SkuaHubView([new SkuaInstanceView("id-1", "Skua 1", SkuaConnection.VersionMismatch, null, null, [], false)]);
         feed.Raise();
         Assert.Equal(SkuaStatusText.For(SkuaView.Empty), vm.SkuaStatusText);
         queue.Dequeue()();
-        Assert.Equal(SkuaStatusText.For(feed.Current), vm.SkuaStatusText);
+        Assert.Equal(SkuaStatusText.For(feed.Current.Primary), vm.SkuaStatusText);
+        Assert.Equal(SkuaStatusText.For(new SkuaView(SkuaConnection.VersionMismatch, null, null, [])), vm.SkuaStatusText);
     }
 
     [Fact]
@@ -60,7 +61,7 @@ public class SkuaSettingsPresenterTests
         var before = vm.SkuaStatusText;
 
         presenter.Dispose();
-        feed.Current = new SkuaView(SkuaConnection.VersionMismatch, null, null, []);
+        feed.Current = new SkuaHubView([new SkuaInstanceView("id-1", "Skua 1", SkuaConnection.VersionMismatch, null, null, [], false)]);
         while (queue.Count > 0)
         {
             queue.Dequeue()();

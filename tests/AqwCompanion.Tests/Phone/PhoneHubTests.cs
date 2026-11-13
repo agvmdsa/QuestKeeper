@@ -248,13 +248,13 @@ public class PhoneHubTests
     {
         private EventHandler? _changed;
 
-        public SkuaView Value { get; set; } = SkuaView.Empty;
+        public SkuaHubView Value { get; set; } = SkuaHubView.Empty;
 
         public bool Throw { get; set; }
 
         public int Handlers { get; private set; }
 
-        public SkuaView Current => Throw ? throw new InvalidOperationException("feed broke") : Value;
+        public SkuaHubView Current => Throw ? throw new InvalidOperationException("feed broke") : Value;
 
         public event EventHandler? Changed
         {
@@ -265,11 +265,14 @@ public class PhoneHubTests
         public void Raise() => _changed?.Invoke(this, EventArgs.Empty);
     }
 
-    private static SkuaView ViewWith(string text) => new(
-        SkuaConnection.Connected,
+    private static SkuaHubView ViewWith(string text, bool disconnected = false) => new([new SkuaInstanceView(
+        "id-1",
+        "Hero",
+        disconnected ? SkuaConnection.NotConnected : SkuaConnection.Connected,
         new SkuaHello("0.1.0", "1.4.5.0"),
         new SkuaStatus(true, "Hero", "Artix", "battleon", "Farm.cs", true, T0),
-        [new SkuaLogEntry(T0, SkuaLogKind.Sold, text)]);
+        [new SkuaLogEntry(T0, SkuaLogKind.Sold, text)],
+        disconnected)]);
 
     private static (PhoneHub Hub, FakeSkuaFeed Feed, List<Exception> Errors) NewSkuaHub()
     {
@@ -293,7 +296,7 @@ public class PhoneHubTests
     {
         var (hub, feed, _) = NewSkuaHub();
 
-        Assert.Equal(feed.Current, hub.Current.Skua);
+        Assert.Equal(feed.Current.Primary, hub.Current.Skua);
     }
 
     [Fact]
@@ -336,7 +339,7 @@ public class PhoneHubTests
 
         hub.Reset();
 
-        Assert.Equal(feed.Current, hub.Current.Skua);
+        Assert.Equal(feed.Current.Primary, hub.Current.Skua);
         Assert.Contains("\"connection\":\"Connected\"", Assert.Single(Drain(sub)).Json);
     }
 
@@ -349,5 +352,42 @@ public class PhoneHubTests
         hub.Dispose();
 
         Assert.Equal(0, feed.Handlers);
+    }
+
+    [Fact]
+    public void A_skua_that_disconnects_and_comes_back_publishes_a_notice_each_time()
+    {
+        var (hub, feed, _) = NewSkuaHub();
+        using var sub = hub.Subscribe();
+
+        feed.Value = ViewWith("first", disconnected: true);
+        feed.Raise();
+        var off = Drain(sub);
+        feed.Value = ViewWith("first");
+        feed.Raise();
+        var on = Drain(sub);
+
+        Assert.Equal(["notice", "state"], off.Select(m => m.Event));
+        Assert.Contains("\"kind\":\"SkuaDisconnected\"", off[0].Json);
+        Assert.Equal(["notice", "state"], on.Select(m => m.Event));
+        Assert.Contains("\"kind\":\"SkuaReconnected\"", on[0].Json);
+        Assert.Equal([NoticeKind.SkuaReconnected, NoticeKind.SkuaDisconnected], hub.Current.Notices.Select(n => n.Kind));
+    }
+
+    [Fact]
+    public void After_a_reset_the_skua_view_is_a_baseline_again()
+    {
+        var (hub, feed, _) = NewSkuaHub();
+        hub.Reset();
+        using var sub = hub.Subscribe();
+
+        feed.Value = ViewWith("first", disconnected: true);
+        feed.Raise();
+        hub.Reset();
+        Drain(sub);
+        feed.Value = ViewWith("first", disconnected: true);
+        feed.Raise();
+
+        Assert.Equal(["state"], Drain(sub).Select(m => m.Event));
     }
 }

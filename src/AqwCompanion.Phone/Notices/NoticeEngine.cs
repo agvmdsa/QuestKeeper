@@ -1,4 +1,5 @@
 using AqwCompanion.Core.Feed;
+using AqwCompanion.Phone.Skua;
 
 namespace AqwCompanion.Phone.Notices;
 
@@ -12,11 +13,13 @@ public sealed class NoticeEngine(NoticeOptions? options = null)
     private readonly Queue<string> _seenOrder = new();
     private readonly Dictionary<string, Queue<DateTimeOffset>> _recent = new(StringComparer.Ordinal);
     private FeedSnapshot? _previous;
+    private Dictionary<string, bool>? _skuaConnected;
 
     /// <summary>Forgets everything: the next snapshot is a baseline again and no notice id is remembered.</summary>
     public void Reset()
     {
         _previous = null;
+        _skuaConnected = null;
         _seen.Clear();
         _seenOrder.Clear();
         _recent.Clear();
@@ -35,6 +38,33 @@ public sealed class NoticeEngine(NoticeOptions? options = null)
 
         _previous = snapshot;
         Stalls(snapshot, now, found);
+        return Admit(found, now);
+    }
+
+    /// <summary>
+    /// The Skua instances changed: a connected Skua that is now disconnected raises <see cref="NoticeKind.SkuaDisconnected"/>,
+    /// a disconnected one that is connected again <see cref="NoticeKind.SkuaReconnected"/> (the instance label in the text).
+    /// The first view is a baseline; an instance that appears or goes away raises nothing.
+    /// </summary>
+    public IReadOnlyList<Notice> ProcessSkua(SkuaHubView view, DateTimeOffset now)
+    {
+        var found = new List<Notice>();
+        var connected = new Dictionary<string, bool>(StringComparer.Ordinal);
+        foreach (var instance in view.Instances)
+        {
+            connected[instance.InstanceId] = !instance.Disconnected;
+            if (_skuaConnected is null || !_skuaConnected.TryGetValue(instance.InstanceId, out var was) || was == !instance.Disconnected)
+            {
+                continue;
+            }
+
+            var label = instance.Label;
+            found.Add(instance.Disconnected
+                ? new Notice($"skua-off:{instance.InstanceId}:{now.UtcTicks}", NoticeKind.SkuaDisconnected, label, "Skua disconnected", $"{label} is no longer connected to SkuaLink.", now)
+                : new Notice($"skua-on:{instance.InstanceId}:{now.UtcTicks}", NoticeKind.SkuaReconnected, label, "Skua reconnected", $"{label} is connected to SkuaLink again.", now));
+        }
+
+        _skuaConnected = connected;
         return Admit(found, now);
     }
 

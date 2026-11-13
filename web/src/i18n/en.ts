@@ -51,6 +51,7 @@ export const en = {
   'character.note.selectHere': 'Select this character in SkuaLink to see its factions and Hard Farms.',
 
   'factions.title': 'Factions',
+  'factions.fromSkua': 'Live from Skua',
   'factions.empty': 'No factions read yet.',
   'factions.maxRank': 'Max rank',
   'factions.rank': 'Rank {rank}',

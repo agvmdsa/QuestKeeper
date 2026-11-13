@@ -1,6 +1,6 @@
 import { characterHref, characterRow, characterRows, expFraction, formatNumber, hardFarmsView, noticeLine } from './state';
 import { plural, t } from './i18n';
-import { factionRows, LOG_FILTERS, LOG_FILTER_LABELS, questRows, skuaEmptyText, skuaLogRows, skuaNow, skuaSummary, type LogFilter } from './skua';
+import { effectiveFactions, factionRows, LOG_FILTERS, LOG_FILTER_LABELS, questRows, skuaEmptyText, skuaLogRows, skuaNow, skuaSummary, type LogFilter } from './skua';
 import { THEMES, type ThemeChoice } from './theme';
 import type { Faction, RemoteState, SkuaState } from './types';
 
@@ -255,6 +255,7 @@ export function characterView(model: Model, name: string): VNode {
     return h('div', {}, back(), figures, h('p', { className: 'note', text: note }));
   }
 
+  const reputation = effectiveFactions(model.state!);
   const hf = hardFarmsView(snapshot.hardFarms, model.showAll);
   const missingCount = hf ? hf.shown.length + hf.hidden : 0;
   return h(
@@ -266,7 +267,8 @@ export function characterView(model: Model, name: string): VNode {
       'section',
       { className: 'card' },
       h('h2', { text: t('factions.title') }),
-      snapshot.factions.length === 0 ? empty(t('factions.empty')) : h('ul', { className: 'list' }, ...snapshot.factions.map(factionRow)),
+      reputation.source === 'skua' ? h('p', { className: 'muted', text: t('factions.fromSkua') }) : null,
+      reputation.factions.length === 0 ? empty(t('factions.empty')) : h('ul', { className: 'list' }, ...reputation.factions.map(factionRow)),
     ),
     h(
       'section',

@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { factionRows, filterOf, formatDuration, LOG_FILTERS, parseLogFilter, parseSkua, questRows, skuaEmptyText, skuaLogRows, skuaNow, skuaSummary, type LogFilter } from '../src/skua';
+import { effectiveFactions, factionRows, filterOf, formatDuration, LOG_FILTERS, parseLogFilter, parseSkua, questRows, skuaEmptyText, skuaLogRows, skuaNow, skuaSummary, type LogFilter } from '../src/skua';
 import { isUsableState, keepState, parseRoute, parseState, recallKept } from '../src/state';
-import { listView, skuaView, type Model, type VNode } from '../src/views';
+import { characterView, listView, skuaView, type Model, type VNode } from '../src/views';
 import { plural } from '../src/i18n';
-import type { RemoteState, SkuaState } from '../src/types';
+import type { Faction, RemoteState, SkuaState } from '../src/types';
 
 const NOW = Date.parse('2026-11-11T12:12:00Z');
 const wire = {
@@ -173,6 +173,60 @@ describe('factionRows', () => {
     expect(rows([faction(1, 'N', 1, 1, 2)], { connection: 'VersionMismatch' })).toBeNull();
     expect(rows([faction(1, 'N', 1, 1, 2)], { connection: 'NotConnected' })).toBeNull();
     expect(rows([])).toEqual([]);
+  });
+});
+
+describe('effectiveFactions', () => {
+  const capture: Faction[] = [{ name: 'Captured', rank: 2, rep: 5, toNext: 95, fraction: 0.05, max: false }];
+  const remote = (skuaState: SkuaState | null | undefined, selected: string | null = 'Hero', factions: Faction[] = capture): RemoteState => ({
+    snapshot: { contract: 1, capture: { state: 'Listening.', listening: true }, selected, characters: [], factions, hardFarms: null },
+    notices: [],
+    skua: skuaState,
+  });
+  const live = [faction(1, 'zeta', 2, 100, 1000), faction(2, 'Good', 10, 0, 0), faction(3, 'alpha', 5, 950, 1000)];
+  const connected = (over: object = {}, s: Partial<SkuaState> = {}) => withStatus({ character: 'Hero', factions: live, ...over }, s);
+
+  it('uses the Skua list, mapped and ordered like the capture list, when connected for the selected character', () => {
+    const r = effectiveFactions(remote(connected()));
+    expect(r.source).toBe('skua');
+    expect(r.factions).toEqual([
+      { name: 'alpha', rank: 5, rep: 950, toNext: 50, fraction: 0.95, max: false },
+      { name: 'zeta', rank: 2, rep: 100, toNext: 900, fraction: 0.1, max: false },
+      { name: 'Good', rank: 10, rep: 0, toNext: 0, fraction: 1, max: true },
+    ]);
+  });
+  it.each([
+    ['not connected', () => connected({}, { connection: 'NotConnected' })],
+    ['a version mismatch', () => connected({}, { connection: 'VersionMismatch' })],
+    ['factions not reported', () => connected({ factions: null })],
+    ['an empty Skua list (a transient empty read must not blank the page)', () => connected({ factions: [] })],
+    ['another character in Skua', () => connected({ character: 'Other' })],
+    ['a different letter case', () => connected({ character: 'hero' })],
+    ['no Skua character', () => connected({ character: null })],
+    ['no status', () => skua({ status: null })],
+    ['no Skua state', () => null],
+    ['Skua absent', () => undefined],
+  ])('uses the capture list for %s', (_n, make) => {
+    const r = effectiveFactions(remote(make()));
+    expect(r).toEqual({ factions: capture, source: 'capture' });
+  });
+  it('uses the capture list when no character is selected', () => {
+    expect(effectiveFactions(remote(connected(), null)).source).toBe('capture');
+  });
+  it('uses the capture list when there is no snapshot', () => {
+    expect(effectiveFactions({ snapshot: null, notices: [], skua: connected() })).toEqual({ factions: [], source: 'capture' });
+  });
+  it('shows the note under the heading only for Skua, in the character view', () => {
+    const m = (st: RemoteState): Model => ({ state: st, nowMs: NOW, showAll: false, hfOpen: false, installHint: null });
+    const hero = { name: 'Hero', level: 1, live: true, savedAtUtc: '2026-11-11T12:00:00Z', lastLiveUpdateUtc: null, liveUpdates: 0, figures: { gold: 0, exp: 0, expToLevel: 1, ac: 0, classPoints: 0, daysPlayed: 0 }, lastKill: null };
+    const withHero = (st: RemoteState): RemoteState => ({ ...st, snapshot: { ...st.snapshot!, characters: [hero] } });
+    const fromSkua = texts(characterView(m(withHero(remote(connected()))), 'Hero'));
+    expect(fromSkua).toContain('Live from Skua');
+    expect(fromSkua).toContain('alpha');
+    expect(fromSkua).not.toContain('Captured');
+    const fromCapture = texts(characterView(m(withHero(remote(connected({ factions: [] })))), 'Hero'));
+    expect(fromCapture).not.toContain('Live from Skua');
+    expect(fromCapture).toContain('Captured');
   });
 });
 

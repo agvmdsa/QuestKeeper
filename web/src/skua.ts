@@ -1,6 +1,6 @@
 import { t, type MessageKey } from './i18n';
 import { relativeTime } from './state';
-import type { SkuaConnection, SkuaFaction, SkuaLogEntry, SkuaQuest, SkuaState, SkuaStatus } from './types';
+import type { Faction, RemoteState, SkuaConnection, SkuaFaction, SkuaLogEntry, SkuaQuest, SkuaState, SkuaStatus } from './types';
 
 const MAX_TEXT = 300;
 const MAX_ENTRIES = 100;
@@ -194,16 +194,38 @@ const byName = (a: string, b: string): number => {
  * rank last, ties by name ignoring case. Null when the plugin does not report reputation or Skua is not connected.
  */
 export function factionRows(s: SkuaState): FactionRow[] | null {
+  return ranked(s)?.map((x) => x.row) ?? null;
+}
+
+/** The rows with the in-rank reputation they came from, in the shared order. */
+function ranked(s: SkuaState): { row: FactionRow; rep: number }[] | null {
   const factions = s.connection === 'Connected' ? s.status?.factions : null;
   if (!factions) return null;
   return factions
-    .map((f): FactionRow => {
+    .map((f) => {
       const max = !(f.requiredRep > 0);
       const fraction = max ? 1 : Math.min(1, Math.max(0, finite(f.rep / f.requiredRep)));
       const toNext = max ? 0 : Math.max(0, finite(f.requiredRep - f.rep));
-      return { name: f.name, rank: f.rank, max, fraction, toNext, label: max ? t('factions.maxRank') : t('factions.rank', { rank: f.rank }) };
+      const row: FactionRow = { name: f.name, rank: f.rank, max, fraction, toNext, label: max ? t('factions.maxRank') : t('factions.rank', { rank: f.rank }) };
+      return { row, rep: f.rep };
     })
-    .sort((a, b) => missing(a) - missing(b) || byName(a.name, b.name));
+    .sort((a, b) => missing(a.row) - missing(b.row) || byName(a.row.name, b.row.name));
+}
+
+/**
+ * The list the phone's main Reputation card shows. Skua's live list wins only when Skua is connected, reports factions, and
+ * its character is exactly the selected one. An empty Skua list falls back to the capture list: a logged-in character with
+ * no reputation at all is rare, and a transient empty read (Skua answers [] on any read failure) must not blank the page.
+ */
+export function effectiveFactions(state: RemoteState): { factions: Faction[]; source: 'skua' | 'capture' } {
+  const snapshot = state.snapshot;
+  const capture = { factions: snapshot?.factions ?? [], source: 'capture' as const };
+  const skua = state.skua;
+  const character = skua?.status?.character;
+  if (!skua || !snapshot || snapshot.selected === null || !character || character !== snapshot.selected) return capture;
+  const rows = ranked(skua);
+  if (!rows || rows.length === 0) return capture;
+  return { factions: rows.map(({ row, rep }) => ({ name: row.name, rank: row.rank, rep, toNext: row.toNext, fraction: row.fraction, max: row.max })), source: 'skua' };
 }
 
 export function skuaLogRows(s: SkuaState, nowMs: number, filter: LogFilter = 'all'): { when: string; text: string }[] {

@@ -13,6 +13,9 @@ public sealed class SkuaBridge : ISkuaFeed, IForgettable
     public const int PhoneLogLimit = 100;
     public static readonly TimeSpan SaveEvery = TimeSpan.FromSeconds(10);
 
+    /// <summary>A drop joins the line of the same item when that line was last updated at most this long before (a rolling window).</summary>
+    public static readonly TimeSpan DropMergeWindow = TimeSpan.FromSeconds(60);
+
     private readonly object _lock = new();
     private readonly object _io = new();
     private readonly ISkuaLogStore _store;
@@ -135,10 +138,20 @@ public sealed class SkuaBridge : ISkuaFeed, IForgettable
                     _status = status.Status;
                     break;
                 case LogMessage log:
-                    _log.AddFirst(log.Entry);
-                    while (_log.Count > Capacity)
+                    if (MergeTarget(log.Entry) is { } merged)
                     {
-                        _log.RemoveLast();
+                        // The merged line moves to the front as the newest; the others keep their order and the count of
+                        // lines does not change.
+                        _log.Remove(merged);
+                        _log.AddFirst(SkuaLogFormatter.WithCount(merged.Value, merged.Value.Count + 1, log.Entry.At));
+                    }
+                    else
+                    {
+                        _log.AddFirst(log.Entry);
+                        while (_log.Count > Capacity)
+                        {
+                            _log.RemoveLast();
+                        }
                     }
 
                     _dirty = true;
@@ -233,6 +246,32 @@ public sealed class SkuaBridge : ISkuaFeed, IForgettable
 
     /// <summary>Test seam: runs inside Forget after the in-memory clear and before the store delete. Never set in production.</summary>
     internal Action? AfterClear { get; set; }
+
+    /// <summary>
+    /// Called under the state lock. The line a drop joins: the newest drop line of the same item and the same Drop/Received
+    /// prefix, when it was last updated no more than <see cref="DropMergeWindow"/> before the drop (by the entries' own
+    /// times, never the wall clock). Null for anything else, so the entry is added as a new line.
+    /// </summary>
+    private LinkedListNode<SkuaLogEntry>? MergeTarget(SkuaLogEntry incoming)
+    {
+        if (incoming.Kind != SkuaLogKind.Dropped || incoming.Item is null || SkuaLogFormatter.DropKind(incoming) is not { } prefix)
+        {
+            return null;
+        }
+
+        for (var node = _log.First; node is not null; node = node.Next)
+        {
+            var entry = node.Value;
+            if (entry.Kind == SkuaLogKind.Dropped && string.Equals(entry.Item, incoming.Item, StringComparison.Ordinal)
+                && SkuaLogFormatter.DropKind(entry) == prefix)
+            {
+                var gap = incoming.At - entry.At;
+                return gap >= TimeSpan.Zero && gap <= DropMergeWindow ? node : null;
+            }
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// Called under the state lock. A failed save is not retried until the next entry or flush: the store never throws, so there is nothing to retry on.

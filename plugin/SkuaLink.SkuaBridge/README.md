@@ -71,7 +71,8 @@ throwaway project and read in the tag source.
 - `log`: bought (quantity = now minus snapshot when positive, else none), sold (name from the snapshot taken before the
   sale), dropped (`Drop: X` for an item offered in the drop list, Skua's `dropItem`, the usual farming case; `Received: X`
   for an item put straight into the inventory, Skua's `addItems`, such as a reward; accepting a drop-list item raises no
-  further event, so each drop is one line), map changed, died, logged out, relogin, script started, script stopped,
+  further event, so each drop is one line; a drop whose name is known also carries `item` and `count` 1, and SkuaLink
+  merges repeated drops of one item into one line, `Drop: X x13`, while each comes within 60 s of the last), map changed, died, logged out, relogin, script started, script stopped,
   script error (the exception's message with every absolute path reduced to its file name, so no local folder and its
   Windows user name leaves the plugin). Quest accepted / turned in are no longer sent (the active quests travel in the status instead); the two
   kinds stay in the protocol so logs kept by an older version still load.

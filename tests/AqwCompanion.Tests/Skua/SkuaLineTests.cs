@@ -352,6 +352,74 @@ public class SkuaLineTests
     }
 
     [Fact]
+    public void A_drop_with_item_and_count_matches_its_fixture_both_ways()
+    {
+        var message = new LogMessage(new SkuaLogEntry(Noon.AddSeconds(5), SkuaLogKind.Dropped, "Drop: Blood Orb x13", "Blood Orb", 13));
+
+        Assert.Equal(Fixture("log-drop.json"), SkuaLine.ToLine(message));
+        Assert.Equal(message, SkuaLine.Parse(Fixture("log-drop.json")));
+    }
+
+    [Fact]
+    public void A_log_line_without_an_item_omits_item_and_count_and_older_lines_parse_with_none()
+    {
+        var line = SkuaLine.ToLine(new LogMessage(new SkuaLogEntry(Noon, SkuaLogKind.Died, "Died", null, 7)));
+
+        Assert.DoesNotContain("\"item\"", line);
+        Assert.DoesNotContain("\"count\"", line);
+        var parsed = Assert.IsType<LogMessage>(SkuaLine.Parse(Fixture("log-sold.json")));
+        Assert.Null(parsed.Entry.Item);
+        Assert.Equal(1, parsed.Entry.Count);
+    }
+
+    [Theory]
+    [InlineData("0", 1)]
+    [InlineData("-3", 1)]
+    [InlineData("1.5", 1)]
+    [InlineData("\"4\"", 1)]
+    [InlineData("null", 1)]
+    [InlineData("100000", 1)]
+    [InlineData("99999", 99999)]
+    [InlineData("1", 1)]
+    public void A_count_outside_1_to_99999_parses_as_1_and_keeps_the_line(string count, int expected)
+    {
+        var line = "{\"v\":1,\"type\":\"log\",\"at\":\"2026-11-11T12:00:05.0000000+00:00\",\"kind\":\"Dropped\",\"text\":\"Drop: X\",\"item\":\"X\",\"count\":" + count + "}";
+
+        var parsed = Assert.IsType<LogMessage>(SkuaLine.Parse(line));
+
+        Assert.Equal("X", parsed.Entry.Item);
+        Assert.Equal(expected, parsed.Entry.Count);
+    }
+
+    [Theory]
+    [InlineData("\"item\":5,\"count\":3")]
+    [InlineData("\"item\":null,\"count\":3")]
+    [InlineData("\"item\":\"\\ud800\",\"count\":3")]
+    [InlineData("\"item\":\"bad \uFFFD\",\"count\":3")]
+    [InlineData("\"count\":3")]
+    public void An_unusable_item_drops_item_and_count_but_keeps_the_line(string fields)
+    {
+        var line = "{\"v\":1,\"type\":\"log\",\"at\":\"2026-11-11T12:00:05.0000000+00:00\",\"kind\":\"Dropped\",\"text\":\"Drop: X\"," + fields + "}";
+
+        var parsed = Assert.IsType<LogMessage>(SkuaLine.Parse(line));
+
+        Assert.Equal("Drop: X", parsed.Entry.Text);
+        Assert.Null(parsed.Entry.Item);
+        Assert.Equal(1, parsed.Entry.Count);
+    }
+
+    [Fact]
+    public void A_long_item_is_cut_and_the_count_is_capped_on_the_way_out()
+    {
+        var entry = new SkuaLogEntry(Noon, SkuaLogKind.Dropped, "Drop: x", new string('i', SkuaProtocol.MaxTextLength + 20), 250000);
+
+        var parsed = Assert.IsType<LogMessage>(SkuaLine.Parse(SkuaLine.ToLine(new LogMessage(entry))));
+
+        Assert.Equal(SkuaProtocol.MaxTextLength, parsed.Entry.Item!.Length);
+        Assert.Equal(SkuaProtocol.MaxCount, parsed.Entry.Count);
+    }
+
+    [Fact]
     public void A_status_with_nothing_known_round_trips_with_nulls()
     {
         var message = new StatusMessage(new SkuaStatus(false, null, null, null, null, false, null));

@@ -106,6 +106,11 @@ public static class SkuaLine
                     w.WriteString("at", l.Entry.At.ToString("o", CultureInfo.InvariantCulture));
                     w.WriteString("kind", l.Entry.Kind.ToString());
                     w.WriteString("text", Cut(l.Entry.Text));
+                    if (l.Entry.Item is { } item)
+                    {
+                        w.WriteString("item", Cut(item));
+                        w.WriteNumber("count", Math.Clamp(l.Entry.Count, 1, SkuaProtocol.MaxCount));
+                    }
                     break;
                 default:
                     throw new ArgumentException("This message is never sent.", nameof(message));
@@ -318,7 +323,24 @@ public static class SkuaLine
         }
 
         var kind = Enum.Parse<SkuaLogKind>(kindText);
-        return new LogMessage(new SkuaLogEntry(time, kind, Cut(body)));
+        var item = LogItem(root);
+        var count = item is not null && root.TryGetProperty("count", out var c) && c.ValueKind == JsonValueKind.Number
+            && c.TryGetInt32(out var n) && n is >= 1 and <= SkuaProtocol.MaxCount ? n : 1;
+        return new LogMessage(new SkuaLogEntry(time, kind, Cut(body), item, count));
+    }
+
+    /// <summary>The optional drop item, or null when absent or unusable: only the item and its count are lost, never the line.</summary>
+    private static string? LogItem(JsonElement root)
+    {
+        try
+        {
+            return CutOrNull(Str(root, "item"));
+        }
+        catch (InvalidOperationException)
+        {
+            // An escaped lone surrogate in the item.
+            return null;
+        }
     }
 
     /// <summary>

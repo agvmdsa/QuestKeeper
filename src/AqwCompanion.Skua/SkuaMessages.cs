@@ -71,7 +71,12 @@ public sealed record SkuaStatus(
     }
 }
 
-public sealed record SkuaLogEntry(DateTimeOffset At, SkuaLogKind Kind, string Text);
+/// <summary>
+/// A log line. A drop whose item name is known carries it in <paramref name="Item"/>, and <paramref name="Count"/> says how
+/// many drops of it SkuaLink has merged into this line (1 to <see cref="SkuaProtocol.MaxCount"/>). Every other line, and
+/// lines kept by an older version, have no item and a count of 1.
+/// </summary>
+public sealed record SkuaLogEntry(DateTimeOffset At, SkuaLogKind Kind, string Text, string? Item = null, int Count = 1);
 
 public abstract record SkuaMessage;
 

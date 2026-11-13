@@ -11,6 +11,8 @@ public static class SkuaProtocol
 
     /// <summary>At most this many factions travel in one status (the game has about 50).</summary>
     public const int MaxFactions = 60;
+    /// <summary>The highest count a merged drop line carries.</summary>
+    public const int MaxCount = 99999;
     public const string PipeName = "SkuaLink.SkuaBridge.v1";
 
     /// <summary>The Skua version the plugin was built and tested against.</summary>

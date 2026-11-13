@@ -405,6 +405,221 @@ public class SkuaBridgeTests
         Assert.Equal(1, _store.Saves);
     }
 
+    private static LogMessage Drop(string item, int seconds, bool received = false) =>
+        new(SkuaLogFormatter.Dropped(T0.AddSeconds(seconds), item, received));
+
+    [Fact]
+    public void Thirteen_drops_of_one_item_within_the_window_make_one_line_with_the_count()
+    {
+        var bridge = Create();
+
+        for (var i = 0; i < 13; i++)
+        {
+            bridge.Accept(Drop("Blood Orb", i * 4));
+        }
+
+        var entry = Assert.Single(bridge.Log);
+        Assert.Equal("Drop: Blood Orb x13", entry.Text);
+        Assert.Equal(13, entry.Count);
+        Assert.Equal("Blood Orb", entry.Item);
+        Assert.Equal(T0.AddSeconds(48), entry.At);
+    }
+
+    [Fact]
+    public void The_window_is_rolling_and_60_seconds_after_the_last_merge_still_merges()
+    {
+        var bridge = Create();
+
+        bridge.Accept(Drop("Blood Orb", 0));
+        bridge.Accept(Drop("Blood Orb", 50));
+        bridge.Accept(Drop("Blood Orb", 110));
+
+        Assert.Equal(["Drop: Blood Orb x3"], bridge.Log.Select(e => e.Text));
+        Assert.Equal(TimeSpan.FromSeconds(60), SkuaBridge.DropMergeWindow);
+    }
+
+    [Fact]
+    public void The_same_item_after_the_window_adds_a_new_line()
+    {
+        var bridge = Create();
+
+        bridge.Accept(Drop("Blood Orb", 0));
+        bridge.Accept(Drop("Blood Orb", 1));
+        bridge.Accept(Drop("Blood Orb", 62));
+
+        Assert.Equal(["Drop: Blood Orb", "Drop: Blood Orb x2"], bridge.Log.Select(e => e.Text));
+    }
+
+    [Fact]
+    public void A_drop_older_than_the_line_it_would_join_adds_a_new_line()
+    {
+        var bridge = Create();
+
+        bridge.Accept(Drop("Blood Orb", 30));
+        bridge.Accept(Drop("Blood Orb", 10));
+
+        Assert.Equal(2, bridge.Log.Count);
+    }
+
+    [Fact]
+    public void A_different_item_adds_a_new_line()
+    {
+        var bridge = Create();
+
+        bridge.Accept(Drop("Blood Orb", 0));
+        bridge.Accept(Drop("Bone Dust", 1));
+
+        Assert.Equal(["Drop: Bone Dust", "Drop: Blood Orb"], bridge.Log.Select(e => e.Text));
+    }
+
+    [Fact]
+    public void A_drop_and_a_received_item_of_the_same_name_are_not_merged()
+    {
+        var bridge = Create();
+
+        bridge.Accept(Drop("Blood Orb", 0));
+        bridge.Accept(Drop("Blood Orb", 1, received: true));
+        bridge.Accept(Drop("Blood Orb", 2, received: true));
+
+        Assert.Equal(["Received: Blood Orb x2", "Drop: Blood Orb"], bridge.Log.Select(e => e.Text));
+    }
+
+    [Fact]
+    public void Interleaved_items_each_merge_into_their_own_line_and_the_merged_one_becomes_the_newest()
+    {
+        var bridge = Create();
+
+        bridge.Accept(Drop("A", 0));
+        bridge.Accept(new LogMessage(SkuaLogFormatter.MapChanged(T0.AddSeconds(1), "battleon")));
+        bridge.Accept(Drop("B", 2));
+        bridge.Accept(Drop("A", 3));
+
+        Assert.Equal(["Drop: A x2", "Drop: B", "Map: battleon"], bridge.Log.Select(e => e.Text));
+
+        bridge.Accept(Drop("B", 4));
+
+        Assert.Equal(["Drop: B x2", "Drop: A x2", "Map: battleon"], bridge.Log.Select(e => e.Text));
+        Assert.Equal(T0.AddSeconds(4), bridge.Current.Log[0].At);
+    }
+
+    [Fact]
+    public void Only_the_newest_line_of_an_item_is_a_merge_candidate()
+    {
+        var bridge = Create();
+
+        bridge.Accept(Drop("A", 0));
+        bridge.Accept(Drop("A", 70));
+        bridge.Accept(Drop("A", 80));
+
+        Assert.Equal(["Drop: A x2", "Drop: A"], bridge.Log.Select(e => e.Text));
+    }
+
+    [Fact]
+    public void A_drop_without_a_known_name_is_never_merged()
+    {
+        var bridge = Create();
+
+        bridge.Accept(Drop(null!, 0));
+        bridge.Accept(Drop(null!, 1));
+
+        Assert.Equal(["Drop: unknown item", "Drop: unknown item"], bridge.Log.Select(e => e.Text));
+    }
+
+    [Fact]
+    public void A_stored_line_without_an_item_is_not_joined_but_a_stored_line_with_one_is()
+    {
+        _store.Stored =
+        [
+            new(T0, SkuaLogKind.Dropped, "Drop: A"),
+            new(T0, SkuaLogKind.Dropped, "Drop: B x4", "B", 4),
+        ];
+        var bridge = Create();
+
+        bridge.Accept(Drop("A", 5));
+        bridge.Accept(Drop("B", 6));
+
+        Assert.Equal(["Drop: B x5", "Drop: A", "Drop: A"], bridge.Log.Select(e => e.Text));
+    }
+
+    [Fact]
+    public void Merging_keeps_the_500_cap()
+    {
+        var bridge = Create();
+        for (var i = 0; i < 500; i++)
+        {
+            bridge.Accept(Entry(i));
+        }
+
+        bridge.Accept(Drop("A", 600));
+        bridge.Accept(Drop("A", 601));
+
+        Assert.Equal(500, bridge.Log.Count);
+        Assert.Equal("Drop: A x2", bridge.Log[0].Text);
+        Assert.Equal("drop 1", bridge.Log[^1].Text);
+    }
+
+    [Fact]
+    public void A_merge_raises_changed_once_and_marks_the_log_unsaved()
+    {
+        var bridge = Create();
+        var changes = 0;
+        bridge.Changed += (_, _) => changes++;
+
+        bridge.Accept(Drop("A", 0));
+        Assert.Equal(1, _store.Saves);
+        _now = T0.AddSeconds(1);
+        bridge.Accept(Drop("A", 1));
+        bridge.Accept(Drop("A", 2));
+
+        Assert.Equal(3, changes);
+        Assert.Equal(1, _store.Saves);
+        bridge.Flush();
+        Assert.Equal(2, _store.Saves);
+        Assert.Equal(new SkuaLogEntry(T0.AddSeconds(2), SkuaLogKind.Dropped, "Drop: A x3", "A", 3), Assert.Single(_store.Stored));
+
+        _now = T0.AddSeconds(20);
+        bridge.Accept(Drop("A", 20));
+        Assert.Equal(3, _store.Saves);
+        Assert.Equal("Drop: A x4", Assert.Single(_store.Stored).Text);
+    }
+
+    [Fact]
+    public void A_quiesced_bridge_ignores_drops_and_a_forget_ends_the_merge()
+    {
+        var bridge = Create();
+        bridge.Accept(Drop("A", 0));
+
+        bridge.Quiesce();
+        bridge.Accept(Drop("A", 1));
+        Assert.Equal("Drop: A", Assert.Single(bridge.Log).Text);
+
+        bridge.Forget();
+        bridge.Accept(Drop("A", 2));
+
+        Assert.Equal(new SkuaLogEntry(T0.AddSeconds(2), SkuaLogKind.Dropped, "Drop: A", "A", 1), Assert.Single(bridge.Log));
+    }
+
+    [Fact]
+    public void Four_threads_dropping_their_own_item_200_times_leave_four_lines_of_200()
+    {
+        var bridge = Create();
+        var tasks = Enumerable.Range(0, 4)
+            .Select(t => Task.Run(() =>
+            {
+                for (var i = 0; i < 200; i++)
+                {
+                    bridge.Accept(new LogMessage(SkuaLogFormatter.Dropped(T0, "Item " + t, false)));
+                    _ = bridge.Current;
+                }
+            }))
+            .ToArray();
+
+        Assert.Null(Record.Exception(() => Task.WaitAll(tasks)));
+        Assert.Equal(4, bridge.Log.Count);
+        Assert.All(bridge.Log, e => Assert.Equal(200, e.Count));
+        Assert.Equal(["Item 0 x200", "Item 1 x200", "Item 2 x200", "Item 3 x200"], bridge.Log.Select(e => e.Text[6..]).Order());
+    }
+
     private sealed class BlockingStore(ManualResetEventSlim gate) : ISkuaLogStore
     {
         public ManualResetEventSlim SaveEntered { get; } = new();

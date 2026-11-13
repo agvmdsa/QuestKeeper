@@ -84,6 +84,16 @@ public class SkuaPhoneJsonTests
     }
 
     [Fact]
+    public void A_merged_drop_serializes_its_item_and_count()
+    {
+        var view = new SkuaView(SkuaConnection.Connected, null, null, [new SkuaLogEntry(T0, SkuaLogKind.Dropped, "Drop: Blood Orb x13", "Blood Orb", 13)]);
+
+        var json = PhoneJson.Serialize(new PhoneState(Snapshot(), [], view));
+
+        Assert.Contains("\"kind\":\"Dropped\",\"text\":\"Drop: Blood Orb x13\",\"item\":\"Blood Orb\",\"count\":13}", json);
+    }
+
+    [Fact]
     public void No_skua_part_serializes_as_null()
     {
         var json = PhoneJson.Serialize(new PhoneState(Snapshot(), [], null));

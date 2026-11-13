@@ -51,6 +51,56 @@ public class SkuaLogFormatterTests
     }
 
     [Fact]
+    public void Dropped_carries_the_item_and_a_count_of_one_when_the_name_is_known()
+    {
+        Assert.Equal(new SkuaLogEntry(T, SkuaLogKind.Dropped, "Drop: Blood Orb", "Blood Orb", 1), SkuaLogFormatter.Dropped(T, "Blood Orb", false));
+        Assert.Equal(new SkuaLogEntry(T, SkuaLogKind.Dropped, "Received: Blood Orb", "Blood Orb", 1), SkuaLogFormatter.Dropped(T, "Blood Orb", true));
+        Assert.Null(SkuaLogFormatter.Dropped(T, null, false).Item);
+        Assert.Null(SkuaLogFormatter.Dropped(T, "  ", false).Item);
+        Assert.Equal(1, SkuaLogFormatter.Dropped(T, null, false).Count);
+    }
+
+    [Fact]
+    public void The_dropped_item_is_one_line_and_cut_to_the_text_cap()
+    {
+        var entry = SkuaLogFormatter.Dropped(T, "Blood\r\nOrb" + new string('o', 400), false);
+
+        Assert.StartsWith("Blood Orb", entry.Item);
+        Assert.Equal(SkuaProtocol.MaxTextLength, entry.Item!.Length);
+        Assert.True(entry.Text.Length <= SkuaProtocol.MaxTextLength);
+    }
+
+    [Fact]
+    public void WithCount_writes_the_count_moves_the_time_and_keeps_kind_and_item()
+    {
+        var drop = SkuaLogFormatter.Dropped(T, "Blood Orb", false);
+        var received = SkuaLogFormatter.Dropped(T, "Blood Orb", true);
+        var later = T.AddSeconds(30);
+
+        Assert.Equal(new SkuaLogEntry(later, SkuaLogKind.Dropped, "Drop: Blood Orb x13", "Blood Orb", 13), SkuaLogFormatter.WithCount(drop, 13, later));
+        Assert.Equal(new SkuaLogEntry(later, SkuaLogKind.Dropped, "Received: Blood Orb x2", "Blood Orb", 2), SkuaLogFormatter.WithCount(received, 2, later));
+        Assert.Equal(new SkuaLogEntry(later, SkuaLogKind.Dropped, "Drop: Blood Orb", "Blood Orb", 1), SkuaLogFormatter.WithCount(drop, 1, later));
+    }
+
+    [Fact]
+    public void WithCount_keeps_the_count_within_1_to_99999_and_the_text_within_the_cap()
+    {
+        var drop = SkuaLogFormatter.Dropped(T, new string('o', 400), false);
+
+        Assert.Equal(SkuaProtocol.MaxCount, SkuaLogFormatter.WithCount(drop, 250000, T).Count);
+        Assert.Equal(1, SkuaLogFormatter.WithCount(drop, 0, T).Count);
+        Assert.True(SkuaLogFormatter.WithCount(drop, 99999, T).Text.Length <= SkuaProtocol.MaxTextLength);
+    }
+
+    [Fact]
+    public void DropKind_tells_a_drop_from_a_received_item_and_anything_else()
+    {
+        Assert.Equal("Drop", SkuaLogFormatter.DropKind(SkuaLogFormatter.Dropped(T, "X", false)));
+        Assert.Equal("Received", SkuaLogFormatter.DropKind(SkuaLogFormatter.Dropped(T, "X", true)));
+        Assert.Null(SkuaLogFormatter.DropKind(SkuaLogFormatter.Died(T)));
+    }
+
+    [Fact]
     public void The_simple_events_have_plain_text()
     {
         Assert.Equal("Map: battleon", SkuaLogFormatter.MapChanged(T, "battleon").Text);

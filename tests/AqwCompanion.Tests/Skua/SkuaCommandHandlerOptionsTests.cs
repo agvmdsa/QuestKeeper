@@ -755,6 +755,153 @@ public class SkuaCommandHandlerOptionsTests
     }
 
     [Fact]
+    public async Task A_stop_before_skua_reports_the_start_still_stops_the_script_after_a_poll_settled_it()
+    {
+        var (handler, host, _, control) = NewHandler();
+        host.RunsOnStart = false;
+        await handler.HandleAsync(new StartCommand("r1", Plain));
+        await handler.HandleAsync(new StopCommand("r2"));
+
+        // A status poll before Skua reports the start: nothing runs, so the stop settles.
+        handler.Tick();
+        Assert.Equal("settling", control.State);
+
+        host.Running = true;
+        handler.Tick();
+        await host.StopCalled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await handler.PendingStop.WaitAsync(TimeSpan.FromSeconds(5));
+        handler.Tick();
+
+        Assert.Equal(1, host.StopCount);
+        Assert.Equal("stopping", control.State);
+    }
+
+    [Fact]
+    public async Task The_running_report_itself_stops_a_start_whose_stop_came_first()
+    {
+        var (handler, host, _, control) = NewHandler();
+        host.RunsOnStart = false;
+        await handler.HandleAsync(new StartCommand("r1", Plain));
+        await handler.HandleAsync(new StopCommand("r2"));
+        handler.Tick();
+
+        host.Running = true;
+        control.OnScriptRunningRead(() => host.ScriptRunning);
+        handler.OnScriptRunningReported();
+        await host.StopCalled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await handler.PendingStop.WaitAsync(TimeSpan.FromSeconds(5));
+        handler.OnScriptRunningReported();
+        handler.Tick();
+
+        Assert.Equal(1, host.StopCount);
+        Assert.Equal("stopping", control.State);
+    }
+
+    [Fact]
+    public async Task A_discovery_stop_before_skua_reports_the_start_still_stops_the_script_after_a_poll()
+    {
+        var (handler, host, options, control) = NewHandler();
+        host.RunsOnStart = false;
+        options.Window = options.ClosableDialog();
+
+        var result = await handler.HandleAsync(new StartCommand("r1", Butler));
+        Assert.True(result.FirstRun);
+        Assert.Equal(0, host.StopCount);
+        handler.Tick();
+        Assert.Equal("settling", control.State);
+
+        host.Running = true;
+        handler.Tick();
+        await host.StopCalled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(1, host.StopCount);
+        Assert.Equal("stopping", control.State);
+    }
+
+    [Fact]
+    public async Task A_stop_for_a_start_never_reported_is_forgotten_when_the_start_wait_ends()
+    {
+        var (handler, host, _, control) = NewHandler();
+        host.RunsOnStart = false;
+        await handler.HandleAsync(new StartCommand("r1", Plain));
+        await handler.HandleAsync(new StopCommand("r2"));
+        handler.Tick();
+        Wait(10);
+        handler.Tick();
+        Assert.Equal("idle", control.State);
+
+        // Someone starts a script in Skua by hand later: it is not the one the stop was for.
+        host.Running = true;
+        handler.Tick();
+        handler.OnScriptRunningReported();
+
+        Assert.Equal(0, host.StopCount);
+        Assert.Equal("running", control.State);
+    }
+
+    [Fact]
+    public async Task The_running_report_does_not_stop_a_script_nobody_asked_to_stop()
+    {
+        var (handler, host, _, control) = NewHandler();
+        await handler.HandleAsync(new StartCommand("r1", Plain));
+
+        handler.OnScriptRunningReported();
+
+        Assert.Equal(0, host.StopCount);
+        Assert.Equal("running", control.State);
+    }
+
+    // ---- review fixes: stale Config, scripts without options ---------------------------------------------------
+
+    [Fact]
+    public async Task Options_whose_file_is_not_the_one_the_source_names_are_not_kept()
+    {
+        var (handler, host, options, _) = NewHandler();
+        options.Sources[At("Tools/Butler.cs")] = "public string OptionsStorage = \"Other\";";
+        host.HasOptions = true;
+
+        var result = await handler.HandleAsync(new StartCommand("r1", Butler));
+        var get = await handler.HandleAsync(new GetOptionsCommand("r2", Butler));
+
+        Assert.Null(result.OptionDefs);
+        Assert.False(result.FirstRun);
+        Assert.Null(get.OptionDefs);
+        await handler.HandleAsync(new StopCommand("r3"));
+        await handler.PendingOptions.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task Options_whose_file_matches_the_source_name_are_kept()
+    {
+        var (handler, host, options, control) = NewHandler();
+        options.Sources[At("Tools/Butler.cs")] = "public string OptionsStorage = \"butler\";";
+        options.Window = options.ClosableDialog();
+
+        var result = await handler.HandleAsync(new StartCommand("r1", Butler));
+
+        Assert.True(result.FirstRun);
+        Assert.Equal(ButlerDefs, result.OptionDefs);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SetOptions_for_a_script_without_options_is_refused_and_writes_nothing(bool withValues)
+    {
+        var (handler, host, options, _) = NewHandler();
+        await handler.HandleAsync(new StartCommand("r0", Plain));
+        host.Running = false;
+        handler.Tick();
+        Wait(10);
+        handler.Tick();
+
+        var result = await handler.HandleAsync(new SetOptionsCommand("r1", Plain, withValues ? [new("Options", "A", "1")] : []));
+
+        Assert.Equal(new ResultMessage("r1", false, "options not known yet", null, null, null, false, false), result);
+        Assert.Empty(options.Writes);
+    }
+
+    [Fact]
     public async Task Tick_does_not_stop_a_script_that_was_not_asked_to_stop()
     {
         var (handler, host, _, control) = NewHandler();

@@ -131,8 +131,10 @@ throwaway project and read in the tag source.
   (see "Script options" for how `awaitingOptions` ends). A start Skua has not reported running after 10 s (its running
   report may come and go before the start is accepted) settles, so the state never sticks.
 - A stop accepted before Skua reported the start (state `running` or `awaitingOptions`, Skua not yet running) moves to
-  `stopping`; if Skua then reports the script running, the 3 s poll calls `StopScript()` once, so a script never runs on
-  after an accepted stop.
+  `stopping` (a poll may settle it, since nothing runs yet); the stop is remembered until that start's 10 s wait ends, and
+  when Skua reports the script running (its running change, or the 3 s poll) the plugin calls `StopScript()` once and the
+  state goes back to `stopping`, so a script never runs on after an accepted stop. The same holds for a discovery start's
+  own stop. A script started by hand in Skua after that wait is not stopped.
 - `ScriptRunning` is read inside the control state's lock both by the running event and by the poll, so an older read
   can never overwrite a newer one.
 - Settling (`SkuaControlState`): when the script stops running the state is `settling` until the map has not changed for
@@ -199,8 +201,13 @@ unit-tested; the Skua-bound part is `ScriptOptions.cs`):
   `Application.Current.Windows` for a `Window` whose `DataContext` type is named `OptionContainerViewModel` and whose
   `Container` property (read by reflection) is the started script's `Config` (a plugin's options window, which uses the
   same view model with another container, is left alone); close it with `Window.Close()`. Each window call is waited for
-  at most 2 s and only one is in flight at a time (a blocked UI thread counts as "cannot look"). Any failure in this code
-  becomes "cannot look", then `optionsStuck`; nothing reaches Skua as an exception.
+  at most 2 s and only one is in flight at a time (a blocked UI thread counts as "cannot look"). The code that runs on
+  Skua's UI thread catches everything itself (`Close()` runs Skua's own close handlers), so nothing reaches Skua's
+  dispatcher; a failed look is "cannot look", a failed close is seen on the next look, then `optionsStuck`.
+- Definitions are learnt only when `LoadedScript` is the script just started and, when its source declares a storage
+  name, `Config.OptionsFile` is that name's file (otherwise `Config` may be another script's). `setOptions` for a learnt
+  script without options is refused (`options not known yet`) rather than writing an empty file, which could be the
+  `default.cfg` other scripts share.
 
 ## Threading and safety
 

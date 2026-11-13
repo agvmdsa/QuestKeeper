@@ -77,6 +77,10 @@ public sealed class SkuaCommandHandler
     private DateTimeOffset? _acceptedAt;
     private Task _stop = Task.CompletedTask;
     private bool _stopIssued;
+
+    // A stop accepted for a start Skua had not reported running yet; kept until that start's wait (StartSeenWait) ends,
+    // even when the state settled meanwhile, so the script is stopped once Skua reports it.
+    private bool _stopBeforeSeen;
     private Task _optionsWatch = Task.CompletedTask;
     private int _startCount;
     private Task _windowCall = Task.CompletedTask;
@@ -187,6 +191,7 @@ public sealed class SkuaCommandHandler
                 if (due)
                 {
                     _acceptedAt = null;
+                    _stopBeforeSeen = false;
                 }
             }
 
@@ -196,6 +201,22 @@ public sealed class SkuaCommandHandler
             }
 
             _control.Tick();
+        }
+        catch (Exception)
+        {
+            // The next poll tries again.
+        }
+    }
+
+    /// <summary>
+    /// Called by the plugin when Skua raises its running change (after the control state read it): a start whose stop
+    /// was accepted before Skua reported it running is stopped at once, not only on the next poll. Never throws.
+    /// </summary>
+    public void OnScriptRunningReported()
+    {
+        try
+        {
+            StopIfStillRunning();
         }
         catch (Exception)
         {
@@ -286,6 +307,7 @@ public sealed class SkuaCommandHandler
         {
             _acceptedAt = _now();
             _startCount++;
+            _stopBeforeSeen = false;
         }
 
         _control.OnStartAccepted(hasOptions);
@@ -430,6 +452,7 @@ public sealed class SkuaCommandHandler
         lock (_lock)
         {
             _stopIssued = running;
+            _stopBeforeSeen = !running && _acceptedAt is not null;
             if (running && _stop.IsCompleted)
             {
                 _stop = Task.Run(StopSkuaAsync);
@@ -437,23 +460,35 @@ public sealed class SkuaCommandHandler
         }
     }
 
-    /// <summary>While <c>stopping</c>, a script Skua reports running with no stop issued for it yet is stopped, once.</summary>
+    /// <summary>
+    /// A script Skua reports running is stopped, once, when its stop was accepted but not issued: while <c>stopping</c>,
+    /// or (whatever the state, e.g. a poll settled the stop meanwhile) when the stop came before Skua reported the start
+    /// and that start's wait has not ended.
+    /// </summary>
     private void StopIfStillRunning()
     {
-        if (_control.State != "stopping" || !_host.ScriptRunning)
+        if (!_host.ScriptRunning)
         {
             return;
         }
 
+        var stopping = _control.State == "stopping";
         lock (_lock)
         {
-            if (_stopIssued || !_stop.IsCompleted)
+            var pending = (stopping && !_stopIssued) || _stopBeforeSeen;
+            if (!pending || !_stop.IsCompleted)
             {
                 return;
             }
 
             _stopIssued = true;
-            _stop = Task.Run(StopSkuaAsync);
+            _stopBeforeSeen = false;
+            _stop = Task.Run(async () =>
+            {
+                // Back to stopping when a poll settled the stop meanwhile and the running report moved the state on.
+                _control.OnStopRequested();
+                await StopSkuaAsync().ConfigureAwait(false);
+            });
         }
     }
 
@@ -544,6 +579,12 @@ public sealed class SkuaCommandHandler
             return SetFileOptions(reqId, path, changes);
         }
 
+        // A script without options has nothing to write; its file may be Skua's default.cfg, shared by other scripts.
+        if (known.Defs.Count == 0)
+        {
+            return Fail(reqId, "options not known yet");
+        }
+
         if (SkuaOptionsFile.Validate(known.Defs, changes) is { } invalid)
         {
             return Fail(reqId, invalid);
@@ -618,17 +659,7 @@ public sealed class SkuaCommandHandler
             return null;
         }
 
-        string? storage;
-        try
-        {
-            storage = SkuaScriptOptions.StorageName(_options.ReadScriptSource(path));
-        }
-        catch (Exception)
-        {
-            return null;
-        }
-
-        if (storage is null)
+        if (StorageNameOf(path) is not { } storage)
         {
             return null;
         }
@@ -650,6 +681,19 @@ public sealed class SkuaCommandHandler
         }
     }
 
+    /// <summary>The storage name the script's source declares; null when none can be read.</summary>
+    private string? StorageNameOf(string path)
+    {
+        try
+        {
+            return SkuaScriptOptions.StorageName(_options?.ReadScriptSource(path));
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Reads Skua's options right after a start of this script and keeps them; null when they cannot be read.</summary>
     private KnownOptions? LearnOptions(string id, string path)
     {
@@ -663,6 +707,13 @@ public sealed class SkuaCommandHandler
             // Skua's Config belongs to the script it started last; a loaded path that differs means it is not this one.
             if (_options.ReadLoadedOptions() is not { } loaded
                 || !string.Equals(loaded.ScriptPath, path, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            // A storage name the source declares must be the file Config names, or Config is another script's.
+            if (StorageNameOf(path) is { } storage
+                && !string.Equals(Path.GetFileNameWithoutExtension(loaded.OptionsFile), storage, StringComparison.OrdinalIgnoreCase))
             {
                 return null;
             }

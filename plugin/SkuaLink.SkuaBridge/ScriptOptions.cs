@@ -109,9 +109,17 @@ internal sealed class ScriptOptions : ISkuaOptionsHost
         var found = SkuaOptionsWindow.Unknown;
         _dispatcher?.Invoke(() =>
         {
-            if (Application.Current is { } app)
+            // On Skua's UI thread: nothing may escape into Skua's dispatcher.
+            try
             {
-                found = OptionsDialogs(app, container).Count > 0 ? SkuaOptionsWindow.Open : SkuaOptionsWindow.None;
+                if (Application.Current is { } app)
+                {
+                    found = OptionsDialogs(app, container).Count > 0 ? SkuaOptionsWindow.Open : SkuaOptionsWindow.None;
+                }
+            }
+            catch (Exception)
+            {
+                found = SkuaOptionsWindow.Unknown;
             }
         });
         return found;
@@ -126,12 +134,28 @@ internal sealed class ScriptOptions : ISkuaOptionsHost
         var container = _manager.Config;
         _dispatcher?.Invoke(() =>
         {
-            if (Application.Current is { } app)
+            // On Skua's UI thread, and Close() runs Skua's own Closing/Closed handlers (its save): nothing may escape into
+            // Skua's dispatcher. A failed close is seen on the next look (still open, then stuck).
+            try
             {
-                foreach (var window in OptionsDialogs(app, container))
+                if (Application.Current is { } app)
                 {
-                    window.Close();
+                    foreach (var window in OptionsDialogs(app, container))
+                    {
+                        try
+                        {
+                            window.Close();
+                        }
+                        catch (Exception)
+                        {
+                            // The next window, if any; the next look decides.
+                        }
+                    }
                 }
+            }
+            catch (Exception)
+            {
+                // The next look decides.
             }
         });
     }

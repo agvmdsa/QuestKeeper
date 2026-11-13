@@ -370,6 +370,9 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
                 _control?.OnScriptRunningRead(() => bot.Manager.ScriptRunning);
             }
 
+            // A stop accepted before Skua reported this start stops it now (also done on the 3 s poll).
+            _commands?.OnScriptRunningReported();
+
             RunningChanged(_bot?.Manager.ScriptRunning ?? false);
         }
 

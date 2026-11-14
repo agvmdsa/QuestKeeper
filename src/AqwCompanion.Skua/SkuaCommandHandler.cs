@@ -38,8 +38,9 @@ public interface ISkuaScriptHost
 /// start of a script with options (none learnt yet) is a discovery: the plugin waits for the options dialog, closes it,
 /// stops the script at once and answers <c>firstRun</c> with the definitions, so the owner fills them in before the real
 /// start. A later start answers at once and closes the dialog in the background: <c>awaitingOptions</c> ends when the
-/// dialog is gone, or after <see cref="OptionsWindowWait"/> when no dialog appeared (Skua shows it once per script per
-/// session, and not at all for a script that preconfigures itself); a dialog still open after
+/// dialog is gone, or after <see cref="OptionsWindowWait"/> when no dialog appeared (Skua's <c>LoadScriptConfig</c> resets
+/// the configured flag on every load, so the dialog appears on every start of a script that has <c>Options</c> and no
+/// <c>DontPreconfigure</c>, and not at all for a script that preconfigures itself); a dialog still open after
 /// <see cref="OptionsStuckAfter"/> is reported stuck and left to the owner on the PC. A dialog that cannot be looked at is
 /// never taken for "no dialog".
 /// </remarks>

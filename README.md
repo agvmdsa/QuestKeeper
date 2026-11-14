@@ -26,7 +26,7 @@
 SkuaLink listens to the data the game already sends to your own computer and shows it in one screen while you play, so you do not have to click through the game and the Wiki.
 
 - **One screen:** your character, your factions (closest to the next rank first) and the Hard Farms list, with what you own marked from your captured inventory.
-- **Hands off the game:** it never sends anything to the game. The only thing it can do is start and stop Skua scripts, when you ask from the phone, with the optional [Skua plugin](#skua-plugin).
+- **Hands off the game:** it never sends anything to the game. With the optional [Skua plugin](#skua-plugin), and only when you ask from the phone, it can start and stop Skua scripts and read or write the options file of a script in Skua's scripts list.
 - **Local:** everything stays on your computer. No telemetry. **Forget my data** (in **Settings**) removes it. Nothing leaves the PC except the Wiki request you start and, if you turn them on, [Phone access](#watch-from-your-phone) and the [Skua plugin](#skua-plugin).
 
 ## Install

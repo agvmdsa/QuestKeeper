@@ -3,9 +3,9 @@ import { fileURLToPath } from 'node:url';
 import { join, relative, resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 
-// The size guard of the phone page. NOTE: splitting the budget into a first load and chunks loaded later is NOT yet approved by
-// the owner (the old rule was 60 KB for everything built); the split came with the Skua control (AQW-0093) and is to be decided.
-// Until then the guard is strict on three counts:
+// The size guard of the phone page. The budget is split into a first load and scripts loaded later (the owner approved the
+// split on 2026-11-14; the old rule was 60 KB for everything built). It came with the Skua control (AQW-0093). The guard is
+// strict on three counts:
 // - the first load (index.html, the scripts and modulepreloads it names, stylesheets, the manifest and sw.js) stays within 60 KB;
 // - each script loaded later (any other script in assets/) stays within 20 KB;
 // - everything built together stays within 80 KB.

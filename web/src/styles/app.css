@@ -92,7 +92,8 @@ button { min-height: 3rem; margin-top: 0.5rem; padding: 0 1rem; font: inherit; f
 .filter-btn[aria-pressed="true"] { color: var(--on-accent); background: var(--accent); border-width: 3px; }
 
 .chip-wrap { position: relative; margin-bottom: 0.75rem; }
-.chip-wrap::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 1.5rem; background: linear-gradient(90deg, transparent, var(--bg)); pointer-events: none; }
+.chip-wrap::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 1.5rem; background: linear-gradient(90deg, transparent, var(--bg)); pointer-events: none; display: none; }
+.chip-wrap[data-overflow="true"]::after { display: block; }
 .chips { display: flex; gap: 0.5rem; overflow-x: auto; padding: 0.25rem 0.25rem 0.5rem; scroll-snap-type: x proximity; scrollbar-width: none; }
 .chips::-webkit-scrollbar { display: none; }
 .chip { flex: 0 0 auto; display: grid; align-content: center; gap: 0.125rem; min-width: 7rem; max-width: 11rem; min-height: 3rem; margin-top: 0; padding: 0.375rem 0.75rem; text-align: left; scroll-snap-align: start; color: var(--text); background: var(--surface); }
@@ -111,4 +112,33 @@ button { min-height: 3rem; margin-top: 0.5rem; padding: 0 1rem; font: inherit; f
 
 @media (prefers-reduced-motion: reduce) {
   .chips { scroll-behavior: auto; scroll-snap-type: none; }
+}
+
+button:disabled { cursor: not-allowed; color: var(--muted); background: var(--raised); border-style: dashed; }
+.btn-danger { color: var(--on-danger); background: var(--danger); border-color: var(--danger); }
+.btn-quiet { color: var(--text); background: var(--bg); }
+.card > button, .control-waiting > button { width: 100%; }
+.control-waiting { background: var(--surface); border: 3px solid var(--accent); border-radius: 0.75rem; padding: 1rem; }
+.control-strong { margin-top: 0.5rem; overflow-wrap: anywhere; }
+.control-error { margin-top: 0.5rem; color: var(--danger); font-weight: 600; overflow-wrap: anywhere; }
+.field-switch { display: flex; align-items: center; gap: 0.75rem; min-height: 3rem; margin-top: 0.5rem; cursor: pointer; overflow-wrap: anywhere; }
+.field-switch input { flex: none; width: 1.5rem; height: 1.5rem; margin: 0; accent-color: var(--link); }
+
+dialog.sheet { width: 100%; max-width: 34rem; max-height: 90vh; max-height: 90dvh; margin: auto auto 0; padding: 0; overflow-y: auto; overscroll-behavior: contain; color: var(--text); background: var(--bg); border: 0; border-top: 2px solid var(--border); border-radius: 1rem 1rem 0 0; }
+dialog.sheet::backdrop { background: rgb(0 0 0 / 0.55); }
+.sheet-body { display: grid; gap: 0.5rem; padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom)); }
+.sheet-body > h2 { margin: 0; }
+.sheet-body button { width: 100%; margin-top: 0; }
+.sheet h3 { margin: 0.5rem 0 0.25rem; font-size: 0.9375rem; color: var(--muted); overflow-wrap: anywhere; }
+.script-list { display: grid; gap: 0.5rem; }
+.script-btn { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; text-align: left; font-weight: 400; color: var(--text); background: var(--surface); }
+.script-name { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.fields { display: grid; gap: 0.75rem; }
+.field-label { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.field-value { overflow-wrap: anywhere; }
+.field-input { width: 100%; min-height: 3rem; padding: 0 0.75rem; font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 0.5rem; }
+
+@keyframes sheet-in { from { transform: translateY(100%); } }
+@media (prefers-reduced-motion: no-preference) {
+  dialog.sheet[open] { animation: sheet-in 200ms cubic-bezier(0.25, 1, 0.5, 1); }
 }

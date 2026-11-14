@@ -26,6 +26,10 @@ export interface Model {
   skuaFilter?: LogFilter;
   /** The label (character name) of the Skua last chosen, or null; the first connected one when absent or gone. */
   skuaInstance?: string | null;
+  /** The instance chosen in this session; it wins over the label. */
+  skuaInstanceId?: string | null;
+  /** Draws the Control card of an instance (loaded with the Skua tab); without it the tab shows no Control card. */
+  controlCard?: (i: SkuaInstance) => VNode | null;
 }
 
 type Child = VNode | null | false;
@@ -51,7 +55,7 @@ const back = (): VNode => h('a', { className: 'back', text: t('common.back'), at
 
 const empty = (text: string): VNode => h('p', { className: 'empty', text });
 
-function bar(label: string, fraction: number): VNode {
+export function bar(label: string, fraction: number): VNode {
   return h(
     'div',
     {
@@ -206,7 +210,7 @@ const MANY_INSTANCES = 5;
 
 function instanceLabel(i: SkuaInstance, selected: boolean, role: 'chip' | 'list'): VNode {
   const st = instanceState(i);
-  const common = { 'data-action': 'skua-instance', 'data-value': i.label, type: 'button' };
+  const common = { 'data-action': 'skua-instance', 'data-value': i.instanceId, type: 'button' };
   const inner = [
     h('span', { className: 'chip-name', text: i.label }),
     h('span', { className: 'chip-state' }, h('span', { className: 'dot', attrs: { 'data-kind': st.tone === 'run' ? 'live' : st.tone === 'warn' ? 'idle' : 'saved', 'aria-hidden': 'true' } }), h('span', { text: st.text })),
@@ -233,7 +237,7 @@ function instanceSelector(instances: SkuaInstance[], selected: SkuaInstance): VN
 
 export function skuaView(model: Model): VNode {
   const instances = model.state?.skuaInstances ?? [];
-  const chosen = selectInstance(instances, model.skuaInstance ?? null);
+  const chosen = selectInstance(instances, model.skuaInstance ?? null, model.skuaInstanceId ?? null);
   // An older app sends no list: the single Skua is shown as before, with no selector.
   const skua: SkuaState | null = chosen ?? model.state?.skua ?? null;
   const selector = chosen ? instanceSelector(instances, chosen) : null;
@@ -242,7 +246,8 @@ export function skuaView(model: Model): VNode {
   if (!live || live.connection !== 'Connected') {
     return h('div', {}, back(), selector, h('section', { className: 'card' }, h('h2', { text: t('skua.title') }), empty(skuaEmptyText(live))));
   }
-  return h('div', {}, back(), selector, nowCard(live, model.nowMs), questsCard(live), reputationCard(live), logCard(live, model));
+  const control = chosen && model.controlCard ? model.controlCard(chosen) : null;
+  return h('div', {}, back(), selector, nowCard(live, model.nowMs), control, questsCard(live), reputationCard(live), logCard(live, model));
 }
 
 /** One faction: from the capture (Faction) or from Skua (FactionRow), which carry the same fields. */

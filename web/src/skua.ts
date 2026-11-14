@@ -109,18 +109,37 @@ export function parseSkuaInstances(value: unknown): SkuaInstance[] | undefined {
   return out;
 }
 
-const isLive = (i: SkuaInstance): boolean => i.connection === 'Connected' && !i.disconnected;
+export const isLive = (i: SkuaInstance): boolean => i.connection === 'Connected' && !i.disconnected;
 
-/** The instance the Skua tab shows: the remembered one by label, else the first connected, else the first. Null for none. */
-export function selectInstance(instances: readonly SkuaInstance[], savedLabel: string | null): SkuaInstance | null {
-  return (savedLabel === null ? undefined : instances.find((i) => i.label === savedLabel)) ?? instances.find(isLive) ?? instances[0] ?? null;
+/** The instance the Skua tab shows: the one chosen in this session by id, else the remembered one by label, else the first connected, else the first. */
+export function selectInstance(instances: readonly SkuaInstance[], savedLabel: string | null, sessionId: string | null = null): SkuaInstance | null {
+  return followSelection(instances, { label: savedLabel, id: sessionId }).instance;
 }
 
-/** The label next to the given one, in the given direction, wrapping around; for arrow keys on the chips. */
-export function neighbourLabel(instances: readonly SkuaInstance[], label: string, step: 1 | -1): string | null {
+export interface Selection {
+  /** The remembered label (character name), kept across visits. */
+  label: string | null;
+  /** The instance chosen in this session; it wins over the label, so a label change (Skua N to a character) keeps the choice. */
+  id: string | null;
+}
+
+/**
+ * The selection after new data: an instance chosen by id stays chosen and its current label becomes the remembered one; a remembered
+ * label that matches gives its id; otherwise the first connected (or the first) is shown, without changing what is remembered.
+ */
+export function followSelection(instances: readonly SkuaInstance[], sel: Selection): Selection & { instance: SkuaInstance | null } {
+  const byId = sel.id === null ? undefined : instances.find((i) => i.instanceId === sel.id);
+  if (byId) return { instance: byId, label: byId.label, id: byId.instanceId };
+  const byLabel = sel.label === null ? undefined : instances.find((i) => i.label === sel.label);
+  if (byLabel) return { instance: byLabel, label: byLabel.label, id: byLabel.instanceId };
+  return { instance: instances.find(isLive) ?? instances[0] ?? null, label: sel.label, id: null };
+}
+
+/** The id of the instance next to the given one, in the given direction, wrapping around; for arrow keys on the chips. */
+export function neighbourId(instances: readonly SkuaInstance[], id: string, step: 1 | -1): string | null {
   if (instances.length === 0) return null;
-  const at = instances.findIndex((i) => i.label === label);
-  return instances[(Math.max(at, 0) + step + instances.length) % instances.length]!.label;
+  const at = instances.findIndex((i) => i.instanceId === id);
+  return instances[(Math.max(at, 0) + step + instances.length) % instances.length]!.instanceId;
 }
 
 type Store = Pick<Storage, 'getItem' | 'setItem'>;
@@ -305,7 +324,7 @@ export function effectiveFactions(state: RemoteState): { factions: Faction[]; so
   if (!snapshot || snapshot.selected === null) return capture;
   const selected = snapshot.selected.toUpperCase();
   // Every connected Skua is a candidate: the selected character may be played in any of them. An older app sends only the single one.
-  const candidates: SkuaState[] = state.skuaInstances?.length ? state.skuaInstances.filter((i) => !i.disconnected) : state.skua ? [state.skua] : [];
+  const candidates: SkuaState[] = state.skuaInstances?.length ? state.skuaInstances.filter(isLive) : state.skua ? [state.skua] : [];
   for (const skua of candidates) {
     const character = skua.status?.character;
     if (!character || character.toUpperCase() !== selected) continue;

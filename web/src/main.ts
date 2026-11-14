@@ -2,15 +2,16 @@ import { watchChromeHeight } from './chrome';
 import { applyTheme, loadTheme, saveTheme, parseTheme, type ThemeChoice } from './theme';
 import './styles/tokens.css';
 import './styles/app.css';
-import { getState, openEvents, pair, probeOf, type PairOutcome } from './api';
+import { getState, openEvents, pair, probeOf, skuaApi, type PairOutcome } from './api';
+import type { Control } from './control';
 import {
   afterStreamCheck, deviceName, focusKey, iosInstallHint, keepState, KEPT_KEY, linkAfterFreshData, linkBanner, pairFailureText, pairingStep, parseNotice, parsePairingInput, parseRoute,
   parseState,
   recallKept, reconnectDelay, streamErrorStep, takePairingToken, UNREACHABLE_AFTER_MS, type PairProbe,
 } from './state';
-import { loadInstance, neighbourLabel, parseLogFilter, saveInstance, selectInstance, type LogFilter } from './skua';
+import { followSelection, loadInstance, neighbourId, parseLogFilter, saveInstance, type LogFilter } from './skua';
 import { detectLocale, setLocale, t } from './i18n';
-import type { Notice, RemoteState } from './types';
+import type { Notice, RemoteState, SkuaInstance } from './types';
 import { characterView, drawFailedView, listView, mount, pairNeededView, skuaView, withFooter, type Model, type VNode } from './views';
 
 // First thing: CSP forbids an inline script, so the page may flash the system theme until this runs.
@@ -52,6 +53,32 @@ let hfOpen = false;
 let skuaFilter: LogFilter = 'all';
 // The Skua last chosen, by its label; remembered across visits.
 let skuaInstance: string | null = loadInstance(storage());
+// The Skua chosen in this session, by id: it stays chosen when its label changes (Skua N to the character's name).
+let skuaInstanceId: string | null = null;
+// Starting and stopping Skua scripts: loaded with the Skua tab (a chunk of its own); every change redraws the page and the open sheet.
+type ControlUi = typeof import('./controlViews');
+let ui: ControlUi | null = null;
+let control: Control | null = null;
+let loadingControl = false;
+
+function loadControl(): void {
+  if (loadingControl) return;
+  loadingControl = true;
+  import('./controlViews')
+    .then((loaded) => {
+      ui = loaded;
+      control = new loaded.Control(skuaApi, () => {
+        draw();
+        drawSheet();
+      }, () => becomeUnpaired());
+      syncSelection();
+      draw();
+    })
+    .catch(() => {
+      // Offline with nothing cached: the Skua tab shows no Control card; the next visit to the tab tries again.
+      loadingControl = false;
+    });
+}
 let source: EventSource | null = null;
 let attempts = 0;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -103,7 +130,7 @@ function markDown(): void {
 }
 
 function drawBanner(): void {
-  const note = unpaired ? null : linkBanner(sseOpen, lastUpdateMs, Date.now(), state !== null, { downSinceMs, requestFailed });
+  const note = unpaired ? null : linkBanner(sseOpen, lastUpdateMs, Date.now(), state !== null, { downSinceMs, requestFailed }) ?? (ui && control ? ui.controlBanner(Date.now(), control.noAnswerUntil) : null);
   const key = note ? `${note.tone}|${note.text}` : '';
   if (key === lastBanner) return;
   lastBanner = key;
@@ -117,10 +144,16 @@ function drawBanner(): void {
 }
 
 function tree(): VNode {
-  const model: Model = { state: state && { ...state, notices }, nowMs: Date.now(), showAll, hfOpen, installHint, theme, skuaFilter, skuaInstance };
+  const nowMs = Date.now();
+  const shown = ui && control ? { draw: ui.controlCard, control } : null;
+  const controlCard = shown ? (i: SkuaInstance) => shown.draw(i, shown.control, nowMs) : undefined;
+  const model: Model = { state: state && { ...state, notices }, nowMs, showAll, hfOpen, installHint, theme, skuaFilter, skuaInstance, skuaInstanceId, controlCard };
   if (unpaired) return withFooter(pairNeededView(pairReason, installHint), model);
   const route = parseRoute(location.hash);
-  if (route.view === 'skua') return withFooter(skuaView(model), model);
+  if (route.view === 'skua') {
+    loadControl();
+    return withFooter(skuaView(model), model);
+  }
   return withFooter(route.view === 'character' ? characterView(model, route.name) : listView(model), model);
 }
 
@@ -128,20 +161,21 @@ function keyOf(el: HTMLElement): string | null {
   return focusKey({ tag: el.tagName, action: el.getAttribute('data-action'), href: el.getAttribute('href'), id: el.id, value: el.getAttribute('data-value') });
 }
 
-function focusedKey(): string | null {
+function focusedKey(root: HTMLElement = app): string | null {
   const el = document.activeElement;
-  if (!(el instanceof HTMLElement) || !app.contains(el)) return null;
+  if (!(el instanceof HTMLElement) || !root.contains(el)) return null;
   return keyOf(el);
 }
 
-function restoreFocus(key: string | null): void {
-  if (!key) return;
-  for (const el of app.querySelectorAll<HTMLElement>('a, button, summary, input')) {
+function restoreFocus(key: string | null, root: HTMLElement = app): boolean {
+  if (!key) return false;
+  for (const el of root.querySelectorAll<HTMLElement>('a, button, summary, input, select')) {
     if (keyOf(el) === key) {
       el.focus({ preventScroll: true });
-      return;
+      return true;
     }
   }
+  return false;
 }
 
 /** Redraws only when what is shown changed, keeps keyboard focus, and never leaves a blank page. Returns false when the data could not be shown. */
@@ -183,15 +217,40 @@ function keepChipVisible(scrollLeft: number): void {
     return;
   }
   row.scrollLeft = scrollLeft;
+  markOverflow();
   const value = chip.getAttribute('data-value');
   if (value !== shownChip && typeof chip.scrollIntoView === 'function') chip.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   shownChip = value;
 }
 
+/** The right fade of the chip row shows only while there are chips hidden on the right. */
+function markOverflow(): void {
+  const row = app.querySelector<HTMLElement>('.chips');
+  if (!row) return;
+  const more = row.scrollWidth - row.clientWidth - row.scrollLeft > 1;
+  row.parentElement?.setAttribute('data-overflow', String(more));
+}
+
+/** The Skua the tab shows; the selection follows the chosen instance and remembers its current label. */
+function syncSelection(): void {
+  const list = state?.skuaInstances;
+  if (!list) return;
+  const next = followSelection(list, { label: skuaInstance, id: skuaInstanceId });
+  skuaInstanceId = next.id;
+  if (next.label !== null && next.label !== skuaInstance) {
+    skuaInstance = next.label;
+    saveInstance(storage(), next.label);
+  }
+  control?.track(next.instance);
+}
+
+const currentInstance = () => followSelection(state?.skuaInstances ?? [], { label: skuaInstance, id: skuaInstanceId }).instance;
+
 function setState(text: string): void {
   const parsed = parseState(text);
   if (!parsed) return;
   state = parsed;
+  syncSelection();
   notices = parsed.notices;
   lastUpdateMs = Date.now();
   ({ downSinceMs, requestFailed } = linkAfterFreshData(sseOpen, { downSinceMs, requestFailed }, lastUpdateMs));
@@ -217,6 +276,7 @@ function closeStream(): void {
 /** A device the PC no longer knows keeps nothing: names and gold are dropped from memory and storage. */
 function becomeUnpaired(): void {
   unpaired = true;
+  if (control?.sheet) control.close();
   state = null;
   notices = [];
   lastUpdateMs = null;
@@ -379,6 +439,14 @@ app.addEventListener('click', (event) => {
     chooseInstance(instanceButton.getAttribute('data-value'));
     return;
   }
+  const controlButton = (event.target as HTMLElement).closest<HTMLElement>('[data-action="control-start"], [data-action="control-stop"]');
+  const chosen = currentInstance();
+  if (controlButton && chosen && control) {
+    opener = keyOf(controlButton);
+    if (controlButton.getAttribute('data-action') === 'control-stop') control.openStop(chosen);
+    else control.openStart(chosen);
+    return;
+  }
   const filterButton = (event.target as HTMLElement).closest('[data-action="skua-filter"]');
   if (filterButton) {
     skuaFilter = parseLogFilter(filterButton.getAttribute('data-value'));
@@ -395,20 +463,37 @@ app.addEventListener('click', (event) => {
     draw();
   }
 });
-function chooseInstance(label: string | null): void {
-  if (label === null) return;
-  skuaInstance = label;
-  saveInstance(storage(), label);
+app.addEventListener('change', (event) => {
+  const box = event.target as HTMLInputElement;
+  const chosen = currentInstance();
+  if (box.getAttribute('data-action') === 'ask-options' && chosen && control) control.setAsk(chosen.instanceId, box.getAttribute('data-value') ?? '', box.checked);
+});
+app.addEventListener('scroll', (event) => {
+  if ((event.target as HTMLElement).classList?.contains('chips')) markOverflow();
+}, true);
+window.addEventListener('resize', markOverflow);
+
+/** Chooses a Skua by its instance id and remembers its label. */
+function chooseInstance(id: string | null): void {
+  const chosen = state?.skuaInstances?.find((i) => i.instanceId === id);
+  if (!chosen) return;
+  skuaInstanceId = chosen.instanceId;
+  skuaInstance = chosen.label;
+  saveInstance(storage(), chosen.label);
+  control?.track(chosen);
   draw();
 }
 
+const TAB_KEYS = ['ArrowRight', 'ArrowLeft', 'Home', 'End'];
+
 app.addEventListener('keydown', (event) => {
   const tab = (event.target as HTMLElement).closest<HTMLElement>('[role="tab"]');
-  if (tab && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
+  if (tab && TAB_KEYS.includes(event.key)) {
     event.preventDefault();
     const list = state?.skuaInstances ?? [];
-    const label = neighbourLabel(list, selectInstance(list, skuaInstance)?.label ?? '', event.key === 'ArrowRight' ? 1 : -1);
-    chooseInstance(label);
+    const at = currentInstance()?.instanceId ?? '';
+    const id = event.key === 'Home' ? list[0]?.instanceId : event.key === 'End' ? list[list.length - 1]?.instanceId : neighbourId(list, at, event.key === 'ArrowRight' ? 1 : -1);
+    chooseInstance(id ?? null);
     app.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
     return;
   }
@@ -427,8 +512,98 @@ window.addEventListener('hashchange', () => {
   }
   showAll = false;
   hfOpen = false;
+  if (control?.sheet) control.close();
   draw();
 });
+
+// The sheets (stop confirmation, script list, options) live in one native dialog: modal, so focus stays inside and Escape closes it.
+const sheet = document.createElement('dialog');
+sheet.className = 'sheet';
+sheet.setAttribute('aria-labelledby', 'sheet-title');
+document.body.append(sheet);
+let lastSheet = '';
+let lastKind = '';
+// False where the browser has no modal dialog: the sheet is then only shown, and Escape is handled here.
+let modal = false;
+// The control that opened the sheet; it gets focus back when the sheet closes.
+let opener: string | null = null;
+
+function drawSheet(): void {
+  const view = ui && control ? ui.sheetView(control) : null;
+  if (!view) {
+    if (!lastSheet) return;
+    lastSheet = '';
+    lastKind = '';
+    if (sheet.open) sheet.close();
+    sheet.removeAttribute('open');
+    sheet.replaceChildren();
+    if (!restoreFocus(opener)) app.querySelector<HTMLElement>('#control-title')?.focus();
+    opener = null;
+    return;
+  }
+  const signature = JSON.stringify(view);
+  if (signature === lastSheet) return;
+  const fresh = control?.sheet?.kind !== lastKind;
+  const opening = !lastSheet;
+  lastSheet = signature;
+  lastKind = control?.sheet?.kind ?? '';
+  const active = document.activeElement;
+  // A field being typed in is kept as it is (caret, composition), not drawn anew.
+  const kept = !fresh && (active instanceof HTMLInputElement || active instanceof HTMLSelectElement) && sheet.contains(active) && active.id ? active : null;
+  const key = fresh ? null : focusedKey(sheet);
+  sheet.replaceChildren(mount(view));
+  if (kept) document.getElementById(kept.id)?.replaceWith(kept);
+  if (opening) {
+    try {
+      sheet.showModal();
+      modal = true;
+    } catch {
+      sheet.setAttribute('open', '');
+      modal = false;
+    }
+  }
+  if (fresh) {
+    sheet.scrollTop = 0;
+    sheet.querySelector<HTMLElement>('[autofocus]')?.focus();
+  }
+  else if (kept) kept.focus({ preventScroll: true });
+  else restoreFocus(key, sheet);
+}
+
+sheet.addEventListener('cancel', (event) => {
+  event.preventDefault();
+  control?.close();
+});
+// A browser may close the dialog by itself (a second Escape); the sheet follows.
+sheet.addEventListener('close', () => {
+  if (control?.sheet) control?.close();
+});
+sheet.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !modal) control?.close();
+});
+sheet.addEventListener('click', (event) => {
+  const target = event.target as HTMLElement;
+  if (target === sheet) {
+    control?.close(); // a tap on the backdrop
+    return;
+  }
+  const button = target.closest<HTMLElement>('[data-action]');
+  const action = button?.getAttribute('data-action');
+  if (action === 'sheet-close') control?.close();
+  else if (action === 'script-pick') control?.pick(button!.getAttribute('data-value') ?? '');
+  else if (action === 'stop-confirm') control?.confirmStop();
+  else if (action === 'options-start') control?.submitOptions();
+});
+function onSheetField(event: Event): void {
+  const field = event.target as HTMLInputElement | HTMLSelectElement;
+  const action = field.getAttribute('data-action');
+  if (action === 'script-search') control?.setQuery(field.value);
+  else if (action === 'opt') control?.setValue(Number(field.getAttribute('data-value')), field instanceof HTMLInputElement && field.type === 'checkbox' ? String(field.checked) : field.value);
+  else if (action === 'dont-ask' && field instanceof HTMLInputElement) control?.setDontAsk(field.checked);
+}
+// Both: an older browser may not send input for a switch or a choice; the second call changes nothing.
+sheet.addEventListener('input', onSheetField);
+sheet.addEventListener('change', onSheetField);
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => undefined);

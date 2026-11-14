@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  effectiveFactions, instanceStateText, loadInstance, neighbourLabel, parseSkuaInstances, saveInstance, selectInstance, SKUA_INSTANCE_KEY,
+  effectiveFactions, followSelection, instanceStateText, loadInstance, neighbourId, parseSkuaInstances, saveInstance, selectInstance, SKUA_INSTANCE_KEY,
 } from '../src/skua';
 import { noticeLine, parseState } from '../src/state';
 import { skuaView, listView, type Model, type VNode } from '../src/views';
@@ -74,13 +74,51 @@ describe('selectInstance', () => {
   });
 });
 
-describe('neighbourLabel', () => {
+describe('neighbourId', () => {
   it('moves and wraps', () => {
     const l = many(3);
-    expect(neighbourLabel(l, 'Hero1', 1)).toBe('Hero2');
-    expect(neighbourLabel(l, 'Hero3', 1)).toBe('Hero1');
-    expect(neighbourLabel(l, 'Hero1', -1)).toBe('Hero3');
+    expect(neighbourId(l, 'id-Hero1', 1)).toBe('id-Hero2');
+    expect(neighbourId(l, 'id-Hero3', 1)).toBe('id-Hero1');
+    expect(neighbourId(l, 'id-Hero1', -1)).toBe('id-Hero3');
   });
+  it('steps by position, so two Skua with the same label are both reachable', () => {
+    const l = [inst('Skua 1', { instanceId: 'a' }), inst('Skua 1', { instanceId: 'b' }), inst('Hero', { instanceId: 'c' })];
+    expect(neighbourId(l, 'a', 1)).toBe('b');
+    expect(neighbourId(l, 'b', 1)).toBe('c');
+    expect(neighbourId([], 'a', 1)).toBeNull();
+  });
+});
+
+describe('followSelection (the selection follows the chosen Skua within the session)', () => {
+  it('keeps the chosen instance when its label changes, and updates the stored label', () => {
+    const before = [inst('Skua 1', { instanceId: 'a' }), inst('Mule', { instanceId: 'b' })];
+    const after = [inst('Hero', { instanceId: 'a' }), inst('Mule', { instanceId: 'b' })];
+    const chosen = followSelection(before, { label: 'Skua 1', id: 'a' });
+    expect(chosen.instance!.instanceId).toBe('a');
+    const next = followSelection(after, chosen);
+    expect(next).toMatchObject({ label: 'Hero', id: 'a' });
+    expect(next.instance!.instanceId).toBe('a');
+  });
+  it('tells apart two instances with the same label by id', () => {
+    const l = [inst('Skua 1', { instanceId: 'a' }), inst('Skua 1', { instanceId: 'b' })];
+    expect(followSelection(l, { label: 'Skua 1', id: 'b' }).instance!.instanceId).toBe('b');
+    expect(selectInstance(l, 'Skua 1', 'b')!.instanceId).toBe('b');
+  });
+  it('takes the id of the remembered character when it appears', () => {
+    const l = [inst('Mule', { instanceId: 'b' }), inst('Hero', { instanceId: 'a' })];
+    expect(followSelection(l, { label: 'Hero', id: null })).toMatchObject({ label: 'Hero', id: 'a' });
+  });
+  it('a fallback keeps the remembered label and takes no id, so the character is found when it logs in', () => {
+    const l = [inst('Skua 1', { instanceId: 'a' })];
+    const r = followSelection(l, { label: 'Hero', id: null });
+    expect(r).toMatchObject({ label: 'Hero', id: null });
+    expect(r.instance!.instanceId).toBe('a');
+  });
+  it('an id that is gone falls back like a label that is gone', () => {
+    const l = [inst('Mule', { instanceId: 'b' })];
+    expect(followSelection(l, { label: 'Hero', id: 'a' })).toMatchObject({ label: 'Hero', id: null });
+  });
+  it('is empty for no instances', () => expect(followSelection([], { label: 'Hero', id: 'a' }).instance).toBeNull());
 });
 
 describe('the remembered selection', () => {
@@ -149,7 +187,7 @@ describe('the selector in the Skua view', () => {
     const t = tabs(skuaView(model(many(3), 'Hero2')));
     expect(t.map((x) => x.attrs!['aria-selected'])).toEqual(['false', 'true', 'false']);
     expect(t.map((x) => x.attrs!.tabindex)).toEqual(['-1', '0', '-1']);
-    expect(t[1]!.attrs!['data-value']).toBe('Hero2');
+    expect(t[1]!.attrs!['data-value']).toBe('id-Hero2');
     expect(t[1]!.attrs!['data-action']).toBe('skua-instance');
   });
   it('writes the state as text on every chip', () => {
@@ -170,7 +208,7 @@ describe('the selector in the Skua view', () => {
   it('keeps a disconnected instance as a dashed chip with the text Disconnected', () => {
     const l = [inst('On'), inst('Off', { disconnected: true, connection: 'NotConnected', status: null })];
     const v = skuaView(model(l));
-    const off = tabs(v).find((x) => x.attrs!['data-value'] === 'Off')!;
+    const off = tabs(v).find((x) => x.attrs!['data-value'] === 'id-Off')!;
     expect(off.className).toContain('off');
     expect(texts(off)).toContain('Disconnected');
   });
@@ -220,6 +258,10 @@ describe('effectiveFactions across instances', () => {
     expect(r.factions[0]!.name).toBe('FromMule');
   });
   it('matches case-insensitively', () => expect(effectiveFactions(remote([inst('mule', {}, { factions: fac('X') })], 'MULE')).source).toBe('skua'));
+  it.each([['NotConnected'], ['VersionMismatch']])('ignores an instance whose connection is %s even when it is not marked disconnected', (connection) => {
+    const r = effectiveFactions(remote([inst('Mule', { connection }, { factions: fac('Stale') })]));
+    expect(r).toEqual({ factions: capture, source: 'capture' });
+  });
   it('ignores disconnected instances', () => {
     const r = effectiveFactions(remote([inst('Mule', { disconnected: true }, { factions: fac('Stale') })]));
     expect(r).toEqual({ factions: capture, source: 'capture' });
@@ -262,6 +304,16 @@ describe('instance styles', () => {
     expect(row).toMatch(/overflow-x:\s*auto/);
   });
   it('fades the edge of the chip row', () => expect(css).toMatch(/\.chip-wrap::after\s*\{[^}]*linear-gradient/));
+  it('fades it only when the row overflows', () => {
+    expect(rule('\\.chip-wrap::after')).toMatch(/display:\s*none/);
+    expect(rule('\\.chip-wrap\\[data-overflow="true"\\]::after')).toMatch(/display:\s*block/);
+  });
+  it('marks the chips with the instance id, so duplicate labels stay apart', () => {
+    const l = [inst('Skua 1', { instanceId: 'a' }), inst('Skua 1', { instanceId: 'b' })];
+    const v = skuaView({ ...model(l), skuaInstanceId: 'b' });
+    const chips = all(v).filter((n) => n.attrs?.role === 'tab');
+    expect(chips.map((c) => [c.attrs!['data-value'], c.attrs!['aria-selected']])).toEqual([['a', 'false'], ['b', 'true']]);
+  });
   it('dashes the disconnected chip without lowering contrast through opacity', () => {
     expect(css).toMatch(/\.chip\.off[^{]*\{[^}]*border-style:\s*dashed/);
     expect(css).not.toMatch(/opacity/);

@@ -10,6 +10,7 @@
   --muted: #5C4A1F;
   --link: #800000;
   --danger: #9B1C14;
+  --on-danger: #FFFDF7;
   --accent: #F69A07;
   --on-accent: #2A1208;
   --ok: #197419;
@@ -30,6 +31,7 @@
     --muted: #D9C99A;
     --link: #FAB84F;
     --danger: #FF9A8F;
+    --on-danger: #2A1208;
     --bar: #F69A07;
   }
 }
@@ -48,5 +50,6 @@
   --muted: #D9C99A;
   --link: #FAB84F;
   --danger: #FF9A8F;
+  --on-danger: #2A1208;
   --bar: #F69A07;
 }

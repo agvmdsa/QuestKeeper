@@ -390,3 +390,14 @@ Desktop framework reference, no package) for the options dialog: the DLL then al
   - After a Skua restart (the plugin has no definitions), SkuaLink converts doubles itself with SkuaLink's own culture
     (the same Windows user, so the same culture as Skua is assumed) and sends enum members with spaces; that Skua reads
     both back correctly from a file written this way (AQW-0091).
+- Phone page control (AQW-0093), seen only in unit tests on the Mac:
+  - Start, stop and the options step end to end from a phone against a real Skua: the script list sheet, one tap
+    starts, the stop confirmation, and the options form for each type (switch, whole number, decimal, text, choice,
+    other types read-only) written and read back by Skua.
+  - The first start of a never-seen script: the form opens with the definitions the plugin returned, and the next start
+    (after the settle wait) applies them.
+  - The sheet is the browser's own modal dialog: focus moving in and back, Escape, the Android back gesture and a tap on
+    the backdrop closing it, on iPhone Safari (15.4 or later for `showModal`) and Android Chrome.
+  - The "Ask for options when starting this script" switch on the running card finds the running script by its name in
+    Skua's list (a name used in two folders shows no switch unless the phone started it).
+  - "Skua did not answer" in the banner after a real 504 (a command that waits longer than the PC allows).

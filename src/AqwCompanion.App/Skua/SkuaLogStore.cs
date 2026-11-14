@@ -16,18 +16,26 @@ public sealed class SkuaLogStore(string path) : ISkuaLogStore
 
     public IReadOnlyList<SkuaLogEntry> Load()
     {
+        TryLoad(out var log);
+        return log;
+    }
+
+    /// <summary>False (and an empty log) when the file exists but cannot be read or is not a list; a bad entry alone is dropped.</summary>
+    public bool TryLoad(out IReadOnlyList<SkuaLogEntry> log)
+    {
+        log = [];
         try
         {
             if (!File.Exists(path))
             {
-                return [];
+                return !Directory.Exists(path) || Fail(new IOException("not a file"));
             }
 
             var result = new List<SkuaLogEntry>();
             using var doc = JsonDocument.Parse(File.ReadAllText(path));
             if (doc.RootElement.ValueKind != JsonValueKind.Array)
             {
-                return [];
+                return Fail(new JsonException("not a list"));
             }
 
             foreach (var element in doc.RootElement.EnumerateArray())
@@ -46,13 +54,19 @@ public sealed class SkuaLogStore(string path) : ISkuaLogStore
                 }
             }
 
-            return result;
+            log = result;
+            return true;
         }
         catch (Exception ex) when (IsExpected(ex))
         {
-            Log.Error("Skua log load failed: {ExceptionType}", ex.GetType().Name);
-            return [];
+            return Fail(ex);
         }
+    }
+
+    private static bool Fail(Exception ex)
+    {
+        Log.Error("Skua log load failed: {ExceptionType}", ex.GetType().Name);
+        return false;
     }
 
     /// <summary>A count needs an item and stays within 1 to <see cref="SkuaProtocol.MaxCount"/>; the item is cut to the text cap.</summary>
@@ -71,7 +85,9 @@ public sealed class SkuaLogStore(string path) : ISkuaLogStore
         return entry with { Item = item, Count = Math.Clamp(entry.Count, 1, SkuaProtocol.MaxCount) };
     }
 
-    public void Save(IReadOnlyList<SkuaLogEntry> log)
+    public void Save(IReadOnlyList<SkuaLogEntry> log) => TrySave(log);
+
+    public bool TrySave(IReadOnlyList<SkuaLogEntry> log)
     {
         var temp = path + ".tmp";
         try
@@ -79,6 +95,7 @@ public sealed class SkuaLogStore(string path) : ISkuaLogStore
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(temp, JsonSerializer.Serialize(log, Options));
             File.Move(temp, path, overwrite: true);
+            return true;
         }
         catch (Exception ex) when (IsExpected(ex))
         {
@@ -91,6 +108,8 @@ public sealed class SkuaLogStore(string path) : ISkuaLogStore
             {
                 // The temp file is harmless; the next save overwrites it.
             }
+
+            return false;
         }
     }
 

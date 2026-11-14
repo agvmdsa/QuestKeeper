@@ -182,14 +182,20 @@ public sealed class SkuaBridge : IForgettable
     /// <summary>
     /// Adds entries kept elsewhere (the lines of the same Skua before its character was known, or the legacy log) to the log:
     /// the union, newest first, cut to <see cref="Capacity"/>, saved at once. Nothing to add, or quiesced: nothing happens.
+    /// True when the merged log reached the store (or there was nothing to add); false when it is not known to have.
     /// </summary>
-    public void Import(IReadOnlyList<SkuaLogEntry> entries)
+    public bool Import(IReadOnlyList<SkuaLogEntry> entries)
     {
         lock (_lock)
         {
-            if (_quiesced || entries.Count == 0)
+            if (entries.Count == 0)
             {
-                return;
+                return true;
+            }
+
+            if (_quiesced)
+            {
+                return false;
             }
 
             var merged = _log.Concat(entries).OrderByDescending(e => e.At).Take(Capacity).ToList();
@@ -202,12 +208,16 @@ public sealed class SkuaBridge : IForgettable
             _dirty = true;
         }
 
-        Flush();
+        var saved = FlushCore() == true;
         RaiseChanged();
+        return saved;
     }
 
     /// <summary>Saves the log when there is unsaved data.</summary>
-    public void Flush()
+    public void Flush() => FlushCore();
+
+    /// <summary>Null when there was nothing to save; otherwise whether this save reached the store.</summary>
+    private bool? FlushCore()
     {
         IReadOnlyList<SkuaLogEntry>? snapshot = null;
         int epoch;
@@ -221,10 +231,7 @@ public sealed class SkuaBridge : IForgettable
             }
         }
 
-        if (snapshot is not null)
-        {
-            Save(snapshot, epoch, seq);
-        }
+        return snapshot is null ? null : Save(snapshot, epoch, seq);
     }
 
     public void Quiesce()
@@ -315,7 +322,8 @@ public sealed class SkuaBridge : IForgettable
     /// <summary>Test seam: runs after a snapshot is taken and before the write is ordered. Never set in production.</summary>
     internal Action? BeforeWrite { get; set; }
 
-    private void Save(IReadOnlyList<SkuaLogEntry> snapshot, int epoch, long seq)
+    /// <summary>True when this snapshot reached the store; false when it was refused (by the epoch or the sequence) or failed.</summary>
+    private bool Save(IReadOnlyList<SkuaLogEntry> snapshot, int epoch, long seq)
     {
         BeforeWrite?.Invoke();
         lock (_io)
@@ -327,17 +335,17 @@ public sealed class SkuaBridge : IForgettable
             {
                 if (_epoch != epoch)
                 {
-                    return;
+                    return false;
                 }
             }
 
             if (seq <= _writtenSeq)
             {
-                return;
+                return false;
             }
 
             _writtenSeq = seq;
-            _store.Save(snapshot);
+            return _store.TrySave(snapshot);
         }
     }
 

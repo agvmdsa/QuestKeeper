@@ -552,6 +552,52 @@ public class SkuaHubTests
     }
 
     [Fact]
+    public void A_legacy_log_that_cannot_be_read_is_kept_for_a_later_run()
+    {
+        _stores.Legacy.Stored = [new SkuaLogEntry(T0.AddDays(-1), SkuaLogKind.Bought, "legacy")];
+        _stores.Legacy.LoadFails = true;
+        var hub = Create();
+
+        Connect(hub, "id-a", "Hero");
+
+        Assert.Empty(Only(hub).Log);
+        Assert.Equal(0, _stores.Legacy.Deletes);
+        Assert.Equal(["legacy"], _stores.Legacy.Stored.Select(e => e.Text));
+    }
+
+    [Fact]
+    public void A_legacy_log_whose_merge_cannot_be_saved_is_kept_and_a_later_run_does_not_double_it()
+    {
+        _stores.Legacy.Stored = [new SkuaLogEntry(T0.AddDays(-1), SkuaLogKind.Bought, "legacy")];
+        _stores.For("Hero").SaveFails = true;
+        var hub = Create();
+
+        Connect(hub, "id-a", "Hero");
+
+        Assert.Equal(["legacy"], Only(hub).Log.Select(e => e.Text));
+        Assert.Equal(0, _stores.Legacy.Deletes);
+
+        // The next run: the per-character log already holds the legacy line (say its save did land after all).
+        _stores.For("Hero").SaveFails = false;
+        _stores.For("Hero").Stored = [new SkuaLogEntry(T0.AddDays(-1), SkuaLogKind.Bought, "legacy")];
+        var next = Create();
+        Connect(next, "id-b", "Hero");
+
+        Assert.Equal(["legacy"], Only(next).Log.Select(e => e.Text));
+        Assert.Equal(1, _stores.Legacy.Deletes);
+    }
+
+    [Fact]
+    public void An_empty_or_missing_legacy_log_is_deleted_at_once()
+    {
+        var hub = Create();
+
+        Connect(hub, "id-a", "Hero");
+
+        Assert.Equal(1, _stores.Legacy.Deletes);
+    }
+
+    [Fact]
     public void Flush_saves_every_instance()
     {
         var hub = Create();
@@ -730,9 +776,30 @@ public class SkuaHubTests
 
         public int Deletes { get; private set; }
 
-        public IReadOnlyList<SkuaLogEntry> Load() => Stored;
+        public bool LoadFails { get; set; }
 
-        public void Save(IReadOnlyList<SkuaLogEntry> log) => Stored = [.. log];
+        public bool SaveFails { get; set; }
+
+        public IReadOnlyList<SkuaLogEntry> Load() => LoadFails ? [] : Stored;
+
+        public void Save(IReadOnlyList<SkuaLogEntry> log) => TrySave(log);
+
+        public bool TryLoad(out IReadOnlyList<SkuaLogEntry> log)
+        {
+            log = LoadFails ? [] : Stored;
+            return !LoadFails;
+        }
+
+        public bool TrySave(IReadOnlyList<SkuaLogEntry> log)
+        {
+            if (SaveFails)
+            {
+                return false;
+            }
+
+            Stored = [.. log];
+            return true;
+        }
 
         public void Delete()
         {

@@ -409,13 +409,18 @@ public sealed class SkuaHub : ISkuaFeed, ISkuaCommandChannel, IForgettable
         if (!_legacyDone)
         {
             _legacyDone = true;
-            var legacy = _stores.Legacy.Load();
-            if (legacy.Count > 0)
-            {
-                fresh.Import(legacy);
-            }
 
-            _stores.Legacy.Delete();
+            // The legacy log goes only once it was read and its lines are safely in the character's log; on any failure it
+            // stays for the first login of a later run. Lines the character's log already holds (a save that landed before a
+            // failed delete) are not added twice.
+            if (_stores.Legacy.TryLoad(out var legacy))
+            {
+                var held = fresh.Log.ToHashSet();
+                if (fresh.Import([.. legacy.Where(e => !held.Contains(e))]))
+                {
+                    _stores.Legacy.Delete();
+                }
+            }
         }
 
         Replay(old, fresh);

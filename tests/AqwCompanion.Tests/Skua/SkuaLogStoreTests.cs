@@ -23,6 +23,49 @@ public sealed class SkuaLogStoreTests : IDisposable
     }
 
     [Fact]
+    public void Try_load_tells_a_missing_or_good_file_from_one_that_cannot_be_read()
+    {
+        var store = new SkuaLogStore(_paths.SkuaLogPath);
+        Assert.True(store.TryLoad(out var none));
+        Assert.Empty(none);
+
+        store.Save([new SkuaLogEntry(DateTimeOffset.UnixEpoch, SkuaLogKind.Sold, "sold")]);
+        Assert.True(store.TryLoad(out var good));
+        Assert.Equal(["sold"], good.Select(e => e.Text));
+
+        File.WriteAllText(_paths.SkuaLogPath, "[{\"at\":");
+        Assert.False(store.TryLoad(out var corrupt));
+        Assert.Empty(corrupt);
+
+        File.WriteAllText(_paths.SkuaLogPath, "{\"not\":\"a list\"}");
+        Assert.False(store.TryLoad(out _));
+        Assert.Empty(store.Load());
+    }
+
+    [Fact]
+    public void Try_load_of_a_path_that_cannot_be_opened_fails()
+    {
+        // A folder where the file should be: opening it fails like a locked file does.
+        Directory.CreateDirectory(_paths.SkuaLogPath);
+
+        Assert.False(new SkuaLogStore(_paths.SkuaLogPath).TryLoad(out var log));
+        Assert.Empty(log);
+    }
+
+    [Fact]
+    public void Try_save_says_whether_the_file_was_written()
+    {
+        var store = new SkuaLogStore(_paths.SkuaLogPath);
+        var entry = new SkuaLogEntry(DateTimeOffset.UnixEpoch, SkuaLogKind.Sold, "sold");
+        Assert.True(store.TrySave([entry]));
+
+        Directory.CreateDirectory(_paths.Root);
+        var blocked = Path.Combine(_paths.Root, "blocked");
+        File.WriteAllText(blocked, "a file, not a folder");
+        Assert.False(new SkuaLogStore(Path.Combine(blocked, "skua-log.json")).TrySave([entry]));
+    }
+
+    [Fact]
     public void The_default_path_is_skua_log_json()
     {
         Assert.Equal(Path.Combine(_paths.Root, "skua-log.json"), _paths.SkuaLogPath);

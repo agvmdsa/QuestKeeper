@@ -148,4 +148,15 @@ public class SkuaScriptHeaderTests
     {
         Assert.Equal("A", SkuaScriptHeader.Parse("/*\nname: A\n*/\n" + new string('z', 2_000_000)).Title);
     }
+
+    [Fact]
+    public void Format_and_bidi_characters_are_stripped_from_the_header_text()
+    {
+        var header = SkuaScriptHeader.Parse("/*\nname: Ab\u202Ec\u200Bd\u2066e\uFEFFf\ndescription: x\u200Ey\ntags: a\u2067b\n*/");
+
+        Assert.Equal("Abcdef", header.Title);
+        Assert.Equal("xy", header.Description);
+        Assert.Equal("ab", header.Tags);
+        Assert.Null(SkuaScriptHeader.Clean("\u202E\u200B", 20));
+    }
 }

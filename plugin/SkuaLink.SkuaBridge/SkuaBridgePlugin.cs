@@ -46,6 +46,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
     private Channel<SkuaCommand>? _commandQueue;
     private SkuaControlState? _control;
     private SkuaCommandHandler? _commands;
+    private SkuaScriptCatalog? _catalog;
     private Task? _commandWorker;
     private bool _subscribed;
     private bool _unloaded;
@@ -132,8 +133,9 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
             _control.OnScriptRunningChanged(_running);
             var manager = (IScriptStatus?)registered ?? bot.Manager;
             var dispatcher = provider.GetService(typeof(IDispatcherService)) as IDispatcherService;
+            _catalog = ScriptControl.Catalog();
             _commands = new SkuaCommandHandler(
-                new ScriptControl(manager), ScriptControl.Catalog(), _control, Now, new ScriptOptions(manager, dispatcher));
+                new ScriptControl(manager), _catalog, _control, Now, new ScriptOptions(manager, dispatcher));
 
             var skuaVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
             _client = new PipeClient(
@@ -181,6 +183,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
             _work?.Writer.TryComplete();
             _commandQueue?.Writer.TryComplete();
             _stop?.Cancel();
+            _catalog?.Dispose(); // Stops the background reading of script files.
             StopWorker();
             _client?.Dispose(); // Waits up to 2 s for the pipe loop.
             _stop?.Dispose();

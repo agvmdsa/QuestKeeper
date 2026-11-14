@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text;
+
 namespace AqwCompanion.Skua;
 
 /// <summary>
@@ -67,19 +70,21 @@ public static class SkuaScriptHeader
         return (title, description, tags);
     }
 
-    /// <summary>Control characters become a space, lone surrogates go, the text is trimmed and cut (no split pair); empty is null.</summary>
+    /// <summary>Control characters become a space, format characters (bidi marks, zero-width, BOM) and lone surrogates go, the text is trimmed and cut (no split pair); empty is null.</summary>
     public static string? Clean(string value, int max)
     {
-        var chars = SkuaText.WithoutLoneSurrogates(value).ToCharArray();
-        for (var i = 0; i < chars.Length; i++)
+        var chars = new StringBuilder(value.Length);
+        foreach (var c in SkuaText.WithoutLoneSurrogates(value))
         {
-            if (char.IsControl(chars[i]))
+            if (char.GetUnicodeCategory(c) == UnicodeCategory.Format)
             {
-                chars[i] = ' ';
+                continue;
             }
+
+            chars.Append(char.IsControl(c) ? ' ' : c);
         }
 
-        var cut = SkuaText.Cut(new string(chars).Trim(), max).Trim();
+        var cut = SkuaText.Cut(chars.ToString().Trim(), max).Trim();
         return cut.Length == 0 ? null : cut;
     }
 }

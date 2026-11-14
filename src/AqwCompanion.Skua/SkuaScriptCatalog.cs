@@ -8,7 +8,7 @@ namespace AqwCompanion.Skua;
 /// the path it stands for is rebuilt here and checked again before use. Pure: the folder listing and the link check are
 /// injected, so the same code runs in the plugin and in the tests.
 /// </summary>
-public sealed class SkuaScriptCatalog
+public sealed class SkuaScriptCatalog : IDisposable
 {
     /// <summary>Skua's compile cache inside the scripts folder; never listed.</summary>
     public const string CacheFolder = "Cached-Scripts";
@@ -22,6 +22,14 @@ public sealed class SkuaScriptCatalog
     private readonly Func<string, bool> _isLink;
     private readonly Func<string, bool>? _isBotFile;
     private readonly Func<string, SkuaScriptFacts?>? _facts;
+    private readonly Func<string, SkuaScriptFacts?>? _cached;
+    private readonly Action<IReadOnlySet<string>>? _retain;
+    private readonly long _budgetMs;
+    private readonly Func<long> _clockMs;
+    private readonly CancellationTokenSource _cancel = new();
+    private readonly ManualResetEventSlim _idle = new(true);
+    private Queue<string> _pending = new();
+    private bool _worker;
     private readonly object _gate = new();
     private Dictionary<string, string> _paths = new(StringComparer.Ordinal);
 
@@ -33,11 +41,17 @@ public sealed class SkuaScriptCatalog
     /// <param name="facts">Optional: the full path in, what one read of the file told (bot or not, header title,
     /// description and tags). Asked once per listed file after the name rule; <c>IsBot = false</c> excludes it, null or an
     /// exception lists it without header data.</param>
+    /// <param name="factsOptions">Optional: the time budget of the reading, and a look into the cache of <paramref name="facts"/>.</param>
     public SkuaScriptCatalog(string scriptsRoot, Func<string, IEnumerable<string>> listFiles, Func<string, bool> isLink,
-        Func<string, bool>? isBotFile = null, Func<string, SkuaScriptFacts?>? facts = null)
+        Func<string, bool>? isBotFile = null, Func<string, SkuaScriptFacts?>? facts = null,
+        SkuaScriptFactsOptions? factsOptions = null)
     {
         _isBotFile = isBotFile;
         _facts = facts;
+        _cached = factsOptions?.Cached;
+        _retain = factsOptions?.Retain;
+        _budgetMs = (long)(factsOptions?.Budget ?? SkuaScriptFactsOptions.DefaultBudget).TotalMilliseconds;
+        _clockMs = factsOptions?.ClockMs ?? (() => Environment.TickCount64);
         _root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(scriptsRoot));
         _rootPrefix = _root + Path.DirectorySeparatorChar;
         _listFiles = listFiles;
@@ -55,6 +69,9 @@ public sealed class SkuaScriptCatalog
     public IReadOnlyList<SkuaScriptInfo> Scan()
     {
         var found = new Dictionary<string, (SkuaScriptInfo Info, string FullPath)>(StringComparer.Ordinal);
+        var seen = new HashSet<string>(PathComparer);
+        var deferred = new Queue<string>();
+        var started = _clockMs();
         foreach (var file in _listFiles(_root))
         {
             if (Relative(file) is not { } relative || found.ContainsKey(relative))
@@ -75,7 +92,8 @@ public sealed class SkuaScriptCatalog
                 continue;
             }
 
-            var facts = ReadFacts(file);
+            seen.Add(file);
+            var facts = ReadFactsWithin(file, started, deferred);
             if (facts is { IsBot: false })
             {
                 continue;
@@ -83,6 +101,9 @@ public sealed class SkuaScriptCatalog
 
             found[relative] = (new SkuaScriptInfo(IdOf(relative), name, folder, facts?.Title, facts?.Description, facts?.Tags), _rootPrefix + relative.Replace('/', Path.DirectorySeparatorChar));
         }
+
+        Retain(seen);
+        Defer(deferred);
 
         var sorted = found.Values
             .OrderBy(s => s.Info.Folder, StringComparer.OrdinalIgnoreCase).ThenBy(s => s.Info.Folder, StringComparer.Ordinal)
@@ -121,6 +142,146 @@ public sealed class SkuaScriptCatalog
         }
 
         return parts[^1].StartsWith("Core", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static StringComparer PathComparer =>
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
+    /// <summary>
+    /// What is known of the file: from the cache when it has it; read now while this scan is within its time budget; else
+    /// null (listed without header data, the ScriptMain check not made) and queued for the background worker.
+    /// </summary>
+    private SkuaScriptFacts? ReadFactsWithin(string fullPath, long started, Queue<string> deferred)
+    {
+        if (_facts is null)
+        {
+            return null;
+        }
+
+        if (_cached is not null)
+        {
+            try
+            {
+                if (_cached(fullPath) is { } known)
+                {
+                    return known;
+                }
+            }
+            catch (Exception)
+            {
+                // Not cached as far as we can tell.
+            }
+        }
+
+        if (_clockMs() - started >= _budgetMs)
+        {
+            deferred.Enqueue(fullPath);
+            return null;
+        }
+
+        return ReadFacts(fullPath);
+    }
+
+    private void Retain(IReadOnlySet<string> seen)
+    {
+        if (_retain is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _retain(seen);
+        }
+        catch (Exception)
+        {
+            // Pruning is a courtesy.
+        }
+    }
+
+    /// <summary>Hands the files this scan had no time for to the one background worker (replacing what it had left).</summary>
+    private void Defer(Queue<string> deferred)
+    {
+        if (deferred.Count == 0 || _cancel.IsCancellationRequested)
+        {
+            return;
+        }
+
+        lock (_gate)
+        {
+            _pending = deferred;
+            if (_worker)
+            {
+                return;
+            }
+
+            _worker = true;
+            _idle.Reset();
+        }
+
+        try
+        {
+            _ = Task.Run(Work);
+        }
+        catch (Exception)
+        {
+            lock (_gate)
+            {
+                _worker = false;
+                _idle.Set();
+            }
+        }
+    }
+
+    private void Work()
+    {
+        try
+        {
+            while (!_cancel.IsCancellationRequested)
+            {
+                string next;
+                lock (_gate)
+                {
+                    if (!_pending.TryDequeue(out var path))
+                    {
+                        return;
+                    }
+
+                    next = path;
+                }
+
+                ReadFacts(next);
+            }
+        }
+        catch (Exception)
+        {
+            // Never throws: the next scan reads what is left.
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                _worker = false;
+                _pending = new Queue<string>();
+                _idle.Set();
+            }
+        }
+    }
+
+    /// <summary>Waits until the background reading is done (or stopped); false on timeout. For tests and shutdown.</summary>
+    public bool WaitForBackground(TimeSpan timeout) => _idle.Wait(timeout);
+
+    /// <summary>Stops the background reading. The catalog stays usable, but reads no more in the background.</summary>
+    public void Dispose()
+    {
+        try
+        {
+            _cancel.Cancel();
+        }
+        catch (Exception)
+        {
+            // Unloading must never fail.
+        }
     }
 
     private SkuaScriptFacts? ReadFacts(string fullPath)

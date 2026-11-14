@@ -306,4 +306,181 @@ public class SkuaScriptCatalogTests
         Assert.Equal(SkuaProtocol.MaxScripts, catalog.Scan().Count);
         Assert.False(catalog.Truncated);
     }
+
+    // The facts budget: a fake clock moves on only when a file is read; the fake cache stands for the plugin's.
+    private sealed class Reading
+    {
+        public long Now;
+        public long CostMs = 3000;
+        public readonly Dictionary<string, SkuaScriptFacts> Cache = new();
+        public readonly List<string> Reads = [];
+        public readonly object Gate = new();
+        public Func<string, bool> Throws = _ => false;
+
+        public SkuaScriptFacts? Read(string path)
+        {
+            lock (Gate)
+            {
+                Reads.Add(path);
+                Interlocked.Add(ref Now, CostMs);
+                if (Throws(path))
+                {
+                    throw new IOException("locked");
+                }
+
+                var facts = new SkuaScriptFacts(!path.EndsWith("Lib.cs"), "T " + Path.GetFileNameWithoutExtension(path), null, null);
+                Cache[path] = facts;
+                return facts;
+            }
+        }
+
+        public SkuaScriptFacts? Peek(string path)
+        {
+            lock (Gate)
+            {
+                return Cache.GetValueOrDefault(path);
+            }
+        }
+
+        public SkuaScriptCatalog Catalog(IEnumerable<string> relative, Action<IReadOnlySet<string>>? retain = null, int budgetMs = 8000)
+        {
+            var files = relative.Select(At).ToList();
+            return new SkuaScriptCatalog(Root, _ => files, _ => false, null, Read,
+                new SkuaScriptFactsOptions { Cached = Peek, Retain = retain, Budget = TimeSpan.FromMilliseconds(budgetMs), ClockMs = () => Interlocked.Read(ref Now) });
+        }
+    }
+
+    private static readonly string[] Five = ["a.cs", "b.cs", "c.cs", "d.cs", "Lib.cs"];
+
+    [Fact]
+    public void When_the_budget_is_spent_the_rest_is_listed_without_header_data_and_read_in_the_background()
+    {
+        var reading = new Reading();
+        using var catalog = reading.Catalog(Five);
+
+        var first = catalog.Scan();
+
+        Assert.Equal(["a", "b", "c", "d", "Lib"], first.Select(s => s.Name));
+        Assert.Equal(["T a", "T b", "T c"], first.Take(3).Select(s => s.Title));
+        Assert.Null(first[3].Title);
+        Assert.Contains(first, s => s.Name == "Lib"); // unread: listed, the ScriptMain check was not made
+        Assert.True(catalog.WaitForBackground(TimeSpan.FromSeconds(10)));
+
+        var second = catalog.Scan();
+
+        Assert.Equal(["a", "b", "c", "d"], second.Select(s => s.Name));
+        Assert.Equal(["T a", "T b", "T c", "T d"], second.Select(s => s.Title));
+        Assert.Equal(5, reading.Reads.Count); // nothing read twice
+    }
+
+    [Fact]
+    public void A_scan_inside_the_budget_reads_everything_and_starts_no_background_work()
+    {
+        var reading = new Reading { CostMs = 1 };
+        using var catalog = reading.Catalog(Five);
+
+        Assert.Equal(["a", "b", "c", "d"], catalog.Scan().Select(s => s.Name));
+        Assert.True(catalog.WaitForBackground(TimeSpan.Zero));
+        Assert.Equal(5, reading.Reads.Count);
+    }
+
+    [Fact]
+    public void Files_already_cached_cost_no_budget_and_come_with_their_data()
+    {
+        var reading = new Reading();
+        using var catalog = reading.Catalog(Five);
+        catalog.Scan();
+        Assert.True(catalog.WaitForBackground(TimeSpan.FromSeconds(10)));
+        reading.Now = 0;
+        reading.Reads.Clear();
+
+        var again = catalog.Scan();
+
+        Assert.Empty(reading.Reads);
+        Assert.All(again, s => Assert.NotNull(s.Title));
+    }
+
+    [Fact]
+    public void A_throwing_hook_in_the_background_does_not_stop_the_other_files()
+    {
+        var reading = new Reading { Throws = p => p.EndsWith("d.cs") };
+        using var catalog = reading.Catalog(Five);
+        catalog.Scan();
+
+        Assert.True(catalog.WaitForBackground(TimeSpan.FromSeconds(10)));
+
+        Assert.Contains(At("Lib.cs"), reading.Reads);
+        Assert.Equal(["a", "b", "c", "d"], catalog.Scan().Select(s => s.Name)); // d: listed without data; Lib: now known as a library
+    }
+
+    [Fact]
+    public void A_newer_scan_replaces_the_pending_files_and_only_one_worker_runs()
+    {
+        var reading = new Reading();
+        using var catalog = reading.Catalog(Five);
+
+        catalog.Scan();
+        catalog.Scan();
+        catalog.Scan();
+
+        Assert.True(catalog.WaitForBackground(TimeSpan.FromSeconds(10)));
+        Assert.Equal(5, reading.Reads.Distinct().Count());
+    }
+
+    [Fact]
+    public void Disposing_stops_the_background_work_and_never_throws()
+    {
+        var reading = new Reading();
+        var started = new ManualResetEventSlim();
+        var release = new ManualResetEventSlim();
+        var files = Five.Concat(Enumerable.Range(0, 50).Select(i => $"x{i}.cs")).Select(At).ToList();
+        var catalog = new SkuaScriptCatalog(Root, _ => files, _ => false, null,
+            path =>
+            {
+                if (reading.Reads.Count >= 5)
+                {
+                    started.Set();
+                    release.Wait(TimeSpan.FromSeconds(10));
+                }
+
+                return reading.Read(path);
+            },
+            new SkuaScriptFactsOptions { Cached = reading.Peek, ClockMs = () => Interlocked.Read(ref reading.Now) });
+        catalog.Scan();
+        Assert.True(started.Wait(TimeSpan.FromSeconds(10)));
+
+        catalog.Dispose();
+        release.Set();
+
+        Assert.True(catalog.WaitForBackground(TimeSpan.FromSeconds(10)));
+        Assert.True(reading.Reads.Count < files.Count);
+        catalog.Dispose();
+        Assert.NotEmpty(catalog.Scan()); // still usable, but no new background work
+        var readsAfter = reading.Reads.Count;
+        Assert.True(catalog.WaitForBackground(TimeSpan.Zero));
+        Thread.Sleep(50);
+        Assert.Equal(readsAfter, reading.Reads.Count);
+    }
+
+    [Fact]
+    public void The_retain_hook_gets_the_paths_of_the_scan_so_the_cache_can_be_pruned()
+    {
+        var reading = new Reading { CostMs = 1 };
+        IReadOnlySet<string>? kept = null;
+        using var catalog = reading.Catalog(["a.cs", "Core/x.cs", "b.cs"], retain: set => kept = set);
+
+        catalog.Scan();
+
+        Assert.NotNull(kept);
+        Assert.Equal([At("a.cs"), At("b.cs")], kept!.Order());
+    }
+
+    [Fact]
+    public void A_throwing_retain_hook_is_ignored()
+    {
+        var reading = new Reading { CostMs = 1 };
+        using var catalog = reading.Catalog(["a.cs"], retain: _ => throw new InvalidOperationException());
+
+        Assert.Single(catalog.Scan());
+    }
 }

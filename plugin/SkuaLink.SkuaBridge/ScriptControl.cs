@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Text;
 using AqwCompanion.Skua;
 using Skua.Core.Interfaces;
 using Skua.Core.Models;
@@ -39,16 +38,45 @@ internal sealed class ScriptControl : ISkuaScriptHost
     /// The catalog of Skua's scripts folder. A missing folder lists nothing. Links are skipped while listing and refused
     /// again when an id is resolved (the catalog's own check, through <see cref="IsLink"/>).
     /// </summary>
-    public static SkuaScriptCatalog Catalog() => new(ClientFileSources.SkuaScriptsDIR, ListFiles, IsLink, null, ReadFacts);
+    public static SkuaScriptCatalog Catalog() => new(ClientFileSources.SkuaScriptsDIR, ListFiles, IsLink, null, ReadFacts,
+        new SkuaScriptFactsOptions { Cached = CachedFacts, Retain = Retain });
 
     private const int MaxSourceBytes = 2 * 1024 * 1024;
 
     private static readonly ConcurrentDictionary<string, (long Length, DateTime Written, SkuaScriptFacts Facts)> FactsByPath =
         new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The facts of an unchanged file from an earlier read, or null; only looks at the file's size and time.</summary>
+    private static SkuaScriptFacts? CachedFacts(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            return FactsByPath.TryGetValue(path, out var known) && known.Length == info.Length && known.Written == info.LastWriteTimeUtc
+                ? known.Facts
+                : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Forgets the facts of files the last scan did not see (deleted or moved), so the cache cannot grow without end.</summary>
+    private static void Retain(IReadOnlySet<string> seen)
+    {
+        foreach (var path in FactsByPath.Keys)
+        {
+            if (!seen.Contains(path))
+            {
+                FactsByPath.TryRemove(path, out _);
+            }
+        }
+    }
+
     /// <summary>
     /// What one read of the file tells: whether it declares <c>void ScriptMain(</c> (a bot, not a library) and its header
-    /// comment (name, description, tags). Reads at most 2 MB as UTF-8, once; the result is cached per path by (length, last
+    /// comment (name, description, tags). Reads at most 2 MB once, decoded by byte order mark (see <see cref="SkuaScriptFileText"/>); the result is cached per path by (length, last
     /// write time), so a rescan does not reread unchanged files. Any error means "list it" without header data (null).
     /// Runs on the command worker, never on the pipe reader.
     /// </summary>
@@ -78,9 +106,7 @@ internal sealed class ScriptControl : ISkuaScriptHost
                 read += n;
             }
 
-            var text = Encoding.UTF8.GetString(buffer, 0, read);
-            var (title, description, tags) = SkuaScriptHeader.Parse(text);
-            var facts = new SkuaScriptFacts(SkuaScriptSource.DeclaresScriptMain(text), title, description, tags);
+            var facts = SkuaScriptFileText.Facts(buffer, read, length > MaxSourceBytes);
             FactsByPath[path] = (length, written, facts);
             return facts;
         }

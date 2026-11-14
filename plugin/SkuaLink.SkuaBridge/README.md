@@ -15,10 +15,15 @@ Exactly this, nothing else:
 2. **List scripts** (`listScripts`): the `.cs` files under Skua's scripts folder (`ClientFileSources.SkuaScriptsDIR`,
    `%AppData%\Skua\Scripts`), except Skua's compile cache `Cached-Scripts`, hidden/system files and links, sorted by
    folder then name, at most `SkuaProtocol.MaxScripts` (the answer says `truncated` when cut). Each script travels as
-   `{id, name, folder}`: `id` is the first 8 bytes of the SHA-256 of the path relative to the scripts folder, lowercase
+   `{id, name, folder, title?, description?, tags?}`: `id` is the first 8 bytes of the SHA-256 of the path relative to the scripts folder, lowercase
    hex; no full path leaves the plugin. Libraries are not listed: a file name starting with `Core` (case-insensitive,
    prefix only), any file under a folder named `Core`, and any file without `void ScriptMain(` (read once, at most 2 MB,
    cached by size and write time; a read error lists the file).
+   The same read parses the header comment most bots start with (`/* name: ... description: ... tags: ... */`, only the
+   first block at the top of the file, first 4 KB, one line per value): `name` travels as `title` (cut to 100 chars),
+   `description` (200) and `tags` (120), control characters replaced by a space. A script without that header
+   travels without them and the phone shows its file name. With descriptions the list of 2000 scripts is about
+   600 KB, so the result line cap is 1 MB.
 3. **Start a listed script** (`start {id}`): only an id from the plugin's own listing (an id it has not listed yet gets one
    fresh scan). The path is checked again (inside the scripts folder plus a separator, ends in `.cs`, not under
    `Cached-Scripts`, neither the file nor a folder on the way a link) and must still exist. Refused while a script runs

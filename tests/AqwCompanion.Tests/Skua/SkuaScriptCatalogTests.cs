@@ -259,6 +259,44 @@ public class SkuaScriptCatalogTests
     }
 
     [Fact]
+    public void The_facts_hook_fills_title_description_and_tags_and_gets_the_full_path_once_per_file()
+    {
+        var asked = new List<string>();
+        var catalog = new SkuaScriptCatalog(Root, _ => new[] { At("Farm/Bot.cs"), At("Plain.cs"), At("CoreBots.cs") }, _ => false, null,
+            path =>
+            {
+                asked.Add(path);
+                return path.EndsWith("Bot.cs") ? new SkuaScriptFacts(true, "A title", "A description", "a, b") : null;
+            });
+
+        var scripts = catalog.Scan();
+
+        Assert.Equal(new SkuaScriptInfo(SkuaScriptCatalog.IdOf("Farm/Bot.cs"), "Bot", "Farm", "A title", "A description", "a, b"), scripts.Single(s => s.Name == "Bot"));
+        Assert.Equal(new SkuaScriptInfo(SkuaScriptCatalog.IdOf("Plain.cs"), "Plain", ""), scripts.Single(s => s.Name == "Plain"));
+        Assert.Equal(2, asked.Count);
+        Assert.DoesNotContain(At("CoreBots.cs"), asked);
+    }
+
+    [Fact]
+    public void A_facts_verdict_of_not_a_bot_excludes_the_script()
+    {
+        var catalog = new SkuaScriptCatalog(Root, _ => new[] { At("Lib.cs"), At("Bot.cs") }, _ => false, null,
+            path => new SkuaScriptFacts(path.EndsWith("Bot.cs"), "T", null, null));
+
+        Assert.Equal(["Bot"], catalog.Scan().Select(s => s.Name));
+        Assert.False(catalog.TryResolve(SkuaScriptCatalog.IdOf("Lib.cs"), out _));
+    }
+
+    [Fact]
+    public void A_throwing_facts_hook_lists_the_script_without_header_data()
+    {
+        var catalog = new SkuaScriptCatalog(Root, _ => new[] { At("Bot.cs") }, _ => false, null, _ => throw new IOException("locked"));
+
+        var only = Assert.Single(catalog.Scan());
+        Assert.Equal(("Bot", null, null, null), (only.Name, only.Title, only.Description, only.Tags));
+    }
+
+    [Fact]
     public void The_cap_counts_only_listed_scripts()
     {
         var files = Enumerable.Range(0, SkuaProtocol.MaxScripts).Select(i => $"Core/c{i:D5}.cs")

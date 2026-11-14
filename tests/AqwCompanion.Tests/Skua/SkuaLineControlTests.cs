@@ -27,6 +27,89 @@ public class SkuaLineControlTests
 
     private static T RoundTrip<T>(SkuaMessage message) where T : SkuaMessage => Assert.IsType<T>(SkuaLine.Parse(SkuaLine.ToLine(message)));
 
+    [Fact]
+    public void Script_descriptions_match_their_fixture_both_ways()
+    {
+        BothWays("result-scripts-described.json", Result(scripts:
+        [
+            new SkuaScriptInfo(ScriptId, "0RunAll", "Hollowborn/HollowbornChaosEnvoy", "Hollowborn Chaos Envy Run all", "does all of hollowborn chaos envoy", "hollowborn, do all"),
+            new SkuaScriptInfo("1122334455667788", "Farm", "", "Only a title"),
+        ]));
+    }
+
+    [Fact]
+    public void Missing_title_description_and_tags_are_omitted_not_written_as_null()
+    {
+        var line = SkuaLine.ToLine(Result(scripts: [new SkuaScriptInfo("1", "A", "F")]));
+
+        Assert.DoesNotContain("title", line);
+        Assert.DoesNotContain("description", line);
+        Assert.DoesNotContain("tags", line);
+    }
+
+    [Fact]
+    public void A_script_field_that_is_not_a_string_degrades_that_field_and_keeps_the_entry()
+    {
+        var line = ResultLine("\"scripts\":[{\"id\":\"9\",\"name\":\"Farm\",\"folder\":\"\",\"title\":5,\"description\":{\"a\":1},\"tags\":\"ok\"},"
+            + "{\"id\":\"8\",\"name\":\"B\",\"folder\":\"\",\"title\":null,\"description\":[],\"tags\":true}]");
+
+        var parsed = Assert.IsType<ResultMessage>(SkuaLine.Parse(line));
+
+        Assert.Equal([new SkuaScriptInfo("9", "Farm", "", null, null, "ok"), new SkuaScriptInfo("8", "B", "")], parsed.Scripts);
+    }
+
+    [Fact]
+    public void Script_texts_are_cut_to_their_caps_and_lone_surrogates_are_removed_both_ways()
+    {
+        var lone = "\uD800";
+        var scripts = new List<SkuaScriptInfo>
+        {
+            new("1", "A", "", new string('t', 150) + lone, new string('d', 300), new string('g', 300)),
+        };
+
+        var parsed = RoundTrip<ResultMessage>(Result(scripts: scripts));
+
+        var script = Assert.Single(parsed.Scripts!);
+        Assert.Equal(SkuaProtocol.MaxScriptTitleLength, script.Title!.Length);
+        Assert.Equal(SkuaProtocol.MaxScriptDescriptionLength, script.Description!.Length);
+        Assert.Equal(SkuaProtocol.MaxScriptTagsLength, script.Tags!.Length);
+
+        var hostile = ResultLine("\"scripts\":[{\"id\":\"1\",\"name\":\"A\",\"folder\":\"\",\"title\":\"" + new string('t', 500) + "\"}]");
+        Assert.Equal(SkuaProtocol.MaxScriptTitleLength, Assert.IsType<ResultMessage>(SkuaLine.Parse(hostile)).Scripts![0].Title!.Length);
+    }
+
+    [Fact]
+    public void A_full_list_of_2000_described_scripts_fits_one_result_line_under_the_cap()
+    {
+        var scripts = Enumerable.Range(1, SkuaProtocol.MaxScripts)
+            .Select(i => new SkuaScriptInfo($"{i:x16}", $"Some fairly long script name {i}", "Other/Some folder",
+                new string('T', 60), new string('D', 150), new string('G', 80))).ToList();
+
+        var line = SkuaLine.ToLine(Result(scripts: scripts));
+        var parsed = Assert.IsType<ResultMessage>(SkuaLine.Parse(line));
+
+        Assert.True(Encoding.UTF8.GetByteCount(line) > 256 * 1024);
+        Assert.True(Encoding.UTF8.GetByteCount(line) <= SkuaProtocol.MaxResultLineBytes);
+        Assert.Equal(scripts, parsed.Scripts);
+        Assert.False(parsed.Truncated);
+    }
+
+    [Fact]
+    public void Described_scripts_too_large_for_the_result_cap_lose_the_last_scripts_first()
+    {
+        var wide = new string('\u00e9', SkuaProtocol.MaxTextLength);
+        var scripts = Enumerable.Range(1, SkuaProtocol.MaxScripts)
+            .Select(i => new SkuaScriptInfo($"{i:x16}", wide, wide, wide[..SkuaProtocol.MaxScriptTitleLength], wide[..SkuaProtocol.MaxScriptDescriptionLength], wide[..SkuaProtocol.MaxScriptTagsLength])).ToList();
+
+        var line = SkuaLine.ToLine(Result(scripts: scripts));
+        var parsed = Assert.IsType<ResultMessage>(SkuaLine.Parse(line));
+
+        Assert.True(Encoding.UTF8.GetByteCount(line) <= SkuaProtocol.MaxResultLineBytes);
+        Assert.InRange(parsed.Scripts!.Count, 1, SkuaProtocol.MaxScripts - 1);
+        Assert.Equal(scripts.Take(parsed.Scripts.Count), parsed.Scripts);
+        Assert.True(parsed.Truncated);
+    }
+
     private static string ResultLine(string fields) => "{\"v\":1,\"type\":\"result\",\"reqId\":\"r1\",\"ok\":true," + fields + "}";
 
     // ---- Protocol constants ------------------------------------------------------------------------------------
@@ -35,7 +118,7 @@ public class SkuaLineControlTests
     public void The_new_caps_have_their_agreed_values()
     {
         Assert.Equal(2000, SkuaProtocol.MaxScripts);
-        Assert.Equal(256 * 1024, SkuaProtocol.MaxResultLineBytes);
+        Assert.Equal(1024 * 1024, SkuaProtocol.MaxResultLineBytes);
         Assert.Equal(16 * 1024, SkuaProtocol.MaxLineBytes);
         Assert.Equal(200, SkuaProtocol.MaxOptionValueLength);
         Assert.Equal(4 * 1024, SkuaProtocol.MaxCommandLineBytes);
@@ -561,8 +644,8 @@ public class SkuaLineControlTests
     public void A_result_still_too_large_without_scripts_becomes_a_result_too_large_error()
     {
         var text = new string('\u00e9', SkuaProtocol.MaxTextLength);
-        var defs = Enumerable.Range(1, 300).Select(i => new SkuaOptionDef("Options", $"N{i}", text, text, "string", "")).ToList();
-        var values = Enumerable.Range(1, 300).Select(i => new SkuaOptionValue("Options", $"N{i}", new string('\u00e9', SkuaProtocol.MaxOptionValueLength))).ToList();
+        var defs = Enumerable.Range(1, 900).Select(i => new SkuaOptionDef("Options", $"N{i}", text, text, "string", "")).ToList();
+        var values = Enumerable.Range(1, 900).Select(i => new SkuaOptionValue("Options", $"N{i}", new string('\u00e9', SkuaProtocol.MaxOptionValueLength))).ToList();
         var scripts = new List<SkuaScriptInfo> { new("1", "A.cs", "") };
 
         var line = SkuaLine.ToLine(Result(reqId: "keep", scripts: scripts, defs: defs, values: values, hasOptions: true, firstRun: true));

@@ -451,12 +451,43 @@ public sealed class SkuaApiTests : IDisposable
 
         Assert.Equal(200, response.Status);
         Assert.Equal(
-            $"{{\"scripts\":[{{\"id\":\"{Sid}\",\"name\":\"Farm\",\"folder\":\"Farming\",\"askOptions\":true}},"
-            + $"{{\"id\":\"{other}\",\"name\":\"Butler\",\"folder\":\"\",\"askOptions\":false}}],\"truncated\":true}}",
+            $"{{\"scripts\":[{{\"id\":\"{Sid}\",\"name\":\"Farm\",\"folder\":\"Farming\",\"askOptions\":true,\"title\":null,\"description\":null,\"tags\":null}},"
+            + $"{{\"id\":\"{other}\",\"name\":\"Butler\",\"folder\":\"\",\"askOptions\":false,\"title\":null,\"description\":null,\"tags\":null}}],\"truncated\":true}}",
             Text(response));
         var sent = Assert.Single(_skua.Sent);
         Assert.Equal("a1", sent.InstanceId);
         Assert.IsType<ListScriptsCommand>(sent.Command);
+    }
+
+    [Fact]
+    public void The_script_list_carries_title_description_and_tags()
+    {
+        _skua.AnswerWith(Ok(scripts: [new SkuaScriptInfo(Sid, "0RunAll", "Hollowborn", "Run all", "does \"all\" of it", "a, b")]));
+
+        using var doc = JsonDocument.Parse(Text(Get("/api/skua/a1/scripts")));
+
+        var item = doc.RootElement.GetProperty("scripts")[0];
+        Assert.Equal("0RunAll", item.GetProperty("name").GetString());
+        Assert.Equal("Run all", item.GetProperty("title").GetString());
+        Assert.Equal("does \"all\" of it", item.GetProperty("description").GetString());
+        Assert.Equal("a, b", item.GetProperty("tags").GetString());
+    }
+
+    [Fact]
+    public void A_list_of_2000_described_scripts_is_answered_whole_with_no_response_size_cap()
+    {
+        var scripts = Enumerable.Range(1, SkuaProtocol.MaxScripts)
+            .Select(i => new SkuaScriptInfo($"{i:x16}", $"Some fairly long script name {i}", "Other/Some folder",
+                new string('T', 60), new string('D', 150), new string('G', 80))).ToList();
+        _skua.AnswerWith(Ok(scripts: scripts));
+
+        var response = Get("/api/skua/a1/scripts");
+
+        Assert.Equal(200, response.Status);
+        Assert.InRange(response.Body.Length, 500_000, 1_000_000);
+        using var doc = JsonDocument.Parse(response.Body);
+        Assert.Equal(SkuaProtocol.MaxScripts, doc.RootElement.GetProperty("scripts").GetArrayLength());
+        Assert.Equal(new string('D', 150), doc.RootElement.GetProperty("scripts")[1999].GetProperty("description").GetString());
     }
 
     [Fact]

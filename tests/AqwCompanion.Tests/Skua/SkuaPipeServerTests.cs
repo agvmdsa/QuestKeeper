@@ -164,7 +164,7 @@ public class SkuaPipeServerTests
         var pending = hub.SendCommandAsync("b", new ListScriptsCommand(""), CancellationToken.None);
         var line = await ReadLineAsync(second);
         var command = Assert.IsType<ListScriptsCommand>(SkuaLine.Parse(line));
-        // A result larger than the 16 KB line cap still arrives (the result cap is 256 KB).
+        // A result larger than the 16 KB line cap still arrives (the result cap is 1 MB).
         var scripts = Enumerable.Range(0, 400).Select(i => new SkuaScriptInfo($"{i:x16}", "Script number " + i, "Some folder")).ToList();
         var result = new ResultMessage(command.ReqId, true, null, scripts, null, null, false, false);
         var resultLine = SkuaLine.ToLine(result);

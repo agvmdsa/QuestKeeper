@@ -39,53 +39,54 @@ internal sealed class ScriptControl : ISkuaScriptHost
     /// The catalog of Skua's scripts folder. A missing folder lists nothing. Links are skipped while listing and refused
     /// again when an id is resolved (the catalog's own check, through <see cref="IsLink"/>).
     /// </summary>
-    public static SkuaScriptCatalog Catalog() => new(ClientFileSources.SkuaScriptsDIR, ListFiles, IsLink, IsBotFile);
+    public static SkuaScriptCatalog Catalog() => new(ClientFileSources.SkuaScriptsDIR, ListFiles, IsLink, null, ReadFacts);
 
     private const int MaxSourceBytes = 2 * 1024 * 1024;
 
-    private static readonly ConcurrentDictionary<string, (long Length, DateTime Written, bool IsBot)> BotVerdicts =
+    private static readonly ConcurrentDictionary<string, (long Length, DateTime Written, SkuaScriptFacts Facts)> FactsByPath =
         new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// True when the file declares <c>void ScriptMain(</c> (a bot, not a library). Reads at most 2 MB as UTF-8; the verdict
-    /// is cached per path by (length, last write time), so a rescan does not reread unchanged files. Any error means "list it".
+    /// What one read of the file tells: whether it declares <c>void ScriptMain(</c> (a bot, not a library) and its header
+    /// comment (name, description, tags). Reads at most 2 MB as UTF-8, once; the result is cached per path by (length, last
+    /// write time), so a rescan does not reread unchanged files. Any error means "list it" without header data (null).
     /// Runs on the command worker, never on the pipe reader.
     /// </summary>
-    private static bool IsBotFile(string path)
+    private static SkuaScriptFacts? ReadFacts(string path)
     {
         try
         {
             var info = new FileInfo(path);
             var length = info.Length;
             var written = info.LastWriteTimeUtc;
-            if (BotVerdicts.TryGetValue(path, out var known) && known.Length == length && known.Written == written)
+            if (FactsByPath.TryGetValue(path, out var known) && known.Length == length && known.Written == written)
             {
-                return known.IsBot;
+                return known.Facts;
             }
 
             var buffer = new byte[Math.Min(length, MaxSourceBytes)];
-            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            var read = 0;
+            while (read < buffer.Length)
             {
-                var read = 0;
-                while (read < buffer.Length)
+                var n = stream.Read(buffer, read, buffer.Length - read);
+                if (n <= 0)
                 {
-                    var n = stream.Read(buffer, read, buffer.Length - read);
-                    if (n <= 0)
-                    {
-                        break;
-                    }
-
-                    read += n;
+                    break;
                 }
 
-                var isBot = SkuaScriptSource.DeclaresScriptMain(Encoding.UTF8.GetString(buffer, 0, read));
-                BotVerdicts[path] = (length, written, isBot);
-                return isBot;
+                read += n;
             }
+
+            var text = Encoding.UTF8.GetString(buffer, 0, read);
+            var (title, description, tags) = SkuaScriptHeader.Parse(text);
+            var facts = new SkuaScriptFacts(SkuaScriptSource.DeclaresScriptMain(text), title, description, tags);
+            FactsByPath[path] = (length, written, facts);
+            return facts;
         }
         catch (Exception)
         {
-            return true;
+            return null;
         }
     }
 

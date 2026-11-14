@@ -21,6 +21,7 @@ public sealed class SkuaScriptCatalog
     private readonly Func<string, IEnumerable<string>> _listFiles;
     private readonly Func<string, bool> _isLink;
     private readonly Func<string, bool>? _isBotFile;
+    private readonly Func<string, SkuaScriptFacts?>? _facts;
     private readonly object _gate = new();
     private Dictionary<string, string> _paths = new(StringComparer.Ordinal);
 
@@ -29,10 +30,14 @@ public sealed class SkuaScriptCatalog
     /// <param name="isLink">True when a file or folder is a reparse point or symbolic link.</param>
     /// <param name="isBotFile">Optional: the full path in, true = list it (a bot, not a library). Asked after the name rule;
     /// null means no check, and an exception counts as "list it".</param>
+    /// <param name="facts">Optional: the full path in, what one read of the file told (bot or not, header title,
+    /// description and tags). Asked once per listed file after the name rule; <c>IsBot = false</c> excludes it, null or an
+    /// exception lists it without header data.</param>
     public SkuaScriptCatalog(string scriptsRoot, Func<string, IEnumerable<string>> listFiles, Func<string, bool> isLink,
-        Func<string, bool>? isBotFile = null)
+        Func<string, bool>? isBotFile = null, Func<string, SkuaScriptFacts?>? facts = null)
     {
         _isBotFile = isBotFile;
+        _facts = facts;
         _root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(scriptsRoot));
         _rootPrefix = _root + Path.DirectorySeparatorChar;
         _listFiles = listFiles;
@@ -70,7 +75,13 @@ public sealed class SkuaScriptCatalog
                 continue;
             }
 
-            found[relative] = (new SkuaScriptInfo(IdOf(relative), name, folder), _rootPrefix + relative.Replace('/', Path.DirectorySeparatorChar));
+            var facts = ReadFacts(file);
+            if (facts is { IsBot: false })
+            {
+                continue;
+            }
+
+            found[relative] = (new SkuaScriptInfo(IdOf(relative), name, folder, facts?.Title, facts?.Description, facts?.Tags), _rootPrefix + relative.Replace('/', Path.DirectorySeparatorChar));
         }
 
         var sorted = found.Values
@@ -110,6 +121,23 @@ public sealed class SkuaScriptCatalog
         }
 
         return parts[^1].StartsWith("Core", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private SkuaScriptFacts? ReadFacts(string fullPath)
+    {
+        if (_facts is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return _facts(fullPath);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     private bool IsBotFile(string fullPath)

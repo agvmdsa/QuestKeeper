@@ -159,7 +159,7 @@ public sealed class SkuaApi(ISkuaFeed feed, ISkuaCommandChannel channel, SkuaScr
         var ids = scripts.Select(s => s.Id).ToList();
         var ask = prefs.AskOptions(ids);
         cache.Touch(ids);
-        var items = scripts.Select(s => new SkuaScriptItem(s.Id, s.Name, s.Folder, ask[s.Id])).ToList();
+        var items = scripts.Select(s => new SkuaScriptItem(s.Id, s.Name, s.Folder, ask[s.Id], s.Title, s.Description, s.Tags)).ToList();
         return Json(JsonSerializer.Serialize(new SkuaScriptsBody(items, result.Truncated), SkuaApiJson.Default.SkuaScriptsBody));
     }
 
@@ -438,7 +438,8 @@ public sealed class SkuaApi(ISkuaFeed feed, ISkuaCommandChannel channel, SkuaScr
 /// <summary>Answer of <c>GET /api/skua</c>.</summary>
 public sealed record SkuaInstancesBody(IReadOnlyList<SkuaInstanceState> Instances);
 
-public sealed record SkuaScriptItem(string Id, string Name, string Folder, bool AskOptions);
+/// <summary><c>Title</c>, <c>Description</c> and <c>Tags</c> come from the script's header comment; null (written as null) when it has none.</summary>
+public sealed record SkuaScriptItem(string Id, string Name, string Folder, bool AskOptions, string? Title = null, string? Description = null, string? Tags = null);
 
 /// <summary>Answer of <c>GET /api/skua/{instanceId}/scripts</c>.</summary>
 public sealed record SkuaScriptsBody(IReadOnlyList<SkuaScriptItem> Scripts, bool Truncated);

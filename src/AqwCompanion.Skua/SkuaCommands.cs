@@ -1,7 +1,14 @@
 namespace AqwCompanion.Skua;
 
-/// <summary>A script in Skua's scripts folder. <paramref name="Id"/> is the only thing the app ever sends back about it.</summary>
-public sealed record SkuaScriptInfo(string Id, string Name, string Folder);
+/// <summary>
+/// A script in Skua's scripts folder. <paramref name="Id"/> is the only thing the app ever sends back about it.
+/// <paramref name="Title"/>, <paramref name="Description"/> and <paramref name="Tags"/> come from the script's header
+/// comment (see <see cref="SkuaScriptHeader"/>); null when it has none.
+/// </summary>
+public sealed record SkuaScriptInfo(string Id, string Name, string Folder, string? Title = null, string? Description = null, string? Tags = null);
+
+/// <summary>What one read of a script file told the plugin: whether it is a bot, and its header comment data.</summary>
+public sealed record SkuaScriptFacts(bool IsBot, string? Title, string? Description, string? Tags);
 
 /// <summary>
 /// An option a script declares. <paramref name="Type"/> is one of <see cref="SkuaProtocol.OptionTypes"/>;

@@ -6,8 +6,11 @@ public static class SkuaProtocol
     /// <summary>The line cap for everything except results.</summary>
     public const int MaxLineBytes = 16 * 1024;
 
-    /// <summary>The line cap for a result (plugin to app only), so a whole script list fits one line.</summary>
-    public const int MaxResultLineBytes = 256 * 1024;
+    /// <summary>
+    /// The line cap for a result (plugin to app only), so a whole script list fits one line: 2000 scripts with a title,
+    /// a description and tags come to about 600 KB.
+    /// </summary>
+    public const int MaxResultLineBytes = 1024 * 1024;
     public const int MaxTextLength = 300;
 
     /// <summary>At most this many active quests travel in one status.</summary>
@@ -23,6 +26,11 @@ public static class SkuaProtocol
     /// marked <see cref="ResultMessage.Truncated"/>.
     /// </summary>
     public const int MaxScripts = 2000;
+
+    /// <summary>The longest title, description and tags of a script (cut, never refused).</summary>
+    public const int MaxScriptTitleLength = 100;
+    public const int MaxScriptDescriptionLength = 200;
+    public const int MaxScriptTagsLength = 120;
 
     /// <summary>An option value longer than this is left out, never cut (a cut value would be a different value).</summary>
     public const int MaxOptionValueLength = 200;

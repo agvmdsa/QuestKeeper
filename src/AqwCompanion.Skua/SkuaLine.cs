@@ -239,6 +239,9 @@ public static class SkuaLine
                 w.WriteString("id", Cut(script.Id));
                 w.WriteString("name", Cut(script.Name));
                 w.WriteString("folder", Cut(script.Folder));
+                WriteOptional(w, "title", script.Title, SkuaProtocol.MaxScriptTitleLength);
+                WriteOptional(w, "description", script.Description, SkuaProtocol.MaxScriptDescriptionLength);
+                WriteOptional(w, "tags", script.Tags, SkuaProtocol.MaxScriptTagsLength);
                 w.WriteEndObject();
             }
 
@@ -466,8 +469,22 @@ public static class SkuaLine
 
     private static SkuaScriptInfo? ParseScript(JsonElement entry) =>
         entry.ValueKind == JsonValueKind.Object && NonEmpty(entry, "id") is { } id && Str(entry, "name") is { } name && Str(entry, "folder") is { } folder
-            ? new SkuaScriptInfo(id, Cut(name), Cut(folder))
+            ? new SkuaScriptInfo(id, Cut(name), Cut(folder), OptionalText(entry, "title", SkuaProtocol.MaxScriptTitleLength),
+                OptionalText(entry, "description", SkuaProtocol.MaxScriptDescriptionLength), OptionalText(entry, "tags", SkuaProtocol.MaxScriptTagsLength))
             : null;
+
+    /// <summary>A string field cut to <paramref name="max"/>; null when absent, not a string, empty or unreadable (the entry is kept).</summary>
+    private static string? OptionalText(JsonElement entry, string name, int max)
+    {
+        try
+        {
+            return Str(entry, name) is { } text && Cut(text, max) is { Length: > 0 } cut ? cut : null;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
 
     private static SkuaOptionValue? ParseValue(JsonElement entry) =>
         entry.ValueKind == JsonValueKind.Object && Str(entry, "category") is { } category && NonEmpty(entry, "name") is { } name
@@ -678,6 +695,15 @@ public static class SkuaLine
 
         var text = p.GetString();
         return text is null || text.Contains('\uFFFD') ? null : text;
+    }
+
+    /// <summary>Written only when there is text (cut to <paramref name="max"/>); absent otherwise.</summary>
+    private static void WriteOptional(Utf8JsonWriter w, string name, string? value, int max)
+    {
+        if (value is not null && Cut(value, max) is { Length: > 0 } cut)
+        {
+            w.WriteString(name, cut);
+        }
     }
 
     private static void WriteNullable(Utf8JsonWriter w, string name, string? value)

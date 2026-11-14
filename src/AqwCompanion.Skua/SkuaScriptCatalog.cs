@@ -20,14 +20,19 @@ public sealed class SkuaScriptCatalog
     private readonly string _rootPrefix;
     private readonly Func<string, IEnumerable<string>> _listFiles;
     private readonly Func<string, bool> _isLink;
+    private readonly Func<string, bool>? _isBotFile;
     private readonly object _gate = new();
     private Dictionary<string, string> _paths = new(StringComparer.Ordinal);
 
     /// <param name="scriptsRoot">The scripts folder (absolute).</param>
     /// <param name="listFiles">Every file under a folder, recursively, as full paths.</param>
     /// <param name="isLink">True when a file or folder is a reparse point or symbolic link.</param>
-    public SkuaScriptCatalog(string scriptsRoot, Func<string, IEnumerable<string>> listFiles, Func<string, bool> isLink)
+    /// <param name="isBotFile">Optional: the full path in, true = list it (a bot, not a library). Asked after the name rule;
+    /// null means no check, and an exception counts as "list it".</param>
+    public SkuaScriptCatalog(string scriptsRoot, Func<string, IEnumerable<string>> listFiles, Func<string, bool> isLink,
+        Func<string, bool>? isBotFile = null)
     {
+        _isBotFile = isBotFile;
         _root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(scriptsRoot));
         _rootPrefix = _root + Path.DirectorySeparatorChar;
         _listFiles = listFiles;
@@ -38,7 +43,8 @@ public sealed class SkuaScriptCatalog
     public bool Truncated { get; private set; }
 
     /// <summary>
-    /// Lists every <c>.cs</c> file under the root except Skua's cache, sorted by folder then name, at most
+    /// Lists every <c>.cs</c> file under the root except Skua's cache and library files (see <see cref="IsLibraryName"/>,
+    /// then the optional bot-file check), sorted by folder then name, at most
     /// <see cref="SkuaProtocol.MaxScripts"/>. Only the ids of this scan resolve afterwards.
     /// </summary>
     public IReadOnlyList<SkuaScriptInfo> Scan()
@@ -51,9 +57,19 @@ public sealed class SkuaScriptCatalog
                 continue;
             }
 
+            if (IsLibraryName(relative))
+            {
+                continue;
+            }
+
             var slash = relative.LastIndexOf('/');
             var folder = slash < 0 ? "" : relative[..slash];
             var name = Path.GetFileNameWithoutExtension(relative[(slash + 1)..]);
+            if (!IsBotFile(file))
+            {
+                continue;
+            }
+
             found[relative] = (new SkuaScriptInfo(IdOf(relative), name, folder), _rootPrefix + relative.Replace('/', Path.DirectorySeparatorChar));
         }
 
@@ -76,6 +92,41 @@ public sealed class SkuaScriptCatalog
         }
 
         return kept.Select(s => s.Info).ToList();
+    }
+
+    /// <summary>
+    /// True for a library by name: a folder segment equal to <c>Core</c>, or a file name starting with <c>Core</c>
+    /// (case-insensitive). Only a prefix counts, so <c>ScoreTracker.cs</c> or <c>Encore.cs</c> stay listed.
+    /// </summary>
+    public static bool IsLibraryName(string relativePath)
+    {
+        var parts = relativePath.Split('/');
+        for (var i = 0; i < parts.Length - 1; i++)
+        {
+            if (parts[i].Equals("Core", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return parts[^1].StartsWith("Core", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsBotFile(string fullPath)
+    {
+        if (_isBotFile is null)
+        {
+            return true;
+        }
+
+        try
+        {
+            return _isBotFile(fullPath);
+        }
+        catch (Exception)
+        {
+            return true;
+        }
     }
 
     /// <summary>

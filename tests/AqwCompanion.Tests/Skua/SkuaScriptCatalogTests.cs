@@ -204,4 +204,68 @@ public class SkuaScriptCatalogTests
         Assert.Equal("88177572adbaef2c", only.Id);
         Assert.Equal("Farm", only.Folder);
     }
+
+    [Theory]
+    [InlineData("CoreBots.cs")]
+    [InlineData("CoreFarms.cs")]
+    [InlineData("CoreStory.cs")]
+    [InlineData("CoreAdvanced.cs")]
+    [InlineData("CoreDailies.cs")]
+    [InlineData("Core/TaskExtensions.cs")]
+    [InlineData("core/TaskExtensions.cs")]
+    [InlineData("Hollowborn/CoreHollowborn.cs")]
+    [InlineData("Hollowborn/HollowbornChaosEnvoy/CoreHollowbornChaosEnvoy.cs")]
+    [InlineData("Evil/NSoD/CoreNSOD.cs")]
+    [InlineData("Evil/SDKA/CoreSDKA.cs")]
+    [InlineData("Evil/coresdka.cs")]
+    [InlineData("Story/Core/Deep/Anything.cs")]
+    public void Library_files_are_not_listed(string relative)
+    {
+        Assert.Empty(Catalog([relative]).Scan());
+    }
+
+    [Theory]
+    [InlineData("Hollowborn/HollowbornChaosEnvoy/0RunAll.cs")]
+    [InlineData("Farm/REP/HollowbornREP.cs")]
+    [InlineData("ScoreTracker.cs")]
+    [InlineData("Farm/Encore.cs")]
+    [InlineData("CoreFoo/Bar.cs")]
+    public void Bots_are_listed_only_a_name_prefix_Core_or_a_folder_named_Core_excludes(string relative)
+    {
+        Assert.Single(Catalog([relative]).Scan());
+    }
+
+    [Fact]
+    public void The_bot_file_check_gets_the_full_path_and_false_excludes()
+    {
+        var asked = new List<string>();
+        var catalog = new SkuaScriptCatalog(Root, _ => new[] { At("Farm/Bot.cs"), At("Enhancement/ItemEnhancementManager.cs"), At("CoreBots.cs") },
+            _ => false, path => { asked.Add(path); return !path.EndsWith("ItemEnhancementManager.cs"); });
+
+        var scripts = catalog.Scan();
+
+        Assert.Equal(["Bot"], scripts.Select(s => s.Name));
+        Assert.Contains(At("Enhancement/ItemEnhancementManager.cs"), asked);
+        Assert.DoesNotContain(At("CoreBots.cs"), asked);
+        Assert.False(catalog.TryResolve(SkuaScriptCatalog.IdOf("Enhancement/ItemEnhancementManager.cs"), out _));
+    }
+
+    [Fact]
+    public void A_throwing_bot_file_check_lists_the_script()
+    {
+        var catalog = new SkuaScriptCatalog(Root, _ => new[] { At("Farm/Bot.cs") }, _ => false, _ => throw new IOException("locked"));
+
+        Assert.Equal(["Bot"], catalog.Scan().Select(s => s.Name));
+    }
+
+    [Fact]
+    public void The_cap_counts_only_listed_scripts()
+    {
+        var files = Enumerable.Range(0, SkuaProtocol.MaxScripts).Select(i => $"Core/c{i:D5}.cs")
+            .Concat(Enumerable.Range(0, SkuaProtocol.MaxScripts).Select(i => $"s{i:D5}.cs")).ToList();
+        var catalog = Catalog(files);
+
+        Assert.Equal(SkuaProtocol.MaxScripts, catalog.Scan().Count);
+        Assert.False(catalog.Truncated);
+    }
 }

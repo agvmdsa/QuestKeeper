@@ -1,6 +1,6 @@
 import { t, type MessageKey } from './i18n';
 import { relativeTime } from './state';
-import type { Faction, RemoteState, SkuaConnection, SkuaFaction, SkuaLogEntry, SkuaQuest, SkuaState, SkuaStatus } from './types';
+import type { Faction, RemoteState, SkuaConnection, SkuaControl, SkuaFaction, SkuaInstance, SkuaLogEntry, SkuaQuest, SkuaState, SkuaStatus } from './types';
 
 const MAX_TEXT = 300;
 const MAX_ENTRIES = 100;
@@ -10,6 +10,12 @@ const MAX_INT32 = MAX_QUEST_ID;
 const MAX_FACTIONS = 60;
 const CONNECTIONS: readonly string[] = ['NotConnected', 'Connected', 'VersionMismatch'];
 const MINUTE_MS = 60_000;
+const MAX_INSTANCES = 8;
+const CONTROLS: readonly string[] = ['idle', 'running', 'stopping', 'settling', 'awaitingOptions'];
+/** The bound on a stored label; anything longer is not one of ours (labels are cut to MAX_TEXT). */
+const MAX_LABEL = 300;
+/** The localStorage key of the Skua instance last looked at, by its label (the character name). */
+export const SKUA_INSTANCE_KEY = 'sl-skua-instance';
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
@@ -26,6 +32,9 @@ function parseStatus(v: unknown): SkuaStatus | null {
     runningSince: str(v.runningSince),
     quests: parseQuests(v.quests),
     factions: parseFactions(v.factions),
+    control: typeof v.control === 'string' && CONTROLS.includes(v.control) ? (v.control as SkuaControl) : undefined,
+    settleSecondsLeft: count(v.settleSecondsLeft) ?? undefined,
+    optionsStuck: v.optionsStuck === true ? true : undefined,
   };
 }
 
@@ -82,6 +91,99 @@ export function parseSkua(value: unknown): SkuaState | null {
   }
   return { connection: value.connection as SkuaConnection, hello: parseHello(value.hello), status: parseStatus(value.status), log };
 }
+
+/**
+ * The instance list of the state; null, absent or anything but an array is undefined (an older app: the single Skua is shown as before).
+ * A damaged entry is left out on its own, and no more than the eight the PC can hold are read.
+ */
+export function parseSkuaInstances(value: unknown): SkuaInstance[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: SkuaInstance[] = [];
+  for (const item of value as unknown[]) {
+    if (out.length >= MAX_INSTANCES) break;
+    if (!isObject(item) || typeof item.instanceId !== 'string' || typeof item.label !== 'string') continue;
+    const skua = parseSkua(item);
+    if (!skua) continue;
+    out.push({ ...skua, instanceId: cut(item.instanceId), label: cut(item.label), disconnected: item.disconnected === true });
+  }
+  return out;
+}
+
+export const isLive = (i: SkuaInstance): boolean => i.connection === 'Connected' && !i.disconnected;
+
+/** The instance the Skua tab shows: the one chosen in this session by id, else the remembered one by label, else the first connected, else the first. */
+export function selectInstance(instances: readonly SkuaInstance[], savedLabel: string | null, sessionId: string | null = null): SkuaInstance | null {
+  return followSelection(instances, { label: savedLabel, id: sessionId }).instance;
+}
+
+export interface Selection {
+  /** The remembered label (character name), kept across visits. */
+  label: string | null;
+  /** The instance chosen in this session; it wins over the label, so a label change (Skua N to a character) keeps the choice. */
+  id: string | null;
+}
+
+/**
+ * The selection after new data: an instance chosen by id stays chosen and its current label becomes the remembered one; a remembered
+ * label that matches gives its id; otherwise the first connected (or the first) is shown, without changing what is remembered.
+ */
+export function followSelection(instances: readonly SkuaInstance[], sel: Selection): Selection & { instance: SkuaInstance | null } {
+  const byId = sel.id === null ? undefined : instances.find((i) => i.instanceId === sel.id);
+  if (byId) return { instance: byId, label: byId.label, id: byId.instanceId };
+  const byLabel = sel.label === null ? undefined : instances.find((i) => i.label === sel.label);
+  if (byLabel) return { instance: byLabel, label: byLabel.label, id: byLabel.instanceId };
+  return { instance: instances.find(isLive) ?? instances[0] ?? null, label: sel.label, id: null };
+}
+
+/** The id of the instance next to the given one, in the given direction, wrapping around; for arrow keys on the chips. */
+export function neighbourId(instances: readonly SkuaInstance[], id: string, step: 1 | -1): string | null {
+  if (instances.length === 0) return null;
+  const at = instances.findIndex((i) => i.instanceId === id);
+  return instances[(Math.max(at, 0) + step + instances.length) % instances.length]!.instanceId;
+}
+
+type Store = Pick<Storage, 'getItem' | 'setItem'>;
+
+/** The remembered label; storage can be blocked, and an odd value is not ours. */
+export function loadInstance(storage: Store | null | undefined): string | null {
+  try {
+    const raw = storage?.getItem(SKUA_INSTANCE_KEY) ?? null;
+    return raw !== null && raw.length <= MAX_LABEL ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveInstance(storage: Store | null | undefined, label: string): void {
+  try {
+    storage?.setItem(SKUA_INSTANCE_KEY, label);
+  } catch {
+    // Not remembered; the choice still holds until the page closes.
+  }
+}
+
+export interface InstanceState {
+  text: string;
+  /** How the dot looks: running (green), busy (orange: stopping, settling, waiting) or quiet. */
+  tone: 'run' | 'warn' | 'none';
+}
+
+/** What an instance is doing, in words (never colour alone). */
+export function instanceState(i: SkuaInstance): InstanceState {
+  if (i.disconnected || i.connection === 'NotConnected') return { text: t('skua.state.disconnected'), tone: 'none' };
+  if (i.connection === 'VersionMismatch') return { text: t('skua.state.mismatch'), tone: 'warn' };
+  const st = i.status;
+  if (!st || !st.loggedIn) return { text: t('skua.state.notLoggedIn'), tone: 'none' };
+  if (st.control === 'awaitingOptions' || st.optionsStuck) return { text: t('skua.state.waiting'), tone: 'warn' };
+  if (st.control === 'stopping') return { text: t('skua.state.stopping'), tone: 'warn' };
+  if (st.control === 'settling') {
+    return { text: st.settleSecondsLeft === undefined ? t('skua.state.settlingNoTime') : t('skua.state.settling', { n: st.settleSecondsLeft }), tone: 'warn' };
+  }
+  const running = st.control === undefined ? st.scriptRunning : st.control === 'running';
+  return running ? { text: t('skua.state.running'), tone: 'run' } : { text: t('skua.state.idle'), tone: 'none' };
+}
+
+export const instanceStateText = (i: SkuaInstance): string => instanceState(i).text;
 
 /** "just now", "3 min", "1 h 5 min", "2 d 3 h". */
 export function formatDuration(ms: number): string {
@@ -212,19 +314,45 @@ function ranked(s: SkuaState): { row: FactionRow; rep: number }[] | null {
 }
 
 /**
- * The list the phone's main Reputation card shows. Skua's live list wins only when Skua is connected, reports factions, and
- * its character is the selected one, ignoring letter case. An empty Skua list falls back to the capture list: a logged-in character with
+ * The list the phone's main Reputation card shows. Skua's live list wins only when a connected Skua (any of them) reports factions
+ * for the selected character, ignoring letter case. An empty Skua list falls back to the capture list: a logged-in character with
  * no reputation at all is rare, and a transient empty read (Skua answers [] on any read failure) must not blank the page.
  */
 export function effectiveFactions(state: RemoteState): { factions: Faction[]; source: 'skua' | 'capture' } {
   const snapshot = state.snapshot;
   const capture = { factions: snapshot?.factions ?? [], source: 'capture' as const };
-  const skua = state.skua;
-  const character = skua?.status?.character;
-  if (!skua || !snapshot || snapshot.selected === null || !character || character.toUpperCase() !== snapshot.selected.toUpperCase()) return capture;
-  const rows = ranked(skua);
-  if (!rows || rows.length === 0) return capture;
-  return { factions: rows.map(({ row, rep }) => ({ name: row.name, rank: row.rank, rep, toNext: row.toNext, fraction: row.fraction, max: row.max })), source: 'skua' };
+  if (!snapshot || snapshot.selected === null) return capture;
+  const selected = snapshot.selected.toUpperCase();
+  // Every connected Skua is a candidate: the selected character may be played in any of them. An older app sends only the single one.
+  const candidates: SkuaState[] = state.skuaInstances?.length ? state.skuaInstances.filter(isLive) : state.skua ? [state.skua] : [];
+  for (const skua of candidates) {
+    const character = skua.status?.character;
+    if (!character || character.toUpperCase() !== selected) continue;
+    const rows = ranked(skua);
+    if (!rows || rows.length === 0) continue;
+    return { factions: rows.map(({ row, rep }) => ({ name: row.name, rank: row.rank, rep, toNext: row.toNext, fraction: row.fraction, max: row.max })), source: 'skua' };
+  }
+  return capture;
+}
+
+/**
+ * The captured character whose screen shows this Skua's reputation, or null. The character screen shows reputation only for the
+ * selected character (live from Skua when it matches), so a Skua points there only when its character is captured and selected,
+ * ignoring letter case; otherwise the Skua tab keeps the full list so nothing is lost.
+ */
+export function reputationHome(state: RemoteState | null, skua: SkuaState): string | null {
+  const snapshot = state?.snapshot;
+  const who = skua.status?.character;
+  if (!snapshot || !who || snapshot.selected === null || snapshot.selected.toUpperCase() !== who.toUpperCase()) return null;
+  return snapshot.characters.find((c) => c.name === snapshot.selected)?.name ?? null;
+}
+
+/**
+ * A reputation list in one line: how many factions, and the one closest to its next rank, if any. Both lists effectiveFactions
+ * gives are ordered closest first (the maximum rank last), so that is the first one not at the maximum rank.
+ */
+export function reputationSummary<F extends Pick<Faction, 'max'>>(factions: readonly F[]): { count: number; closest: F | null } {
+  return { count: factions.length, closest: factions.find((f) => !f.max) ?? null };
 }
 
 export function skuaLogRows(s: SkuaState, nowMs: number, filter: LogFilter = 'all'): { when: string; text: string }[] {

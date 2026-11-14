@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using AqwCompanion.App.Debug;
 using AqwCompanion.App.Diagnostics;
@@ -113,11 +114,19 @@ public static class CompositionRoot
             sp.GetRequiredService<IFeedSource>(), new NoticeEngine(), new NoticeLog(50), () => DateTimeOffset.UtcNow,
             ex => Log.Warning("Phone hub failed: {ExceptionType}", ex.GetType().Name),
             skua: sp.GetRequiredService<ISkuaFeed>()));
-        services.AddSingleton<ISkuaLogStore>(sp => new SkuaLogStore(sp.GetRequiredService<AppPaths>().SkuaLogPath));
-        services.AddSingleton(sp => new SkuaBridge(sp.GetRequiredService<ISkuaLogStore>(), () => DateTimeOffset.UtcNow));
-        services.AddSingleton<ISkuaFeed>(sp => sp.GetRequiredService<SkuaBridge>());
+        services.AddSingleton(sp => new SkuaScriptPrefs(
+            new SkuaScriptFile(sp.GetRequiredService<AppPaths>().SkuaScriptPrefsPath), () => DateTimeOffset.UtcNow));
+        services.AddSingleton(sp => new SkuaOptionCache(
+            new SkuaScriptFile(sp.GetRequiredService<AppPaths>().SkuaScriptOptionsPath), () => DateTimeOffset.UtcNow));
+        services.AddSingleton(sp => new SkuaApi(
+            sp.GetRequiredService<ISkuaFeed>(), sp.GetRequiredService<ISkuaCommandChannel>(), sp.GetRequiredService<SkuaScriptPrefs>(),
+            sp.GetRequiredService<SkuaOptionCache>(), CultureInfo.CurrentCulture));
+        services.AddSingleton<ISkuaLogStores>(sp => new SkuaLogStores(sp.GetRequiredService<AppPaths>().Root));
+        services.AddSingleton(sp => new SkuaHub(sp.GetRequiredService<ISkuaLogStores>(), () => DateTimeOffset.UtcNow));
+        services.AddSingleton<ISkuaFeed>(sp => sp.GetRequiredService<SkuaHub>());
+        services.AddSingleton<ISkuaCommandChannel>(sp => sp.GetRequiredService<SkuaHub>());
         services.AddSingleton(sp => new SkuaBridgeHost(
-            sp.GetRequiredService<SkuaBridge>(), ex => Log.Warning("Skua pipe failed: {ExceptionType}", ex.GetType().Name)));
+            sp.GetRequiredService<SkuaHub>(), ex => Log.Warning("Skua pipe failed: {ExceptionType}", ex.GetType().Name)));
         services.AddSingleton(sp => new SkuaSettingsPresenter(
             sp.GetRequiredService<ISkuaFeed>(), sp.GetRequiredService<SettingsViewModel>(), OnUiThread));
         services.AddSingleton<IAssetSource, EmbeddedAssetSource>();
@@ -130,7 +139,7 @@ public static class CompositionRoot
             var controller = new Lazy<PhoneController>(() => sp.GetRequiredService<PhoneController>());
             return new PhoneHandler(
                 sp.GetRequiredService<PhoneRegistry>(), sp.GetRequiredService<PhoneHub>(), sp.GetRequiredService<IAssetSource>(),
-                host => controller.Value.AllowedHost(host), AppInfo.Version);
+                host => controller.Value.AllowedHost(host), AppInfo.Version, sp.GetRequiredService<SkuaApi>());
         });
         services.AddSingleton<IPhoneHost>(sp => new PhoneHost(
             sp.GetRequiredService<PhoneHandler>(), sp.GetRequiredService<PhoneHub>(), sp.GetRequiredService<PhoneRegistry>()));
@@ -160,7 +169,9 @@ public static class CompositionRoot
         sp.GetRequiredService<HardFarmsViewModel>(),
         new LegacyReputationFolder(sp.GetRequiredService<AppPaths>()),
         sp.GetRequiredService<CaptureSession>(),
-        sp.GetRequiredService<SkuaBridge>(),
+        sp.GetRequiredService<SkuaHub>(),
+        sp.GetRequiredService<SkuaScriptPrefs>(),
+        sp.GetRequiredService<SkuaOptionCache>(),
         // PhoneController MUST stay the LAST participant: its Forget resets the phone hub, which reads the feed, and then brings
         // the phone host back. Every other participant has to have forgotten first, or the host returns serving data from before
         // the Forget. CompositionRootTests.The_phone_controller_is_the_last_forget_participant guards this order.

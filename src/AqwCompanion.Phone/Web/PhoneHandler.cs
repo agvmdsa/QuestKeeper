@@ -25,14 +25,26 @@ public interface IAssetSource
 
 /// <summary>
 /// The rules of the phone web host, with no sockets in it. Order: Host (421), static files, then for <c>/api/*</c> the Origin (403),
-/// the write header (403), pairing, the device cookie (401), the method (405) and the route (404).
+/// the write header (403), pairing, the device cookie (401), then the Skua routes (<see cref="SkuaApi"/>, when given) or the
+/// method (405) and the route (404).
 /// </summary>
-public sealed class PhoneHandler(PhoneRegistry registry, PhoneHub hub, IAssetSource assets, Func<string, bool> isAllowedHost, string appVersion)
+public sealed class PhoneHandler(
+    PhoneRegistry registry, PhoneHub hub, IAssetSource assets, Func<string, bool> isAllowedHost, string appVersion, SkuaApi? skua = null)
 {
     public const string CookieName = "qkp_device";
     private const string Csp = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
-    public PhoneResponse Handle(PhoneRequest request)
+    /// <summary>The same as <see cref="HandleAsync"/>, waiting for it (for callers and tests whose Skua answers at once).</summary>
+    public PhoneResponse Handle(PhoneRequest request) => HandleAsync(request, CancellationToken.None).GetAwaiter().GetResult();
+
+    /// <summary>The path of a request without its query string.</summary>
+    public static string PathOf(string rawPath)
+    {
+        var query = rawPath.IndexOf('?');
+        return query >= 0 ? rawPath[..query] : rawPath;
+    }
+
+    public async Task<PhoneResponse> HandleAsync(PhoneRequest request, CancellationToken ct)
     {
         var host = Header(request, "Host");
         if (host is null || !isAllowedHost(host))
@@ -40,12 +52,7 @@ public sealed class PhoneHandler(PhoneRegistry registry, PhoneHub hub, IAssetSou
             return Error(421, "wrong host");
         }
 
-        var path = request.Path;
-        var query = path.IndexOf('?');
-        if (query >= 0)
-        {
-            path = path[..query];
-        }
+        var path = PathOf(request.Path);
 
         if (!path.StartsWith("/api/", StringComparison.Ordinal))
         {
@@ -72,6 +79,11 @@ public sealed class PhoneHandler(PhoneRegistry registry, PhoneHub hub, IAssetSou
         if (device is null)
         {
             return Error(401, "not paired");
+        }
+
+        if (skua is not null && SkuaApi.Handles(path))
+        {
+            return await skua.HandleAsync(request, path, ct).ConfigureAwait(false);
         }
 
         if (!isGet)
@@ -127,10 +139,12 @@ public sealed class PhoneHandler(PhoneRegistry registry, PhoneHub hub, IAssetSou
             : new PhoneResponse(200, asset.ContentType, isHead ? [] : asset.Bytes, headers);
     }
 
-    private static PhoneResponse Json(int status, string json) =>
+    internal static PhoneResponse Json(int status, string json) =>
         new(status, "application/json; charset=utf-8", Encoding.UTF8.GetBytes(json), [Pair("Cache-Control", "no-store"), ..Common()]);
 
-    private static PhoneResponse Error(int status, string message) => Json(status, $"{{\"error\":\"{message}\"}}");
+    /// <summary>The error body <c>{"error":"..."}</c>, the message JSON-escaped (it may be text from Skua).</summary>
+    internal static PhoneResponse Error(int status, string message) =>
+        Json(status, JsonSerializer.Serialize(new ErrorBody(message), SkuaApiJson.Default.ErrorBody));
 
     private static PhoneResponse With(PhoneResponse response, KeyValuePair<string, string> header) =>
         response with { Headers = [.. response.Headers, header] };

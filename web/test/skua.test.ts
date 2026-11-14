@@ -374,11 +374,11 @@ describe('views', () => {
   const headings = (v: VNode) => all(v).filter((n) => n.tag === 'h2').map((n) => n.text);
   const buttons = (v: VNode) => all(v).filter((n) => n.tag === 'button');
 
-  it('shows the Now, Active quests and Log cards in that order, with a back link first', () => {
+  it('shows the Now, Active quests and Log cards in that order, with no back link (the dock leads home)', () => {
     const view = skuaView(model(withStatus({ quests: [quest(1, 'Slay the Beast', true), quest(2, 'Gather Bones', false)] })));
     expect(headings(view)).toEqual(['Now', 'Active quests · 2', 'Log']);
-    expect(view.children[0]!.className).toBe('back');
-    expect(view.children[0]!.attrs).toEqual({ href: '#/' });
+    expect(view.children[0]!.className).toBe('card now-card');
+    expect(all(view).some((n) => n.className === 'back')).toBe(false);
     expect(texts(view)).toEqual(expect.arrayContaining(['Hero', 'Artix · battleon', 'Running for 12 min', 'Farm.cs', 'Sold Blood Orb x50 for 2,500 gold', '11 min ago']));
   });
   it('writes the quest count with plural() and lists the quests, ready first, with a shape and words', () => {
@@ -412,10 +412,10 @@ describe('views', () => {
     expect(bars.map((b) => b.children[0]!.fraction)).toEqual([0.25, 1]);
     expect(card.className?.split(' ')).toContain('card');
   });
-  it('says No reputation yet. for an empty list and shows no Reputation card when not reported', () => {
+  it('says No factions read yet. for an empty list and shows no Reputation card when not reported', () => {
     const none = skuaView(model(withStatus({ quests: [], factions: [] })));
     expect(headings(none)).toEqual(['Now', 'Active quests · 0', 'Reputation', 'Log']);
-    expect(texts(none)).toContain('No reputation yet.');
+    expect(texts(none)).toContain('No factions read yet.');
     expect(headings(skuaView(model(withStatus({ quests: [], factions: null }))))).toEqual(['Now', 'Active quests · 0', 'Log']);
   });
   it('shows the Reputation card even when quests are not reported', () => {

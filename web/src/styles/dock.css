@@ -1,0 +1,38 @@
+/* The floating dock. Loaded with the dock's chunk (dockUi.ts adds these rules to the page's stylesheet), not with the first load.
+   Colours come only from tokens.css. Sticky at the bottom of the body, never fixed: it keeps its own room after the last card, so it never covers
+   it, and floats over the content while scrolling. The host lets taps through; only the buttons and the panel take them.
+   Phone (the default): one round menu button at the bottom right that opens the items upward, each with its label beside it.
+   Desktop (the media query below, kept in step with DESKTOP_QUERY in dock.ts): a bar centred at the bottom whose buttons grow near the pointer. */
+.dock-host { position: sticky; bottom: 0; z-index: 10; height: calc(4.5rem + env(safe-area-inset-bottom)); pointer-events: none; }
+.dock-toggle, .dock-btn { position: relative; display: grid; place-items: center; width: 2.75rem; height: 2.75rem; min-height: 0; margin: 0; padding: 0; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 50%; pointer-events: auto; }
+.dock-toggle { position: absolute; right: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom)); }
+.dock-btn[aria-current="page"] { color: var(--on-top); background: var(--top); border-color: var(--top); box-shadow: 0 0 0 2px var(--accent); }
+.dock-icon { width: 1.25rem; height: 1.25rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+/* Closed, the items are hidden (out of the tab order too); opening slides and scales them up from the button, nearest first.
+   No fading: the page never lowers the contrast of text (the style tests forbid it). */
+.dock-items, #dock-settings { position: absolute; right: 1rem; bottom: calc(4.25rem + env(safe-area-inset-bottom)); }
+.dock-items { display: grid; justify-items: end; gap: 0.75rem; }
+.dock-items li { visibility: hidden; transform: translateY(1rem) scale(0.6); transition: transform 120ms, visibility 0s 120ms; }
+.dock[data-open="true"] li { visibility: visible; transform: none; transition: transform 200ms cubic-bezier(0.25, 1, 0.5, 1); }
+.dock[data-open="true"] li:nth-last-child(2) { transition-delay: 40ms; }
+.dock[data-open="true"] li:nth-last-child(3) { transition-delay: 80ms; }
+.dock-label { position: absolute; top: 50%; right: calc(100% + 0.5rem); transform: translateY(-50%); padding: 0 0.5rem; font-weight: 600; white-space: nowrap; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 0.5rem; }
+/* The Settings panel is a card (text on the paper surface, the gold edge) floating above the dock. */
+#dock-settings { width: 18rem; pointer-events: auto; }
+
+@media (hover: hover) and (pointer: fine) and (min-width: 48rem) {
+  /* Room for the fully grown bar (0.75rem offset, 1rem padding, 2 px edges, 80 px button: 110 px), so it never covers the last card. */
+  .dock-host { height: calc(7rem + env(safe-area-inset-bottom)); }
+  .dock-toggle { display: none; }
+  .dock-items { right: auto; left: 50%; bottom: calc(0.75rem + env(safe-area-inset-bottom)); grid-auto-flow: column; align-items: end; padding: 0.5rem 0.75rem; background: var(--raised); border: 1px solid var(--border); border-radius: 1rem; transform: translateX(-50%); pointer-events: auto; }
+  .dock-items li { visibility: visible; transform: none; }
+  .dock-btn { width: calc(var(--dock-size, 40) * 1px); height: calc(var(--dock-size, 40) * 1px); }
+  .dock-icon { width: 50%; height: 50%; }
+  #dock-settings { bottom: 5.5rem; }
+  .dock-label { top: auto; right: auto; bottom: calc(100% + 0.5rem); left: 50%; transform: translateX(-50%); visibility: hidden; }
+  .dock-btn:hover .dock-label, .dock-btn:focus-visible .dock-label { visibility: visible; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock-items li { transition: none !important; }
+}

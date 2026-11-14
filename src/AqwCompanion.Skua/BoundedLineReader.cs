@@ -1,14 +1,23 @@
 using System.Runtime.CompilerServices;
 using System.Text;
-using AqwCompanion.Skua;
 
-namespace AqwCompanion.App.Skua;
+namespace AqwCompanion.Skua;
 
 public readonly record struct LineResult(string? Text, bool TooLong);
 
+/// <summary>
+/// Reads newline-ended lines with a byte cap. Shared by SkuaLink's pipe server and the plugin's command reader (the plugin
+/// compiles this folder as source).
+/// </summary>
 public static class BoundedLineReader
 {
-    public static async IAsyncEnumerable<LineResult> ReadAsync(Stream stream, [EnumeratorCancellation] CancellationToken ct)
+    /// <summary>
+    /// Reads lines of at most <paramref name="maxLineBytes"/> bytes; a longer line is reported once as too long. A reader that
+    /// takes command results passes <see cref="SkuaProtocol.MaxResultLineBytes"/>; the plugin passes
+    /// <see cref="SkuaProtocol.MaxCommandLineBytes"/>.
+    /// </summary>
+    public static async IAsyncEnumerable<LineResult> ReadAsync(
+        Stream stream, [EnumeratorCancellation] CancellationToken ct, int maxLineBytes = SkuaProtocol.MaxLineBytes)
     {
         var buffer = new byte[4096];
         var line = new List<byte>(256);
@@ -48,7 +57,7 @@ public static class BoundedLineReader
                 }
                 else if (!overflow)
                 {
-                    if (line.Count >= SkuaProtocol.MaxLineBytes)
+                    if (line.Count >= maxLineBytes)
                     {
                         overflow = true;
                         line.Clear();

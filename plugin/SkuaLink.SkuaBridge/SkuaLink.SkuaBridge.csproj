@@ -6,6 +6,8 @@
     <AssemblyName>SkuaLink.SkuaBridge</AssemblyName>
     <SkuaLibDir Condition="'$(SkuaLibDir)' == ''">$(MSBuildThisFileDirectory)lib\skua\</SkuaLibDir>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Framework WPF types only (Window, Application), to find and close Skua's options dialog: a framework reference, not a package. -->
+    <UseWPF>true</UseWPF>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Skua.Core.Interfaces">
@@ -16,6 +18,10 @@
       <HintPath>$(SkuaLibDir)Skua.Core.Models.dll</HintPath>
       <Private>false</Private>
     </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- UseWPF leaves System.IO out of the implicit usings (System.Windows.Shapes.Path); nothing here uses Shapes. -->
+    <Using Include="System.IO" />
   </ItemGroup>
   <ItemGroup>
     <!-- The protocol is compiled in as source, never referenced, so the plugin ships as one DLL. -->

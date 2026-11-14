@@ -11,6 +11,8 @@ public sealed record AppPaths(string Root)
     public string SettingsPath => Path.Combine(Root, "settings.json");
     public string PhonePath => Path.Combine(Root, "phone.json");
     public string SkuaLogPath => Path.Combine(Root, "skua-log.json");
+    public string SkuaScriptPrefsPath => Path.Combine(Root, "skua-script-prefs.json");
+    public string SkuaScriptOptionsPath => Path.Combine(Root, "skua-script-options.json");
 
     /// <summary>An empty flag file kept while the phone page is published through Tailscale; not character data.</summary>
     public string PhoneServeMarkerPath => Path.Combine(Root, "phone-serve.flag");

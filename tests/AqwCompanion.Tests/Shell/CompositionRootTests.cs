@@ -18,6 +18,7 @@ using AqwCompanion.Core.Wiki;
 using AqwCompanion.Phone.Devices;
 using AqwCompanion.Phone.Hub;
 using AqwCompanion.Phone.Skua;
+using AqwCompanion.Phone.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -142,19 +143,37 @@ public class CompositionRootTests
     }
 
     [Fact]
-    public void The_skua_bridge_is_shared_with_the_feed_and_forgets_before_the_phone_controller()
+    public void The_skua_hub_is_shared_with_the_feed_and_the_command_channel_and_forgets_before_the_phone_controller()
     {
         var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
 
         using var services = CompositionRoot.Build(paths);
 
-        var bridge = services.GetRequiredService<SkuaBridge>();
+        var bridge = services.GetRequiredService<SkuaHub>();
         Assert.Same(bridge, services.GetRequiredService<ISkuaFeed>());
+        Assert.Same(bridge, services.GetRequiredService<ISkuaCommandChannel>());
         Assert.NotNull(services.GetRequiredService<SkuaBridgeHost>());
         var participants = CompositionRoot.ForgetParticipants(services).ToList();
         var bridgeIndex = participants.FindIndex(p => ReferenceEquals(p, bridge));
         Assert.True(bridgeIndex >= 0);
         Assert.True(bridgeIndex < participants.FindIndex(p => p is PhoneController));
+        Assert.False(Directory.Exists(paths.Root));
+    }
+
+    [Fact]
+    public void The_skua_script_books_are_shared_with_the_phone_api_and_forget_before_the_phone_controller()
+    {
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "aqw-tests", Guid.NewGuid().ToString("N")));
+
+        using var services = CompositionRoot.Build(paths);
+
+        Assert.NotNull(services.GetRequiredService<SkuaApi>());
+        var participants = CompositionRoot.ForgetParticipants(services).ToList();
+        var phone = participants.FindIndex(p => p is PhoneController);
+        var prefs = participants.FindIndex(p => ReferenceEquals(p, services.GetRequiredService<SkuaScriptPrefs>()));
+        var cache = participants.FindIndex(p => ReferenceEquals(p, services.GetRequiredService<SkuaOptionCache>()));
+        Assert.InRange(prefs, 0, phone - 1);
+        Assert.InRange(cache, 0, phone - 1);
         Assert.False(Directory.Exists(paths.Root));
     }
 

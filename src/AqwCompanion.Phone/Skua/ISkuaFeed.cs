@@ -2,7 +2,7 @@ namespace AqwCompanion.Phone.Skua;
 
 public interface ISkuaFeed
 {
-    SkuaView Current { get; }
+    SkuaHubView Current { get; }
 
     event EventHandler? Changed;
 }

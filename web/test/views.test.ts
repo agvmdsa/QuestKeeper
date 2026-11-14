@@ -76,14 +76,14 @@ describe('character view', () => {
     expect(bar.attrs!.role).toBe('progressbar');
     expect(bar.attrs!['aria-valuenow']).toBe('29');
   });
-  it('shows factions and Hard Farms only for the selected character, and says why otherwise', () => {
+  it('shows reputation and Hard Farms only for the selected character, and says why otherwise', () => {
     const selected = texts(characterView(model(state()), alpha.name));
     expect(selected).toContain('Yokai');
     expect(selected).toContain('Max rank');
     expect(selected).toContain('1 of 40 owned');
     const other = texts(characterView(model(state()), 'Beta'));
     expect(other).not.toContain('Yokai');
-    expect(other.some((x) => x.startsWith('Factions and Hard Farms are shown for the character selected in SkuaLink'))).toBe(true);
+    expect(other.some((x) => x.startsWith('Reputation and Hard Farms are shown for the character selected in SkuaLink'))).toBe(true);
   });
   it('keeps the missing list collapsed and offers the rest on request', () => {
     const view = characterView(model(state()), alpha.name);

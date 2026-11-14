@@ -25,7 +25,8 @@ describe('what the CSP and the privacy promise need', () => {
     expect(text).not.toMatch(/<style[\s>]/);
     expect(text).not.toMatch(/\son[a-z]+=/);
     expect(text).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
-    expect(text).not.toMatch(/https?:\/\//);
+    // The SVG namespace of the dock's inline icons is an identifier, never fetched; any other address is.
+    expect(text.replaceAll("'http://www.w3.org/2000/svg'", '')).not.toMatch(/https?:\/\//);
   });
 });
 

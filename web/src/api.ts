@@ -64,3 +64,46 @@ export function openEvents(handlers: EventHandlers): EventSource {
   source.addEventListener('notice', (e) => handlers.notice((e as MessageEvent<string>).data));
   return source;
 }
+
+/** What a Skua call answered: the HTTP status (0 when nothing came back in time) and the parsed JSON body, or null. */
+export interface CallResult {
+  status: number;
+  data: unknown;
+}
+
+/** A Skua command may wait for Skua for up to 45 s and the PC allows 60 s; the page waits a little longer than the PC. */
+export const SKUA_TIMEOUT_MS = 65_000;
+
+const skuaPath = (instanceId: string, ...rest: string[]): string => ['/api/skua', encodeURIComponent(instanceId), ...rest].join('/');
+
+async function skuaCall(path: string, body?: unknown): Promise<CallResult> {
+  const timeout = timeoutSignal(SKUA_TIMEOUT_MS);
+  try {
+    const init: RequestInit = body === undefined ? { signal: timeout.signal } : { method: 'POST', body: JSON.stringify(body), signal: timeout.signal };
+    const response = await send(path, init);
+    let data: unknown = null;
+    try {
+      data = await response.json();
+    } catch {
+      // An empty or non-JSON body is no data.
+    }
+    return { status: response.status, data };
+  } catch {
+    return { status: 0, data: null };
+  } finally {
+    timeout.done();
+  }
+}
+
+/** The Skua control routes of the PC; script ids are checked by the caller. */
+export const skuaApi = {
+  listScripts: (instanceId: string) => skuaCall(skuaPath(instanceId, 'scripts')),
+  getOptions: (instanceId: string, scriptId: string) => skuaCall(skuaPath(instanceId, 'scripts', scriptId, 'options')),
+  setOptions: (instanceId: string, scriptId: string, values: { category: string; name: string; value: string }[]) =>
+    skuaCall(skuaPath(instanceId, 'scripts', scriptId, 'options'), { values }),
+  setPrefs: (instanceId: string, scriptId: string, askOptions: boolean) => skuaCall(skuaPath(instanceId, 'scripts', scriptId, 'prefs'), { askOptions }),
+  start: (instanceId: string, scriptId: string) => skuaCall(skuaPath(instanceId, 'start'), { id: scriptId }),
+  stop: (instanceId: string) => skuaCall(skuaPath(instanceId, 'stop'), {}),
+};
+
+export type ControlApi = typeof skuaApi;

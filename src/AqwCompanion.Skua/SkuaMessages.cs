@@ -9,7 +9,11 @@ public enum SkuaLogKind
     Bought, Sold, Dropped, MapChanged, QuestAccepted, QuestTurnedIn, Died, LoggedOut, Relogin, ScriptStarted, ScriptStopped, ScriptError,
 }
 
-public sealed record SkuaHello(string PluginVersion, string SkuaVersion);
+/// <summary>
+/// <paramref name="InstanceId"/> is a random id the plugin makes each time it is loaded, so the app can tell several Skua
+/// apart and recognise one that reconnects. Null from an older plugin.
+/// </summary>
+public sealed record SkuaHello(string PluginVersion, string SkuaVersion, string? InstanceId = null);
 
 /// <summary>An active quest. <paramref name="Ready"/> is Skua's own "can be turned in" flag.</summary>
 public sealed record SkuaQuest(int Id, string Name, bool Ready);
@@ -25,10 +29,14 @@ public sealed record SkuaFaction(int Id, string Name, int Rank, int TotalRep, in
 /// What Skua is doing. <paramref name="Quests"/> null means "this plugin does not report quests" (an older plugin);
 /// an empty list means "no active quests". <paramref name="Factions"/> follows the same rule for the reputation. Two
 /// statuses are equal when their quest lists and their faction lists hold the same entries in the same order.
+/// <paramref name="Control"/> is one of <see cref="SkuaProtocol.ControlStates"/>, or null when not reported (an older
+/// plugin); <paramref name="SettleSecondsLeft"/> is the settle countdown, only while settling; <paramref name="OptionsStuck"/>
+/// says the plugin could not close a script's options window on the PC.
 /// </summary>
 public sealed record SkuaStatus(
     bool LoggedIn, string? Character, string? Server, string? Map, string? Script, bool ScriptRunning, DateTimeOffset? RunningSince,
-    IReadOnlyList<SkuaQuest>? Quests = null, IReadOnlyList<SkuaFaction>? Factions = null)
+    IReadOnlyList<SkuaQuest>? Quests = null, IReadOnlyList<SkuaFaction>? Factions = null,
+    string? Control = null, int? SettleSecondsLeft = null, bool OptionsStuck = false)
 {
     public bool Equals(SkuaStatus? other) =>
         other is not null
@@ -39,11 +47,11 @@ public sealed record SkuaStatus(
         && Script == other.Script
         && ScriptRunning == other.ScriptRunning
         && RunningSince == other.RunningSince
-        && SameList(Quests, other.Quests)
-        && SameList(Factions, other.Factions);
-
-    private static bool SameList<T>(IReadOnlyList<T>? a, IReadOnlyList<T>? b) =>
-        ReferenceEquals(a, b) || (a is not null && b is not null && a.SequenceEqual(b));
+        && SkuaLists.Same(Quests, other.Quests)
+        && SkuaLists.Same(Factions, other.Factions)
+        && Control == other.Control
+        && SettleSecondsLeft == other.SettleSecondsLeft
+        && OptionsStuck == other.OptionsStuck;
 
     public override int GetHashCode()
     {
@@ -55,18 +63,11 @@ public sealed record SkuaStatus(
         hash.Add(Script);
         hash.Add(ScriptRunning);
         hash.Add(RunningSince);
-        hash.Add(Quests?.Count ?? -1);
-        foreach (var quest in Quests ?? [])
-        {
-            hash.Add(quest);
-        }
-
-        hash.Add(Factions?.Count ?? -1);
-        foreach (var faction in Factions ?? [])
-        {
-            hash.Add(faction);
-        }
-
+        SkuaLists.Add(ref hash, Quests);
+        SkuaLists.Add(ref hash, Factions);
+        hash.Add(Control);
+        hash.Add(SettleSecondsLeft);
+        hash.Add(OptionsStuck);
         return hash.ToHashCode();
     }
 }

@@ -1,4 +1,5 @@
 using AqwCompanion.Core.Feed;
+using AqwCompanion.Phone.Skua;
 
 namespace AqwCompanion.Phone.Notices;
 
@@ -12,11 +13,15 @@ public sealed class NoticeEngine(NoticeOptions? options = null)
     private readonly Queue<string> _seenOrder = new();
     private readonly Dictionary<string, Queue<DateTimeOffset>> _recent = new(StringComparer.Ordinal);
     private FeedSnapshot? _previous;
+    private Dictionary<string, bool>? _skuaConnected;
+    private readonly HashSet<string> _optionsWaits = new(StringComparer.Ordinal);
 
     /// <summary>Forgets everything: the next snapshot is a baseline again and no notice id is remembered.</summary>
     public void Reset()
     {
         _previous = null;
+        _skuaConnected = null;
+        _optionsWaits.Clear();
         _seen.Clear();
         _seenOrder.Clear();
         _recent.Clear();
@@ -38,17 +43,72 @@ public sealed class NoticeEngine(NoticeOptions? options = null)
         return Admit(found, now);
     }
 
+    /// <summary>
+    /// The Skua instances changed: a connected Skua that is now disconnected raises <see cref="NoticeKind.SkuaDisconnected"/>,
+    /// a disconnected one that is connected again <see cref="NoticeKind.SkuaReconnected"/> (the instance label in the text).
+    /// The first view is a baseline; an instance that appears or goes away raises nothing.
+    /// A connected Skua whose status says <c>optionsStuck</c> raises <see cref="NoticeKind.SkuaOptionsWaiting"/> once per wait;
+    /// a wait already there in the baseline is not announced. Only the plugin knows a dialog is really open (it may stay in
+    /// <c>awaitingOptions</c> for seconds with no dialog at all), so <c>awaitingOptions</c> alone raises nothing.
+    /// </summary>
+    public IReadOnlyList<Notice> ProcessSkua(SkuaHubView view, DateTimeOffset now)
+    {
+        var found = new List<Notice>();
+        OptionsWaiting(view, now, baseline: _skuaConnected is null, found);
+        var connected = new Dictionary<string, bool>(StringComparer.Ordinal);
+        foreach (var instance in view.Instances)
+        {
+            connected[instance.InstanceId] = !instance.Disconnected;
+            if (_skuaConnected is null || !_skuaConnected.TryGetValue(instance.InstanceId, out var was) || was == !instance.Disconnected)
+            {
+                continue;
+            }
+
+            var label = instance.Label;
+            found.Add(instance.Disconnected
+                ? new Notice($"skua-off:{instance.InstanceId}:{now.UtcTicks}", NoticeKind.SkuaDisconnected, label, "Skua disconnected", $"{label} is no longer connected to SkuaLink.", now)
+                : new Notice($"skua-on:{instance.InstanceId}:{now.UtcTicks}", NoticeKind.SkuaReconnected, label, "Skua reconnected", $"{label} is connected to SkuaLink again.", now));
+        }
+
+        _skuaConnected = connected;
+        return Admit(found, now);
+    }
+
     /// <summary>Time passing with no new snapshot: the feed is silent when nothing changes, so a stalled bot is found here.</summary>
     public IReadOnlyList<Notice> Tick(DateTimeOffset now)
     {
-        if (_previous is null)
+        var found = new List<Notice>();
+        if (_previous is not null)
         {
-            return [];
+            Stalls(_previous, now, found);
         }
 
-        var found = new List<Notice>();
-        Stalls(_previous, now, found);
         return Admit(found, now);
+    }
+
+    private void OptionsWaiting(SkuaHubView view, DateTimeOffset now, bool baseline, List<Notice> found)
+    {
+        var waiting = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var instance in view.Instances)
+        {
+            if (instance.Disconnected || instance.Status is not { OptionsStuck: true })
+            {
+                continue;
+            }
+
+            waiting.Add(instance.InstanceId);
+            if (!_optionsWaits.Add(instance.InstanceId) || baseline)
+            {
+                continue;
+            }
+
+            var label = instance.Label;
+            found.Add(new Notice(
+                $"skua-options:{instance.InstanceId}:{now.UtcTicks}", NoticeKind.SkuaOptionsWaiting, label,
+                "Waiting for you on the PC", $"{label}: close the script's options window on the computer.", now));
+        }
+
+        _optionsWaits.IntersectWith(waiting);
     }
 
     private static void Capture(FeedSnapshot before, FeedSnapshot now, DateTimeOffset at, List<Notice> found)

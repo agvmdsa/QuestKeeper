@@ -11,7 +11,7 @@ namespace AqwCompanion.App.Phone;
 /// The sockets around <see cref="PhoneHandler"/>: an <see cref="HttpListener"/> on <c>http://127.0.0.1:{port}/</c> only. All the rules
 /// live in the handler; this class moves bytes, drops any peer that is not loopback, caps the body at 4096 characters, refuses a
 /// repeated Host or Origin header, allows at most <see cref="MaxStreams"/> event streams (and <see cref="MaxStreamsPerDevice"/> per
-/// device: one more ends that device's oldest), gives an ordinary request 30 seconds and closes the streams of a revoked device. Event streams stay open until the client leaves, the device is revoked or <see cref="Stop"/>.
+/// device: one more ends that device's oldest), gives an ordinary request 30 seconds (a Skua command 60) and closes the streams of a revoked device. Event streams stay open until the client leaves, the device is revoked or <see cref="Stop"/>.
 /// </summary>
 public sealed class PhoneHost : IPhoneHost, IDisposable
 {
@@ -23,6 +23,9 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
     private static readonly TimeSpan PingEvery = TimeSpan.FromSeconds(25);
     private static readonly TimeSpan DefaultRequestTimeout = TimeSpan.FromSeconds(30);
 
+    /// <summary>A Skua command (a POST under <c>/api/skua/</c>) may wait for Skua: a start up to 45 s, a set of options two answers.</summary>
+    public static readonly TimeSpan DefaultCommandTimeout = TimeSpan.FromSeconds(60);
+
     private readonly PhoneHandler _handler;
     private readonly PhoneHub _hub;
     private readonly PhoneRegistry _registry;
@@ -33,11 +36,14 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
     // The streams of one start; a new start gets a new book, so a stream of an old start cannot upset it.
     private PhoneStreamBook _book = NewBook();
     private readonly TimeSpan _requestTimeout;
+    private readonly TimeSpan _commandTimeout;
     private int _disposed;
 
-    public PhoneHost(PhoneHandler handler, PhoneHub hub, PhoneRegistry registry, int port = DefaultPort, TimeSpan? requestTimeout = null)
+    public PhoneHost(
+        PhoneHandler handler, PhoneHub hub, PhoneRegistry registry, int port = DefaultPort, TimeSpan? requestTimeout = null, TimeSpan? commandTimeout = null)
     {
         _requestTimeout = requestTimeout ?? DefaultRequestTimeout;
+        _commandTimeout = commandTimeout ?? DefaultCommandTimeout;
         _handler = handler;
         _hub = hub;
         _registry = registry;
@@ -234,7 +240,14 @@ public sealed class PhoneHost : IPhoneHost, IDisposable
                 return;
             }
 
-            var response = _handler.Handle(ToPhoneRequest(context.Request, body));
+            var request = ToPhoneRequest(context.Request, body);
+            if (SkuaApi.IsCommand(request.Method, PhoneHandler.PathOf(request.Path)) && _commandTimeout > _requestTimeout)
+            {
+                // The body is in; what is left is waiting for Skua, which answers or times out on its own clock.
+                requestCts.CancelAfter(_commandTimeout);
+            }
+
+            var response = await _handler.HandleAsync(request, rct).ConfigureAwait(false);
             if (response.IsEventStream)
             {
                 // Over the total the stream is turned away before anything of the handler's answer is written; a device at its own

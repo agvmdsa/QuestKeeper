@@ -23,6 +23,49 @@ public sealed class SkuaLogStoreTests : IDisposable
     }
 
     [Fact]
+    public void Try_load_tells_a_missing_or_good_file_from_one_that_cannot_be_read()
+    {
+        var store = new SkuaLogStore(_paths.SkuaLogPath);
+        Assert.True(store.TryLoad(out var none));
+        Assert.Empty(none);
+
+        store.Save([new SkuaLogEntry(DateTimeOffset.UnixEpoch, SkuaLogKind.Sold, "sold")]);
+        Assert.True(store.TryLoad(out var good));
+        Assert.Equal(["sold"], good.Select(e => e.Text));
+
+        File.WriteAllText(_paths.SkuaLogPath, "[{\"at\":");
+        Assert.False(store.TryLoad(out var corrupt));
+        Assert.Empty(corrupt);
+
+        File.WriteAllText(_paths.SkuaLogPath, "{\"not\":\"a list\"}");
+        Assert.False(store.TryLoad(out _));
+        Assert.Empty(store.Load());
+    }
+
+    [Fact]
+    public void Try_load_of_a_path_that_cannot_be_opened_fails()
+    {
+        // A folder where the file should be: opening it fails like a locked file does.
+        Directory.CreateDirectory(_paths.SkuaLogPath);
+
+        Assert.False(new SkuaLogStore(_paths.SkuaLogPath).TryLoad(out var log));
+        Assert.Empty(log);
+    }
+
+    [Fact]
+    public void Try_save_says_whether_the_file_was_written()
+    {
+        var store = new SkuaLogStore(_paths.SkuaLogPath);
+        var entry = new SkuaLogEntry(DateTimeOffset.UnixEpoch, SkuaLogKind.Sold, "sold");
+        Assert.True(store.TrySave([entry]));
+
+        Directory.CreateDirectory(_paths.Root);
+        var blocked = Path.Combine(_paths.Root, "blocked");
+        File.WriteAllText(blocked, "a file, not a folder");
+        Assert.False(new SkuaLogStore(Path.Combine(blocked, "skua-log.json")).TrySave([entry]));
+    }
+
+    [Fact]
     public void The_default_path_is_skua_log_json()
     {
         Assert.Equal(Path.Combine(_paths.Root, "skua-log.json"), _paths.SkuaLogPath);
@@ -152,5 +195,43 @@ public sealed class SkuaLogStoreTests : IDisposable
         Assert.Null(Record.Exception(store.Load));
         Assert.Null(Record.Exception(() => store.Save([new SkuaLogEntry(DateTimeOffset.UnixEpoch, SkuaLogKind.Died, "x")])));
         Assert.Null(Record.Exception(store.Delete));
+    }
+
+    [Fact]
+    public void Each_character_has_its_own_file_and_the_legacy_store_is_skua_log_json()
+    {
+        var stores = new SkuaLogStores(_paths.Root);
+        var entry = new SkuaLogEntry(DateTimeOffset.UnixEpoch, SkuaLogKind.Sold, "sold");
+
+        stores.ForCharacter("Hero").Save([entry]);
+        stores.Legacy.Save([entry with { Text = "legacy" }]);
+
+        Assert.True(File.Exists(Path.Combine(_paths.Root, "skua-log.hero.json")));
+        Assert.Equal(["sold"], stores.ForCharacter("hero").Load().Select(e => e.Text));
+        Assert.Empty(stores.ForCharacter("Zed").Load());
+        Assert.Equal(["legacy"], new SkuaLogStore(_paths.SkuaLogPath).Load().Select(e => e.Text));
+    }
+
+    [Fact]
+    public void Delete_all_removes_every_skua_log_and_nothing_else()
+    {
+        var stores = new SkuaLogStores(_paths.Root);
+        var entry = new SkuaLogEntry(DateTimeOffset.UnixEpoch, SkuaLogKind.Sold, "sold");
+        stores.ForCharacter("Hero").Save([entry]);
+        stores.ForCharacter("Dark Lord").Save([entry]);
+        stores.Legacy.Save([entry]);
+        File.WriteAllText(Path.Combine(_paths.Root, "skua-log.zed.json.tmp"), "x");
+        File.WriteAllText(Path.Combine(_paths.Root, "settings.json"), "{}");
+        File.WriteAllText(Path.Combine(_paths.Root, "skua-script-prefs.json"), "{}");
+
+        stores.DeleteAll();
+
+        Assert.Equal(["settings.json", "skua-script-prefs.json"], Directory.GetFiles(_paths.Root).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void Delete_all_without_a_folder_does_nothing()
+    {
+        new SkuaLogStores(Path.Combine(_paths.Root, "missing")).DeleteAll();
     }
 }

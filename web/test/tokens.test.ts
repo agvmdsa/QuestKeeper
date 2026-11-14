@@ -48,6 +48,7 @@ describe.each([['light', light], ['system dark', systemDark], ['forced dark', fo
   it.each(surfaces)('the gold edge on %s is at least 3:1', (s) => expect(ratio(t.border!, t[s]!)).toBeGreaterThanOrEqual(3));
   it.each(surfaces)('the bar fill on %s is at least 3:1', (s) => expect(ratio(t.bar!, t[s]!)).toBeGreaterThanOrEqual(3));
   it('dark text on the accent fill is at least 4.5:1', () => expect(ratio(t['on-accent']!, t.accent!)).toBeGreaterThanOrEqual(4.5));
+  it('text on the danger fill is at least 4.5:1', () => expect(ratio(t['on-danger']!, t.danger!)).toBeGreaterThanOrEqual(4.5));
   it('light text on the ok fill is at least 4.5:1', () => expect(ratio(t['on-ok']!, t.ok!)).toBeGreaterThanOrEqual(4.5));
   it('text on the top bar is at least 7:1', () => expect(ratio(t['on-top']!, t.top!)).toBeGreaterThanOrEqual(7));
 });

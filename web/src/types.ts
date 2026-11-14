@@ -47,7 +47,7 @@ export interface Snapshot {
   hardFarms: HardFarms | null;
 }
 
-export type NoticeKind = 'RankUp' | 'HardFarmDrop' | 'ActivityStopped' | 'CaptureLost' | 'CaptureBack' | 'NewLogin';
+export type NoticeKind = 'RankUp' | 'HardFarmDrop' | 'ActivityStopped' | 'CaptureLost' | 'CaptureBack' | 'NewLogin' | 'SkuaDisconnected' | 'SkuaReconnected' | 'SkuaOptionsWaiting';
 
 export interface Notice {
   id: string;
@@ -88,7 +88,15 @@ export interface SkuaStatus {
   quests: SkuaQuest[] | null;
   /** null: the plugin does not report reputation (an older plugin); empty: no factions. */
   factions: SkuaFaction[] | null;
+  /** What the control logic says; absent from an older plugin. */
+  control?: SkuaControl;
+  /** Seconds left of the settle wait; only while control is settling. */
+  settleSecondsLeft?: number;
+  /** The plugin could not close the script's options window on the PC. */
+  optionsStuck?: boolean;
 }
+
+export type SkuaControl = 'idle' | 'running' | 'stopping' | 'settling' | 'awaitingOptions';
 
 export interface SkuaLogEntry {
   at: string;
@@ -103,10 +111,21 @@ export interface SkuaState {
   log: SkuaLogEntry[];
 }
 
+/** One Skua of the several the PC can hold: the same parts as the single Skua state, plus who it is. */
+export interface SkuaInstance extends SkuaState {
+  instanceId: string;
+  /** The character name, or "Skua N" while nobody is logged in. */
+  label: string;
+  /** The plugin went away; the instance stays listed. */
+  disconnected: boolean;
+}
+
 /** What /api/state and the "state" event carry: the last snapshot of the PC and its recent notices. */
 export interface RemoteState {
   snapshot: Snapshot | null;
   notices: Notice[];
   /** The Skua part; an older app sends none, which means null. */
   skua?: SkuaState | null;
+  /** Every Skua the PC knows, in order of arrival; an older app sends none (absent). */
+  skuaInstances?: SkuaInstance[];
 }

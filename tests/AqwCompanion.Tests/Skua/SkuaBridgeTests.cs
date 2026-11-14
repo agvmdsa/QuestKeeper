@@ -644,6 +644,36 @@ public class SkuaBridgeTests
         }
     }
 
+    [Fact]
+    public void Import_merges_newest_first_within_the_cap_and_saves_at_once()
+    {
+        var bridge = Create();
+        bridge.Accept(Entry(1));
+        _now = T0.AddSeconds(1);   // inside the save throttle
+
+        bridge.Import([.. Enumerable.Range(2, SkuaBridge.Capacity).Select(i => Entry(-i).Entry)]);
+
+        Assert.Equal(SkuaBridge.Capacity, bridge.Log.Count);
+        Assert.Equal("drop 1", bridge.Log[0].Text);
+        Assert.Equal("drop -2", bridge.Log[1].Text);
+        Assert.Equal(SkuaBridge.Capacity, _store.Stored.Count);
+    }
+
+    [Fact]
+    public void Import_of_nothing_or_while_quiesced_changes_nothing()
+    {
+        var bridge = Create();
+        var changes = 0;
+        bridge.Changed += (_, _) => changes++;
+
+        bridge.Import([]);
+        bridge.Quiesce();
+        bridge.Import([Entry(1).Entry]);
+
+        Assert.Empty(bridge.Log);
+        Assert.Equal(0, changes);
+    }
+
     private sealed class FakeStore : ISkuaLogStore
     {
         public List<SkuaLogEntry> Stored { get; set; } = [];

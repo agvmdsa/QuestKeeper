@@ -17,6 +17,19 @@ public class BoundedLineReaderTests
         return results;
     }
 
+    [Fact]
+    public async Task The_line_limit_can_be_raised_for_a_reader_that_takes_results()
+    {
+        var text = new string('x', SkuaProtocol.MaxLineBytes + 1);
+        var results = new List<LineResult>();
+        await foreach (var r in BoundedLineReader.ReadAsync(Bytes(text + "\n" + new string('y', SkuaProtocol.MaxResultLineBytes + 1) + "\nnext\n"), default, SkuaProtocol.MaxResultLineBytes))
+        {
+            results.Add(r);
+        }
+
+        Assert.Equal([new LineResult(text, false), new LineResult(null, true), new LineResult("next", false)], results);
+    }
+
     private static MemoryStream Bytes(string text) => new(Encoding.UTF8.GetBytes(text));
 
     [Fact]

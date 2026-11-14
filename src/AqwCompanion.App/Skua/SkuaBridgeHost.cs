@@ -14,9 +14,9 @@ public sealed class SkuaBridgeHost : IDisposable
     private bool _started;
     private bool _disposed;
 
-    public SkuaBridgeHost(SkuaBridge bridge, Action<Exception>? onError = null, string pipeName = SkuaProtocol.PipeName)
+    public SkuaBridgeHost(SkuaHub hub, Action<Exception>? onError = null, string pipeName = SkuaProtocol.PipeName)
     {
-        _server = new SkuaPipeServer(pipeName, bridge, onError);
+        _server = new SkuaPipeServer(pipeName, hub, onError);
     }
 
     /// <summary>Starts listening; safe to call again. A pipe that cannot be created is reported through the error callback.</summary>

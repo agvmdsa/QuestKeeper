@@ -173,6 +173,14 @@ const ALLOWED = new Set([
   'href:${t.href}', // focusKey(): an internal id used to restore keyboard focus, never shown
   '${height}px', // a CSS length for --chrome-h, not text
   'Enter', // KeyboardEvent.key value, not text
+  'ArrowRight', // KeyboardEvent.key value, not text
+  'ArrowLeft', // KeyboardEvent.key value, not text
+  'Home', // KeyboardEvent.key value, not text
+  'End', // KeyboardEvent.key value, not text
+  'Escape', // KeyboardEvent.key value, not text
+  'already running', // a refusal text of the Skua plugin, matched to choose the page's own words
+  'unknown script id', // a refusal text of the Skua plugin, matched to choose the page's own words
+  'not found', // a refusal text of the Skua plugin, matched to choose the page's own words
 ]);
 
 /** Source files the guard skips; every other .ts file under src/ is scanned, so a new module cannot escape. */

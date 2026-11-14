@@ -566,7 +566,7 @@ public sealed class SkuaApiTests : IDisposable
         _skua.Answer = (_, c) => Task.FromResult<ResultMessage?>(c switch
         {
             SetOptionsCommand set => Ok(values: set.Values, hasOptions: true) with { ReqId = c.ReqId },
-            _ => Ok(values: [new("Options", "Rate", "2,5")], hasOptions: true) with { ReqId = c.ReqId },
+            _ => Ok(values: [new("Options", "Rate", "2,5"), new("Options", "Mode", "Fast Farm")], hasOptions: true) with { ReqId = c.ReqId },
         });
 
         var response = Post($"/api/skua/a1/scripts/{Sid}/options", "{\"values\":[{\"category\":\"Options\",\"name\":\"Rate\",\"value\":\"1.5\"},{\"category\":\"Options\",\"name\":\"Mode\",\"value\":\"Slow\"}]}");
@@ -576,6 +576,62 @@ public sealed class SkuaApiTests : IDisposable
         Assert.Equal([new SkuaOptionValue("Options", "Rate", "1,5"), new("Options", "Mode", "Slow")], set.Values);
         using var doc = JsonDocument.Parse(Text(response));
         Assert.Equal("1.5", doc.RootElement.GetProperty("values")[0].GetProperty("value").GetString());
+    }
+
+    [Fact]
+    public void Without_plugin_definitions_only_the_names_in_the_options_file_are_sent()
+    {
+        // After a Skua restart the plugin accepts only names already in the file; a Transient option (Skua never saves those)
+        // or one added to the script since is in the cached definitions but not in the file, and is left out.
+        _cache.Set(Sid, Defs);
+        _skua.Answer = (_, c) => Task.FromResult<ResultMessage?>(c switch
+        {
+            SetOptionsCommand set => Ok(values: set.Values, hasOptions: true) with { ReqId = c.ReqId },
+            _ => Ok(values: [new("Options", "Rate", "2,5"), new("Options", "Mode", "Slow"), new("Extra", "Loop", "False")], hasOptions: true) with { ReqId = c.ReqId },
+        });
+
+        var response = Post(
+            $"/api/skua/a1/scripts/{Sid}/options",
+            "{\"values\":[{\"category\":\"Options\",\"name\":\"Rate\",\"value\":\"1.5\"},{\"category\":\"Options\",\"name\":\"Mode\",\"value\":\"Fast Farm\"},"
+            + "{\"category\":\"Options\",\"name\":\"Follow\",\"value\":\"Hero\"},{\"category\":\"Extra\",\"name\":\"Loop\",\"value\":\"True\"}]}");
+
+        Assert.Equal(200, response.Status);
+        var set = Assert.IsType<SetOptionsCommand>(_skua.Sent[1].Command);
+        Assert.Equal([new SkuaOptionValue("Options", "Rate", "1,5"), new("Options", "Mode", "Fast Farm"), new("Extra", "Loop", "True")], set.Values);
+    }
+
+    [Fact]
+    public void Without_plugin_definitions_the_cached_definitions_still_check_every_value_sent()
+    {
+        _cache.Set(Sid, Defs);
+        _skua.Answer = (_, c) => Task.FromResult<ResultMessage?>(Ok(values: [new("Options", "Rate", "2,5")], hasOptions: true) with { ReqId = c.ReqId });
+
+        var response = Post(
+            $"/api/skua/a1/scripts/{Sid}/options",
+            "{\"values\":[{\"category\":\"Options\",\"name\":\"Rate\",\"value\":\"1.5\"},{\"category\":\"Options\",\"name\":\"Mode\",\"value\":\"Medium\"}]}");
+
+        Assert.Equal(400, response.Status);
+        Assert.Equal("not a valid enum for Mode", ErrorOf(response));
+        Assert.DoesNotContain(_skua.Sent, s => s.Command is SetOptionsCommand);
+    }
+
+    [Fact]
+    public void With_plugin_definitions_every_value_is_sent_even_one_missing_from_the_file()
+    {
+        _skua.Answer = (_, c) => Task.FromResult<ResultMessage?>(c switch
+        {
+            SetOptionsCommand set => Ok(defs: Defs, values: set.Values, hasOptions: true) with { ReqId = c.ReqId },
+            _ => Ok(defs: Defs, values: [new("Options", "Rate", "2.5")], hasOptions: true) with { ReqId = c.ReqId },
+        });
+
+        var response = Post(
+            $"/api/skua/a1/scripts/{Sid}/options",
+            "{\"values\":[{\"category\":\"Options\",\"name\":\"Rate\",\"value\":\"1.5\"},{\"category\":\"Options\",\"name\":\"Follow\",\"value\":\"Hero\"}]}");
+
+        Assert.Equal(200, response.Status);
+        Assert.Equal(
+            [new SkuaOptionValue("Options", "Rate", "1.5"), new("Options", "Follow", "Hero")],
+            Assert.IsType<SetOptionsCommand>(_skua.Sent[1].Command).Values);
     }
 
     [Fact]

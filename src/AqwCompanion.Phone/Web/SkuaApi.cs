@@ -217,6 +217,14 @@ public sealed class SkuaApi(ISkuaFeed feed, ISkuaCommandChannel channel, SkuaScr
             }
 
             outgoing = SkuaOptionValues.ForPlugin(defs, tidy, raw, _culture);
+            if (raw)
+            {
+                // A plugin without definitions (Skua restarted) accepts only the names already in the options file, which it
+                // just returned. A Transient option (Skua never saves those) or one added to the script since is in the cached
+                // definitions only; it is left out instead of failing every submit with "unknown option".
+                var inFile = (current.Values ?? []).Select(v => (v.Category, v.Name)).ToHashSet();
+                outgoing = outgoing.Where(v => inFile.Contains((v.Category, v.Name))).ToList();
+            }
         }
 
         var (result, failed) = await SendAsync(instanceId, new SetOptionsCommand("", scriptId, outgoing), ct).ConfigureAwait(false);

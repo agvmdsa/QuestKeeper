@@ -3,7 +3,8 @@
 A Skua plugin. It runs inside Skua 1.4.5.0, reports Skua's state and a short event log to SkuaLink over a local named
 pipe (`SkuaLink.SkuaBridge.v1`, current Windows user only, two-way since AQW-0088), and accepts a fixed set of commands
 from SkuaLink. Status: **connect and status verified by the owner on Windows on 2026-11-11 with an earlier build; the
-quest reading, the re-attach across script runs, the commands and the rest are not yet verified** (only the owner's
+quest reading, the re-attach across script runs, the commands, the options handling and several Skua at once are not yet
+verified** (only the owner's
 Windows can prove it).
 
 ## What the plugin can do
@@ -209,6 +210,17 @@ unit-tested; the Skua-bound part is `ScriptOptions.cs`):
   script without options is refused (`options not known yet`) rather than writing an empty file, which could be the
   `default.cfg` other scripts share.
 
+## Protocol additions and several Skua (AQW-0087, AQW-0090)
+
+- `hello` carries `instanceId`, a random GUID made once per plugin load. SkuaLink keeps one entry per Skua, up to 8
+  connections on the same pipe name (9 pipe instances with the user-only descriptor: 8 connections and one waiting
+  spare); a ninth is closed at once and keeps retrying. Commands are routed by instance and answered by the same Skua.
+- `status` adds `control`, `settleSecondsLeft` and `optionsStuck`; `result` and the commands are new; `SkuaProtocol`
+  caps a command line at 4 KB and a result line at 256 KB (at most `MaxScripts` scripts, `truncated` when cut).
+- A Skua keeps its entry after it disconnects (marked disconnected) and a restarted Skua whose character logs in takes
+  over the old entry; SkuaLink keeps at most 16 entries and one log file per character.
+- A plugin older than the app (no `control` in the status) shows its state but cannot start or stop; the phone says so.
+
 ## Threading and safety
 
 - Every handler goes through `Safe(Action)`; `Load`, `Unload` and every public `PipeClient` member catch everything.
@@ -333,71 +345,60 @@ Desktop framework reference, no package) for the options dialog: the DLL then al
 
 ## Not verified (owner's Windows checklist)
 
-- The plugin loads in Skua 1.4.5.0 and connects to SkuaLink (including an elevated SkuaLink and a non-elevated Skua).
-- Whether the game has applied a purchase to the inventory when `buyItem` arrives; the plugin reads it 300 ms later.
-  If not, "Bought" shows without a quantity and possibly as `item #id`.
-- Bought quantity can be wrong or missing for back-to-back buys of the same item: the "before" comes from the last
-  snapshot, which may already include an earlier buy, or not yet include it.
-- That the re-attach after `ClearHandlers` keeps the log working across several script runs.
-- Reading `Quests.Active` at most every 15 s: the cost (see above) and whether the list is right with no script running.
-- A script that registers quests (for example a `Bot.RegisterQuests` loop) keeps working normally with the plugin
-  connected.
-- The quest card updates within about 18 s of accepting or turning in a quest.
-- The ready flag appears when the game shows the quest as completable.
-- The faction list read every 3 s: its cost with ~50 factions, that it matches the game's Reputation panel, and that
-  `Rep` / `RequiredRep` are the in-rank progress and the rank step (0 at rank 10) as the source says.
-- Several Skua at once (AQW-0090): SkuaLink now keeps up to 8 connections on the same pipe name (9 pipe instances with
-  the user-only descriptor: 8 connections and one waiting spare). Not seen on Windows: that 8 plugins connect at once
-  and each one's commands reach only that Skua; that a ninth Skua, closed at once by SkuaLink, keeps retrying every
-  second without errors in Skua; that a restarted Skua (new instance id) comes back as the same entry once its character
-  logs in; that a Skua whose plugin fell back to the send-only pipe still reports while its commands time out ("Skua did
-  not answer"); that the per-character log files (`skua-log.<character>.json`) appear in SkuaLink's data folder and the
-  old `skua-log.json` is folded into the first character that logs in.
-- Commands (AQW-0088):
-  - The two-way pipe connects to the new SkuaLink, and a SkuaLink without commands (inbound-only pipe) still gets the
-    reports: that Windows refuses the `InOut` client with access denied (`UnauthorizedAccessException`) is from the
-    Win32 rules, not seen.
+Only the owner's Windows can prove these; the full step-by-step list is kept outside the repository.
+
+- **Load and connect:** the plugin loads in Skua 1.4.5.0 and connects to SkuaLink, including an elevated SkuaLink with a
+  non-elevated Skua. The plugin and SkuaLink must come from the same release.
+- **Reports:**
+  - Whether the game has applied a purchase to the inventory when `buyItem` arrives (the plugin reads it 300 ms later);
+    if not, "Bought" shows without a quantity and possibly as `item #id`. The quantity can also be wrong for back-to-back
+    buys of the same item.
+  - That the re-attach after `ClearHandlers` keeps the log working across several script runs.
+  - Reading `Quests.Active` at most every 15 s: the cost (see above), whether the list is right with no script running,
+    that the quest card updates within about 18 s, that the ready flag matches the game, and that a script that
+    registers quests keeps working normally.
+  - The faction list read every 3 s: its cost with about 50 factions (the 0.4.0 item "reputation cost every 3 s"), that it
+    matches the game's Reputation panel, and that `Rep` / `RequiredRep` are the in-rank progress and the rank step (0 at
+    rank 10).
+- **Control (AQW-0088):**
+  - The two-way pipe connects to the new SkuaLink; that Windows refuses the `InOut` client of an older SkuaLink's
+    inbound-only pipe with `UnauthorizedAccessException` (so the plugin falls back to send-only) is from the Win32 rules,
+    not seen. That fallback must also be checked when the plugin sees a pipe that never reads (`outBufferSize`).
   - Listing: the folder, the names and folders shown, `Cached-Scripts` left out, the time a large scripts folder takes.
-  - Start: the script really starts from the plugin (no Skua UI involved), Skua's loader label (it is not updated by
-    `SetLoadedScript`), and the text of a compile error or version error as it reaches the phone.
-  - `hasOptions` read from `Config` right after `StartScript` describes the script just started (not the previous one).
-  - Stop duration: how long Skua takes from `stop` until `ScriptRunning` turns false, and a script that ignores the
-    stop (Skua gives up after about 40 s and the state stays `stopping` until it really ends; a new `stop` tries again).
+  - Start: the script really starts from the plugin (no Skua UI involved), Skua's loader label (not updated by
+    `SetLoadedScript`), and the text of a compile or version error as it reaches the phone.
+  - Stop duration: how long Skua takes from `stop` until `ScriptRunning` turns false, and a script that ignores the stop
+    (Skua gives up after about 40 s and the state stays `stopping` until it really ends; a new `stop` tries again).
   - Settling: that 10 s without a map change (seen on the 3 s poll while no script runs) covers Skua's cleanup after a
-    stop (for example going to the house), and that a script that stops by itself also settles.
-  - A start accepted but never reported running settles after 10 s.
-- Script options (AQW-0089):
-  - The options file path and format on a real Skua: `%AppData%\Skua\options\{OptionsStorage}.cfg`, the lines Skua
-    writes, enum values with spaces, and that a file written by the plugin is read back by Skua unchanged.
-  - That `Config` read right after `StartScript()` returns is the script just started (definitions, `OptionsFile`).
-  - The window match (`DataContext` type name `OptionContainerViewModel` and its `Container` being `Config`) and the
-    close with `Window.Close()` through `IDispatcherService.Invoke`, while Skua's dialog runs in `ShowDialog`; and what
-    the phone shows when either fails (`optionsStuck`).
-  - That the script reads the saved values after the dialog closes (Skua saves what the dialog showed, which it loaded
-    from the file just written), including a script that reads its options before the dialog closes.
-  - First start (discovery): that stopping the script right after closing its dialog leaves Skua clean (settling
-    applies), and that a dialog appearing later than 5 s after the start (slow PC) does not stay on the PC.
-  - A second start of the same script in one Skua session: whether Skua shows the dialog again (the source suggests it
-    does for every start of a script without `DontPreconfigure`), and that with no dialog the state goes to `running`
-    after 5 s.
-  - That a script with `DontPreconfigure = true` shows no dialog and starts with the saved values.
-  - The fallback after a Skua restart: that real scripts declare `public string OptionsStorage = "...";` on one line
-    (scripts that build the name another way get a discovery run instead), and that the file found this way is the one
-    Skua uses.
-  - A PC whose culture writes decimals with a comma: the phone sends doubles in invariant culture (`1.5`) and the plugin
-    writes them in the PC's culture (`1,5`), as Skua reads them (`Convert.ChangeType` with the current culture), and
-    reads them back the same way; that the plugin's thread culture is the one Skua's script thread uses is not seen.
-  - After a Skua restart (the plugin has no definitions), SkuaLink converts doubles itself with SkuaLink's own culture
-    (the same Windows user, so the same culture as Skua is assumed) and sends enum members with spaces; that Skua reads
-    both back correctly from a file written this way (AQW-0091).
-- Phone page control (AQW-0093), seen only in unit tests on the Mac:
-  - Start, stop and the options step end to end from a phone against a real Skua: the script list sheet, one tap
-    starts, the stop confirmation, and the options form for each type (switch, whole number, decimal, text, choice,
-    other types read-only) written and read back by Skua.
-  - The first start of a never-seen script: the form opens with the definitions the plugin returned, and the next start
-    (after the settle wait) applies them.
-  - The sheet is the browser's own modal dialog: focus moving in and back, Escape, the Android back gesture and a tap on
-    the backdrop closing it, on iPhone Safari (15.4 or later for `showModal`) and Android Chrome.
-  - The "Ask for options when starting this script" switch on the running card finds the running script by its name in
-    Skua's list (a name used in two folders shows no switch unless the phone started it).
-  - "Skua did not answer" in the banner after a real 504 (a command that waits longer than the PC allows).
+    stop, and that a script that stops by itself also settles. A start accepted but never reported running settles after
+    10 s.
+- **Script options (AQW-0089, AQW-0091):**
+  - The options file path and format: `%AppData%\Skua\options\{OptionsStorage}.cfg`, the lines Skua writes, enum values
+    with spaces, and that a file written by the plugin is read back by Skua unchanged.
+  - That `Config` read right after `StartScript()` returns is the script just started (definitions, `OptionsFile`, and
+    `hasOptions`).
+  - The window match (`DataContext` type name `OptionContainerViewModel`, its `Container` being `Config`) and the close
+    with `Window.Close()` through `IDispatcherService.Invoke` while Skua's dialog runs in `ShowDialog`. If the match fails
+    while the dialog is open, the 5 s rule makes the state `running` with the dialog still on the PC, silently.
+  - That the script reads the saved values after the dialog closes, including a script that reads its options before.
+  - First start (discovery): that stopping the script right after closing its dialog leaves Skua clean, and that a
+    dialog appearing later than 5 s after the start (slow PC) does not stay on the PC.
+  - A second start of the same script in one Skua session: whether Skua shows the dialog again, and that with no dialog
+    the state goes to `running` after 5 s. A script with `DontPreconfigure = true` shows no dialog.
+  - The fallback after a Skua restart: that real scripts declare `public string OptionsStorage = "...";` on one line, and
+    that the file found this way is the one Skua uses.
+  - A PC whose culture writes decimals with a comma: the plugin writes doubles in the PC's culture (`1,5`) as Skua reads
+    them (`Convert.ChangeType`, current culture); that the plugin thread's culture is Skua's script thread's is not seen.
+    After a Skua restart SkuaLink converts doubles itself with its own culture (same Windows user assumed) and sends enum
+    members with spaces; that Skua reads both back correctly is not seen.
+- **Several Skua (AQW-0090):** up to 8 plugins connect at once and each one's commands reach only that Skua (also one
+  elevated and one not); a ninth Skua, closed at once by SkuaLink, keeps retrying every second without errors in Skua; a
+  restarted Skua (new instance id) takes over its old entry once its character logs in; a Skua on the send-only fallback
+  still reports while its commands time out ("Skua did not answer"); the per-character log files
+  (`skua-log.<character>.json`) appear in SkuaLink's data folder and the old `skua-log.json` is folded into the first
+  character that logs in. The 0.4.0 item "character names match without regard to case" is still open here too.
+- **Phone page (AQW-0093):** start, stop and the options step end to end against a real Skua (every option type); the
+  chip row, its fade and scrolling the selected chip into view; the sheet as the browser's own dialog (focus in and back,
+  Escape, back gesture, backdrop tap) on iPhone Safari 15.4 or later and Android Chrome; the lazy control chunk loading
+  offline from the service worker; the "Ask for options" switch on the running card; "Skua did not answer" after a real
+  504; the notices `SkuaDisconnected`, `SkuaReconnected` and `SkuaOptionsWaiting`.

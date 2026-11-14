@@ -22,11 +22,11 @@ public partial class SettingsViewModel : ObservableObject
     public const string FeedNewSecretText = "New secret";
     public const string FeedNewSecretWarningText = "Programs that use the old secret stop working until they read the new one.";
     public const string PhoneTitleText = "Watch my characters from my phone";
-    public const string PhoneDescriptionText = "Shows your characters' numbers, factions and Hard Farms on a phone you pair, over your own Tailscale network. It only watches and never sends anything to the game.";
+    public const string PhoneDescriptionText = "Shows your characters' numbers, factions and Hard Farms on a phone you pair, over your own Tailscale network. It never sends anything to the game; with the Skua plugin it can also start and stop Skua scripts.";
     public const string PairPhoneText = "Pair a phone...";
     public const string PhoneCopyLinkText = "Copy local pairing link";
     public const string SkuaTitleText = "Skua";
-    public const string SkuaDescriptionText = "Shows what Skua is doing in the Skua tab of the phone page. The plugin only watches: it cannot start, stop or change anything.";
+    public const string SkuaDescriptionText = "Shows what each Skua is doing in the Skua tab of the phone page, and lets you start and stop its scripts and set their options from the phone. The plugin and SkuaLink must come from the same release.";
     public const string SkuaStepsText = "1. Download SkuaLink.SkuaBridge.dll from the release page. 2. Copy it into Skua's plugins folder. 3. Close and reopen Skua.";
     public const string OpenSkuaPluginsFolderText = "Open Skua's plugins folder";
     public const string OpenReleasePageText = "Open the release page";

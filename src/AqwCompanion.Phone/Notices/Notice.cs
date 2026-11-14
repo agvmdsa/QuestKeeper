@@ -1,6 +1,6 @@
 namespace AqwCompanion.Phone.Notices;
 
-public enum NoticeKind { RankUp, HardFarmDrop, ActivityStopped, CaptureLost, CaptureBack, NewLogin, SkuaDisconnected, SkuaReconnected }
+public enum NoticeKind { RankUp, HardFarmDrop, ActivityStopped, CaptureLost, CaptureBack, NewLogin, SkuaDisconnected, SkuaReconnected, SkuaOptionsWaiting }
 
 public sealed record Notice(string Id, NoticeKind Kind, string Character, string Title, string Body, DateTimeOffset AtUtc);
 

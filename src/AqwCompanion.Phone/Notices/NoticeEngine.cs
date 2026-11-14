@@ -14,12 +14,19 @@ public sealed class NoticeEngine(NoticeOptions? options = null)
     private readonly Dictionary<string, Queue<DateTimeOffset>> _recent = new(StringComparer.Ordinal);
     private FeedSnapshot? _previous;
     private Dictionary<string, bool>? _skuaConnected;
+    private SkuaHubView? _skuaLast;
+    private readonly Dictionary<string, OptionsWait> _optionsWaits = new(StringComparer.Ordinal);
+
+    /// <summary>A Skua whose control state stays <c>awaitingOptions</c> longer than this raises <see cref="NoticeKind.SkuaOptionsWaiting"/>.</summary>
+    public static readonly TimeSpan OptionsWaitingAfter = TimeSpan.FromSeconds(3);
 
     /// <summary>Forgets everything: the next snapshot is a baseline again and no notice id is remembered.</summary>
     public void Reset()
     {
         _previous = null;
         _skuaConnected = null;
+        _skuaLast = null;
+        _optionsWaits.Clear();
         _seen.Clear();
         _seenOrder.Clear();
         _recent.Clear();
@@ -45,10 +52,15 @@ public sealed class NoticeEngine(NoticeOptions? options = null)
     /// The Skua instances changed: a connected Skua that is now disconnected raises <see cref="NoticeKind.SkuaDisconnected"/>,
     /// a disconnected one that is connected again <see cref="NoticeKind.SkuaReconnected"/> (the instance label in the text).
     /// The first view is a baseline; an instance that appears or goes away raises nothing.
+    /// A connected Skua whose status says <c>optionsStuck</c>, or whose control state has been <c>awaitingOptions</c> for more
+    /// than <see cref="OptionsWaitingAfter"/> (seen here or in <see cref="Tick"/>), raises <see cref="NoticeKind.SkuaOptionsWaiting"/>
+    /// once per wait; a wait already there in the baseline is not announced.
     /// </summary>
     public IReadOnlyList<Notice> ProcessSkua(SkuaHubView view, DateTimeOffset now)
     {
         var found = new List<Notice>();
+        OptionsWaiting(view, now, baseline: _skuaConnected is null, found);
+        _skuaLast = view;
         var connected = new Dictionary<string, bool>(StringComparer.Ordinal);
         foreach (var instance in view.Instances)
         {
@@ -71,14 +83,67 @@ public sealed class NoticeEngine(NoticeOptions? options = null)
     /// <summary>Time passing with no new snapshot: the feed is silent when nothing changes, so a stalled bot is found here.</summary>
     public IReadOnlyList<Notice> Tick(DateTimeOffset now)
     {
-        if (_previous is null)
+        var found = new List<Notice>();
+        if (_previous is not null)
         {
-            return [];
+            Stalls(_previous, now, found);
         }
 
-        var found = new List<Notice>();
-        Stalls(_previous, now, found);
+        if (_skuaLast is not null)
+        {
+            OptionsWaiting(_skuaLast, now, baseline: false, found);
+        }
+
         return Admit(found, now);
+    }
+
+    /// <summary>
+    /// How long until a Skua waiting for its options window is due a <see cref="NoticeKind.SkuaOptionsWaiting"/> (the caller
+    /// ticks then), or null when none is waiting unannounced.
+    /// </summary>
+    public TimeSpan? SkuaOptionsDueIn(DateTimeOffset now)
+    {
+        TimeSpan? due = null;
+        foreach (var wait in _optionsWaits.Values.Where(w => !w.Announced))
+        {
+            var left = wait.Since + OptionsWaitingAfter - now;
+            left = left < TimeSpan.Zero ? TimeSpan.Zero : left;
+            due = due is { } d && d < left ? d : left;
+        }
+
+        return due;
+    }
+
+    private void OptionsWaiting(SkuaHubView view, DateTimeOffset now, bool baseline, List<Notice> found)
+    {
+        var waiting = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var instance in view.Instances)
+        {
+            if (instance.Disconnected || instance.Status is not { } status || !(status.OptionsStuck || status.Control == "awaitingOptions"))
+            {
+                continue;
+            }
+
+            waiting.Add(instance.InstanceId);
+            if (!_optionsWaits.TryGetValue(instance.InstanceId, out var wait))
+            {
+                _optionsWaits[instance.InstanceId] = wait = new OptionsWait(now) { Announced = baseline };
+            }
+
+            if (!wait.Announced && (status.OptionsStuck || now - wait.Since > OptionsWaitingAfter))
+            {
+                wait.Announced = true;
+                var label = instance.Label;
+                found.Add(new Notice(
+                    $"skua-options:{instance.InstanceId}:{wait.Since.UtcTicks}", NoticeKind.SkuaOptionsWaiting, label,
+                    "Waiting for you on the PC", $"{label}: close the script's options window on the computer.", now));
+            }
+        }
+
+        foreach (var id in _optionsWaits.Keys.Where(id => !waiting.Contains(id)).ToList())
+        {
+            _optionsWaits.Remove(id);
+        }
     }
 
     private static void Capture(FeedSnapshot before, FeedSnapshot now, DateTimeOffset at, List<Notice> found)
@@ -142,6 +207,13 @@ public sealed class NoticeEngine(NoticeOptions? options = null)
                 $"stall:{c.Name}:{c.LastLiveUpdateUtc!.Value.UtcTicks}", NoticeKind.ActivityStopped, c.Name,
                 "Activity stopped", $"{c.Name} has shown no activity for {minutes} minutes.", now));
         }
+    }
+
+    private sealed class OptionsWait(DateTimeOffset since)
+    {
+        public DateTimeOffset Since { get; } = since;
+
+        public bool Announced { get; set; }
     }
 
     private List<Notice> Admit(List<Notice> found, DateTimeOffset now)

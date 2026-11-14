@@ -37,11 +37,21 @@ public sealed class PhoneHub : IDisposable
     private readonly ISkuaFeed? _skua;
     private readonly object _lock = new();
     private readonly List<HubSubscription> _subscribers = [];
+    private readonly Action<TimeSpan, Action>? _schedule;
     private FeedSnapshot _snapshot;
     private string _snapshotJson;
+    private bool _checkScheduled;
 
-    public PhoneHub(IFeedSource source, NoticeEngine engine, NoticeLog log, Func<DateTimeOffset> now, Action<Exception>? onError = null, ISkuaFeed? skua = null)
+    /// <param name="schedule">
+    /// Runs an action once after a delay; used to look again when a Skua waits for its options window (a notice is due
+    /// after <see cref="NoticeEngine.OptionsWaitingAfter"/>, sooner than the regular <see cref="Tick"/>). Null: only
+    /// <see cref="Tick"/> looks.
+    /// </param>
+    public PhoneHub(
+        IFeedSource source, NoticeEngine engine, NoticeLog log, Func<DateTimeOffset> now, Action<Exception>? onError = null, ISkuaFeed? skua = null,
+        Action<TimeSpan, Action>? schedule = null)
     {
+        _schedule = schedule;
         _source = source;
         _engine = engine;
         _log = log;
@@ -69,7 +79,7 @@ public sealed class PhoneHub : IDisposable
         {
             lock (_lock)
             {
-                return new PhoneState(_snapshot, _log.Recent, _skua?.Current.Primary);
+                return State(_skua?.Current);
             }
         }
     }
@@ -105,6 +115,7 @@ public sealed class PhoneHub : IDisposable
             try
             {
                 PublishNotices(_engine.Tick(_now()));
+                ScheduleOptionsCheck();
             }
             catch (Exception ex)
             {
@@ -198,12 +209,35 @@ public sealed class PhoneHub : IDisposable
                 var view = _skua!.Current;
                 PublishNotices(_engine.ProcessSkua(view, _now()));
                 PublishState(view);
+                ScheduleOptionsCheck();
             }
         }
         catch (Exception ex)
         {
             Report(ex);
         }
+    }
+
+    /// <summary>Under the lock: asks for one look when a Skua's options wait becomes due (at most one look pending).</summary>
+    private void ScheduleOptionsCheck()
+    {
+        if (_schedule is null || _checkScheduled || _engine.SkuaOptionsDueIn(_now()) is not { } due)
+        {
+            return;
+        }
+
+        _checkScheduled = true;
+        _schedule(due + TimeSpan.FromMilliseconds(100), OptionsCheck);
+    }
+
+    private void OptionsCheck()
+    {
+        lock (_lock)
+        {
+            _checkScheduled = false;
+        }
+
+        Tick();
     }
 
     private void Report(Exception ex)
@@ -229,8 +263,11 @@ public sealed class PhoneHub : IDisposable
 
     private void PublishState() => PublishState(_skua?.Current);
 
-    private void PublishState(SkuaHubView? skua) =>
-        Publish(new HubMessage("state", PhoneJson.Serialize(new PhoneState(_snapshot, _log.Recent, skua?.Primary))));
+    private void PublishState(SkuaHubView? skua) => Publish(new HubMessage("state", PhoneJson.Serialize(State(skua))));
+
+    /// <summary>Under the lock.</summary>
+    private PhoneState State(SkuaHubView? skua) =>
+        new(_snapshot, _log.Recent, skua?.Primary, skua is null ? null : SkuaInstanceState.From(skua));
 
     /// <summary>Under the lock: the Skua instances as they are now raise no notice (a Skua already disconnected is not announced).</summary>
     private void SkuaBaseline()

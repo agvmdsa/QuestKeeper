@@ -387,3 +387,6 @@ Desktop framework reference, no package) for the options dialog: the DLL then al
   - A PC whose culture writes decimals with a comma: the phone sends doubles in invariant culture (`1.5`) and the plugin
     writes them in the PC's culture (`1,5`), as Skua reads them (`Convert.ChangeType` with the current culture), and
     reads them back the same way; that the plugin's thread culture is the one Skua's script thread uses is not seen.
+  - After a Skua restart (the plugin has no definitions), SkuaLink converts doubles itself with SkuaLink's own culture
+    (the same Windows user, so the same culture as Skua is assumed) and sends enum members with spaces; that Skua reads
+    both back correctly from a file written this way (AQW-0091).

@@ -6,8 +6,13 @@ using AqwCompanion.Phone.Skua;
 
 namespace AqwCompanion.Phone.Hub;
 
-/// <summary>What a phone sees: the last snapshot and the recent notices.</summary>
-public sealed record PhoneState(FeedSnapshot Snapshot, IReadOnlyList<Notice> Notices, SkuaView? Skua = null);
+/// <summary>
+/// What a phone sees: the last snapshot and the recent notices. <paramref name="Skua"/> is the first connected Skua (as
+/// before several Skua were known); <paramref name="SkuaInstances"/> lists every Skua in order of arrival. Both are null
+/// when no Skua feed is wired.
+/// </summary>
+public sealed record PhoneState(
+    FeedSnapshot Snapshot, IReadOnlyList<Notice> Notices, SkuaView? Skua = null, IReadOnlyList<SkuaInstanceState>? SkuaInstances = null);
 
 [JsonSourceGenerationOptions(JsonSerializerDefaults.Web, DefaultIgnoreCondition = JsonIgnoreCondition.Never, UseStringEnumConverter = true)]
 [JsonSerializable(typeof(PhoneState))]

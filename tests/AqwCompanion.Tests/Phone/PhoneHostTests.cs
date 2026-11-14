@@ -6,7 +6,9 @@ using AqwCompanion.Core.Feed;
 using AqwCompanion.Phone.Devices;
 using AqwCompanion.Phone.Hub;
 using AqwCompanion.Phone.Notices;
+using AqwCompanion.Phone.Skua;
 using AqwCompanion.Phone.Web;
+using AqwCompanion.Skua;
 using AqwCompanion.Tests.TestDoubles;
 
 namespace AqwCompanion.Tests.Phone;
@@ -733,6 +735,100 @@ public sealed class PhoneHostTests : IDisposable
         var own = port;
         var handler = new PhoneHandler(_registry, _hub, new FakeAssets(), h => h == $"127.0.0.1:{own}", "9.9.9");
         return new PhoneHost(handler, _hub, _registry, port, timeout);
+    }
+
+    private PhoneHost NewSkuaHost(FakeSkua skua, TimeSpan requestTimeout, TimeSpan commandTimeout, out int port)
+    {
+        port = FreePort();
+        var own = port;
+        var api = new SkuaApi(
+            skua, skua, new SkuaScriptPrefs(new MemorySkuaScriptFile(), () => DateTimeOffset.UtcNow),
+            new SkuaOptionCache(new MemorySkuaScriptFile(), () => DateTimeOffset.UtcNow));
+        var handler = new PhoneHandler(_registry, _hub, new FakeAssets(), h => h == $"127.0.0.1:{own}", "9.9.9", api);
+        return new PhoneHost(handler, _hub, _registry, port, requestTimeout, commandTimeout);
+    }
+
+    private async Task<string> PairOnAsync(int port)
+    {
+        var token = _registry.CreatePairingToken();
+        using var pair = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{port}/api/pair")
+        {
+            Content = new StringContent($"{{\"token\":\"{token}\",\"name\":\"Phone\"}}", Encoding.UTF8, "application/json"),
+        };
+        pair.Headers.Add("X-Remote", "1");
+        using var paired = await _client.SendAsync(pair);
+        return paired.Headers.GetValues("Set-Cookie").Single().Split(';')[0];
+    }
+
+    private HttpRequestMessage SkuaStart(int port, string cookie)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{port}/api/skua/a1/start")
+        {
+            Content = new StringContent("{\"id\":\"0123456789abcdef\"}", Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Add("X-Remote", "1");
+        request.Headers.Add("Cookie", cookie);
+        return request;
+    }
+
+    [Fact]
+    public async Task A_skua_command_may_wait_longer_than_an_ordinary_request()
+    {
+        var skua = new FakeSkua { Current = new SkuaHubView([FakeSkua.Instance("a1", "Hero")]) };
+        skua.Answer = async (_, c) =>
+        {
+            await Task.Delay(1200);
+            return new ResultMessage(c.ReqId, true, null, null, null, null, false, false);
+        };
+
+        // Binding is denied in some sandboxes; then there is nothing to test here.
+        using var host = NewSkuaHost(skua, TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(5), out var port);
+        if (!host.TryStart())
+        {
+            return;
+        }
+
+        var cookie = await PairOnAsync(port);
+        using var response = await _client.SendAsync(SkuaStart(port, cookie));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("{\"hasOptions\":false,\"firstRun\":false,\"defs\":null,\"values\":[]}", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task A_skua_command_is_still_cut_off_after_the_command_timeout()
+    {
+        var skua = new FakeSkua { Current = new SkuaHubView([FakeSkua.Instance("a1", "Hero")]) };
+        skua.Answer = async (_, c) =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(4));
+            return new ResultMessage(c.ReqId, true, null, null, null, null, false, false);
+        };
+
+        // Binding is denied in some sandboxes; then there is nothing to test here.
+        using var host = NewSkuaHost(skua, TimeSpan.FromMilliseconds(300), TimeSpan.FromMilliseconds(800), out var port);
+        if (!host.TryStart())
+        {
+            return;
+        }
+
+        var cookie = await PairOnAsync(port);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        string? body = null;
+        try
+        {
+            using var response = await _client.SendAsync(SkuaStart(port, cookie));
+            body = await response.Content.ReadAsStringAsync();
+        }
+        catch (HttpRequestException)
+        {
+            // Aborted: the cut-off http.sys gives.
+        }
+
+        // The managed listener of other platforms may close an aborted response as an empty one; either way no answer comes
+        // and the request ends long before Skua would have answered.
+        Assert.True(string.IsNullOrEmpty(body));
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(3));
     }
 
     [Fact]

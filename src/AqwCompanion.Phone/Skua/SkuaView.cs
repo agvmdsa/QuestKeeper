@@ -33,3 +33,19 @@ public sealed record SkuaHubView(IReadOnlyList<SkuaInstanceView> Instances)
     public SkuaView Primary =>
         (Instances.FirstOrDefault(i => !i.Disconnected) ?? Instances.FirstOrDefault())?.ToView() ?? SkuaView.Empty;
 }
+
+/// <summary>
+/// One Skua as the phone API and the state's <c>skuaInstances</c> show it: the instance with at most
+/// <see cref="MaxLog"/> log lines (newest first). The status carries <c>control</c>, <c>settleSecondsLeft</c> and
+/// <c>optionsStuck</c>.
+/// </summary>
+public sealed record SkuaInstanceState(
+    string InstanceId, string Label, SkuaConnection Connection, bool Disconnected, SkuaHello? Hello, SkuaStatus? Status, IReadOnlyList<SkuaLogEntry> Log)
+{
+    public const int MaxLog = 100;
+
+    public static SkuaInstanceState From(SkuaInstanceView view) =>
+        new(view.InstanceId, view.Label, view.Connection, view.Disconnected, view.Hello, view.Status, [.. view.Log.Take(MaxLog)]);
+
+    public static IReadOnlyList<SkuaInstanceState> From(SkuaHubView view) => [.. view.Instances.Select(From)];
+}

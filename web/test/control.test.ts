@@ -221,7 +221,25 @@ describe('the script list sheet', () => {
   it('groups and sorts like the server, keeping empty folders out', () => {
     const g = scriptGroups(scriptsBody().scripts, '');
     expect(g.map((x) => x.folder)).toEqual(['Farming', '']);
-    expect(scriptGroups(scriptsBody().scripts, 'farm').map((x) => x.scripts.map((s) => s.name))).toEqual([['Farm']]);
+    expect(scriptGroups(scriptsBody().scripts, 'farm').map((x) => x.scripts.map((s) => s.name))).toEqual([['Farm', 'Butler']]);
+  });
+  it('searches folder and name, ignoring case, spaces and punctuation, every word required', () => {
+    const list: ScriptItem[] = [
+      { id: ID_A, name: '0RunAll', folder: 'Hollowborn/HollowbornChaosEnvoy', askOptions: false },
+      { id: ID_B, name: 'HollowbornREP', folder: 'Farm/REP', askOptions: false },
+      { id: ID_C, name: 'Run-All', folder: 'Other', askOptions: false },
+    ];
+    const names = (q: string) => scriptGroups(list, q).flatMap((g) => g.scripts.map((x) => x.id));
+    for (const q of ['hollowborn envoy', 'chaos envoy', 'chaosenvoy', 'run all', 'HOLLOWBORN, Envoy!', '  chaos   envoy  ']) {
+      expect(names(q), q).toContain(ID_A);
+    }
+    expect(names('hollowborn envoy')).toEqual([ID_A]);
+    expect(names('envoy farm')).toEqual([]);
+    expect(names('hollowborn')).toEqual([ID_A, ID_B]);
+    expect(names('')).toEqual([ID_A, ID_B, ID_C]);
+    expect(names('   ')).toEqual([ID_A, ID_B, ID_C]);
+    expect(names('!!!')).toEqual([ID_A, ID_B, ID_C]);
+    expect(names('zzz')).toEqual([]);
   });
   it('notes a cut list', async () => {
     const s = setup();
@@ -240,6 +258,14 @@ describe('the script list sheet', () => {
     expect(texts(sheetView(s.control))).not.toContain('The list was cut, so some scripts are not shown.');
     s.control.setQuery('script 1999');
     expect(byAction(sheetView(s.control), 'script-pick').map((b) => b.attrs!['data-value'])).toEqual([(1999).toString(16).padStart(16, '0')]);
+    s.control.setQuery('f19 1999');
+    expect(byAction(sheetView(s.control), 'script-pick')).toHaveLength(1);
+    s.control.setQuery('');
+    expect(byAction(sheetView(s.control), 'script-pick')).toHaveLength(2000);
+    s.control.setQuery('f19 1999');
+    expect(byAction(sheetView(s.control), 'script-pick')).toHaveLength(1);
+    s.control.setQuery('');
+    expect(byAction(sheetView(s.control), 'script-pick')).toHaveLength(2000);
   });
   it('says when Skua has no scripts', async () => {
     const s = setup();

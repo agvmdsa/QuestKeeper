@@ -164,12 +164,21 @@ export function controlBanner(nowMs: number, until: number): Banner | null {
   return nowMs < until ? { tone: 'warn', text: t('control.error.noAnswer') } : null;
 }
 
-/** The scripts whose name holds the search text (ignoring case), grouped by folder in the order they came. */
+const squash = (s: string): string => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+
+/**
+ * The scripts matching every word of the search text (AND) in their folder plus name, ignoring case, spaces and
+ * punctuation ("chaos envoy" and "chaosenvoy" both find Hollowborn/HollowbornChaosEnvoy/0RunAll); grouped by folder in the
+ * order they came. An empty search lists everything.
+ */
 export function scriptGroups(scripts: readonly ScriptItem[], query: string): { folder: string; scripts: ScriptItem[] }[] {
-  const q = query.trim().toLowerCase();
+  const words = query.split(/\s+/).map(squash).filter((w) => w !== '');
   const groups = new Map<string, ScriptItem[]>();
   for (const s of scripts) {
-    if (q && !s.name.toLowerCase().includes(q)) continue;
+    if (words.length > 0) {
+      const hay = squash(`${s.folder} ${s.name}`);
+      if (!words.every((w) => hay.includes(w))) continue;
+    }
     const list = groups.get(s.folder) ?? [];
     list.push(s);
     groups.set(s.folder, list);

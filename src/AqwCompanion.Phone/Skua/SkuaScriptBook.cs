@@ -57,7 +57,7 @@ public abstract partial class SkuaScriptBook<T> : IForgettable
 
     public abstract string Name { get; }
 
-    /// <summary>True for a script id as the plugin makes them: 16 lowercase hex characters.</summary>
+    /// <summary>True for a script id as the plugin makes them: exactly 16 lowercase hex characters (no trailing newline).</summary>
     public static bool IsScriptId(string? id) => id is not null && ScriptIdPattern().IsMatch(id);
 
     public void Quiesce()
@@ -247,7 +247,7 @@ public abstract partial class SkuaScriptBook<T> : IForgettable
         }
     }
 
-    [GeneratedRegex("^[0-9a-f]{16}$", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(@"\A[0-9a-f]{16}\z", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
     private static partial Regex ScriptIdPattern();
 }
 

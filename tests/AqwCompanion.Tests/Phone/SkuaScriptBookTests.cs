@@ -66,6 +66,24 @@ public class SkuaScriptBookTests
     }
 
     [Fact]
+    public void An_id_with_a_trailing_newline_is_not_a_script_id_nor_kept_nor_loaded()
+    {
+        Assert.False(SkuaScriptPrefs.IsScriptId(A + "\n"));
+        Assert.True(SkuaScriptPrefs.IsScriptId(A));
+
+        Prefs().Set(A + "\n", false);
+        Assert.Null(_file.Text);
+
+        _file.Text = "{\"version\":1,\"scripts\":{\"" + A + "\\n\":{\"value\":false,\"lastUsed\":\"2026-11-13T12:00:00+00:00\"}}}";
+        var prefs = Prefs();
+        Assert.True(prefs.AskOptions(A + "\n"));
+        Assert.True(prefs.AskOptions(A));
+
+        _file.Text = "{\"version\":1,\"scripts\":{\"" + A + "\\n\":{\"value\":[],\"lastUsed\":\"2026-11-13T12:00:00+00:00\"}}}";
+        Assert.Null(Cache().Get(A + "\n"));
+    }
+
+    [Fact]
     public void An_entry_unused_for_90_days_is_dropped_and_a_used_one_kept()
     {
         var prefs = Prefs();

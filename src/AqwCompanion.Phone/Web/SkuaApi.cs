@@ -12,7 +12,7 @@ namespace AqwCompanion.Phone.Web;
 /// write header (<c>X-Remote: 1</c> on every POST) and the device cookie. Here, in this order: the route (404), the method
 /// (405), for a POST the content type (415, <c>application/json</c>), the body size (413; <see cref="MaxBody"/>, options
 /// <see cref="MaxOptionsBody"/>) and the body (400), the script id (400, only <c>[0-9a-f]{16}</c>), the instance (404 unknown,
-/// 409 disconnected), then the command: no answer in time is 504 <c>Skua did not answer</c>, a refusal by the plugin is 400
+/// 409 disconnected), one state-changing command per instance at a time (409 <c>busy</c>), then the command: no answer in time is 504 <c>Skua did not answer</c>, a refusal by the plugin is 400
 /// with the plugin's text. Every error body is <c>{"error":"..."}</c>.
 /// </summary>
 /// <remarks>
@@ -41,11 +41,13 @@ public sealed class SkuaApi(ISkuaFeed feed, ISkuaCommandChannel channel, SkuaScr
     public const string NotJson = "body must be json";
     public const string TooLarge = "body too large";
     public const string Refused = "Skua refused the command";
+    public const string Busy = "busy";
 
     private const int MaxInstanceId = SkuaProtocol.MaxTextLength;
     private static readonly JsonDocumentOptions BodyOptions = new() { MaxDepth = 8 };
 
     private readonly CultureInfo _culture = fileCulture ?? CultureInfo.CurrentCulture;
+    private readonly HashSet<string> _busy = new(StringComparer.Ordinal);
 
     /// <summary>True for every path this class answers.</summary>
     public static bool Handles(string path) => path == Prefix || path.StartsWith(Prefix + "/", StringComparison.Ordinal);
@@ -108,11 +110,38 @@ public sealed class SkuaApi(ISkuaFeed feed, ISkuaCommandChannel channel, SkuaScr
         {
             (Route.Scripts, _) => await ScriptsAsync(instanceId, ct).ConfigureAwait(false),
             (Route.Options, "GET") => await GetOptionsAsync(instanceId, scriptId!, ct).ConfigureAwait(false),
-            (Route.Options, _) => await SetOptionsAsync(instanceId, scriptId!, body!.Value, ct).ConfigureAwait(false),
+            (Route.Options, _) => await GatedAsync(instanceId, () => SetOptionsAsync(instanceId, scriptId!, body!.Value, ct)).ConfigureAwait(false),
             (Route.Prefs, _) => SetPrefs(instanceId, scriptId!, body!.Value),
-            (Route.Start, _) => await StartAsync(instanceId, body!.Value, ct).ConfigureAwait(false),
-            _ => await StopAsync(instanceId, ct).ConfigureAwait(false),
+            (Route.Start, _) => await GatedAsync(instanceId, () => StartAsync(instanceId, body!.Value, ct)).ConfigureAwait(false),
+            _ => await GatedAsync(instanceId, () => StopAsync(instanceId, ct)).ConfigureAwait(false),
         };
+    }
+
+    /// <summary>
+    /// One state-changing command (start, stop, setOptions) at a time per instance: another one while it is pending is 409
+    /// <c>busy</c> and sends nothing. The gate opens whatever happens (answer, refusal, timeout, cancellation).
+    /// </summary>
+    private async Task<PhoneResponse> GatedAsync(string instanceId, Func<Task<PhoneResponse>> command)
+    {
+        lock (_busy)
+        {
+            if (!_busy.Add(instanceId))
+            {
+                return PhoneHandler.Error(409, Busy);
+            }
+        }
+
+        try
+        {
+            return await command().ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_busy)
+            {
+                _busy.Remove(instanceId);
+            }
+        }
     }
 
     private PhoneResponse Instances() =>

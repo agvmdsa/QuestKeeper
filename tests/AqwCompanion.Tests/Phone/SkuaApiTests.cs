@@ -323,6 +323,73 @@ public sealed class SkuaApiTests : IDisposable
         Assert.Null(_prefsFile.Text);
     }
 
+    [Fact]
+    public void A_script_id_with_a_trailing_newline_is_400_in_the_body_and_in_the_path()
+    {
+        Assert.Equal("invalid script id", ErrorOf(Post("/api/skua/a1/start", $"{{\"id\":\"{Sid}\\n\"}}")));
+        Assert.Equal(400, Get($"/api/skua/a1/scripts/{Sid}%0A/options").Status);
+        Assert.Equal(400, Get($"/api/skua/a1/scripts/{Sid}\n/options").Status);
+        Assert.Equal(400, Post($"/api/skua/a1/scripts/{Sid}\n/prefs", "{\"askOptions\":false}").Status);
+        Assert.Empty(_skua.Sent);
+        Assert.Null(_prefsFile.Text);
+    }
+
+    // ---- one state-changing command at a time ----------------------------------------------------------------------------
+
+    [Fact]
+    public async Task A_second_state_changing_command_while_one_is_pending_is_409_busy_and_sends_nothing()
+    {
+        var pending = new TaskCompletionSource<ResultMessage?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _skua.Answer = (_, c) => c is StartCommand ? pending.Task : Task.FromResult<ResultMessage?>(Ok() with { ReqId = c.ReqId });
+        var api = new SkuaApi(_skua, _skua, _prefs, _cache);
+        var handler = new PhoneHandler(_registry, _hub, new FakeAssets(), h => h == GoodHost, "9.9.9", api);
+
+        var first = handler.HandleAsync(Request("POST", "/api/skua/a1/start", $"{{\"id\":\"{Sid}\"}}", "application/json", true, true), CancellationToken.None);
+        Assert.False(first.IsCompleted);
+
+        foreach (var (path, body) in new[] { ("/api/skua/a1/start", $"{{\"id\":\"{Sid}\"}}"), ("/api/skua/a1/stop", ""), ($"/api/skua/a1/scripts/{Sid}/options", "{\"values\":[]}") })
+        {
+            var busy = await handler.HandleAsync(Request("POST", path, body, "application/json", true, true), CancellationToken.None);
+            Assert.Equal(409, busy.Status);
+            Assert.Equal("busy", ErrorOf(busy));
+        }
+
+        Assert.Single(_skua.Sent);
+
+        // Read-only routes and other instances are not gated.
+        Assert.Equal(200, (await handler.HandleAsync(Request("GET", "/api/skua/a1/scripts", "", null, true, false), CancellationToken.None)).Status);
+        _skua.Current = new SkuaHubView([.. _skua.Current.Instances, FakeSkua.Instance("c3", "Other")]);
+        Assert.Equal(200, (await handler.HandleAsync(Request("POST", "/api/skua/c3/stop", "", null, true, true), CancellationToken.None)).Status);
+
+        pending.SetResult(Ok());
+        Assert.Equal(200, (await first).Status);
+        Assert.Equal(200, (await handler.HandleAsync(Request("POST", "/api/skua/a1/stop", "", null, true, true), CancellationToken.None)).Status);
+    }
+
+    [Fact]
+    public async Task The_gate_opens_again_after_a_timeout_a_refusal_or_a_cancellation()
+    {
+        var api = new SkuaApi(_skua, _skua, _prefs, _cache);
+        var handler = new PhoneHandler(_registry, _hub, new FakeAssets(), h => h == GoodHost, "9.9.9", api);
+        PhoneRequest Stop() => Request("POST", "/api/skua/a1/stop", "", null, true, true);
+
+        _skua.Answer = (_, _) => Task.FromResult<ResultMessage?>(null);
+        Assert.Equal(504, (await handler.HandleAsync(Stop(), CancellationToken.None)).Status);
+
+        _skua.Answer = (_, _) => Task.FromResult<ResultMessage?>(new ResultMessage("x", false, "not running", null, null, null, false, false));
+        Assert.Equal(400, (await handler.HandleAsync(Stop(), CancellationToken.None)).Status);
+
+        using var cts = new CancellationTokenSource();
+        var late = new TaskCompletionSource<ResultMessage?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _skua.Answer = (_, _) => late.Task.WaitAsync(cts.Token);
+        var cancelled = handler.HandleAsync(Stop(), cts.Token);
+        await cts.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelled);
+
+        _skua.Answer = (_, c) => Task.FromResult<ResultMessage?>(Ok() with { ReqId = c.ReqId });
+        Assert.Equal(200, (await handler.HandleAsync(Stop(), CancellationToken.None)).Status);
+    }
+
     // ---- GET /api/skua --------------------------------------------------------------------------------------------------
 
     [Fact]

@@ -23,9 +23,10 @@
 
 ## What it does
 
-SkuaLink listens to the data the game already sends to your own computer and shows it in one screen while you play, so you do not have to click through the game and the Wiki.
+SkuaLink puts your Skua bots on your phone. See what each Skua is doing and its progress, then start or stop its scripts without going back to the PC. It also reads the data the game sends to your own computer, so one screen shows your characters, their reputation and the Hard Farms list.
 
-- **One screen:** your character, your factions (closest to the next rank first) and the Hard Farms list, with what you own marked from your captured inventory.
+- **From your phone:** state, active quests, live reputation and a log for each Skua you run, and the controls to stop a script or start another one with its options. Navigation is a floating dock; the page is installable and has a light, dark or system theme.
+- **Several Skua at once:** one chip per Skua, each with its own state, log and controls.
 - **Hands off the game:** it never sends anything to the game. With the optional [Skua plugin](#skua-plugin), and only when you ask from the phone, it can start and stop Skua scripts and read or write the options file of a script in Skua's scripts list.
 - **Local:** everything stays on your computer. No telemetry. **Forget my data** (in **Settings**) removes it. Nothing leaves the PC except the Wiki request you start and, if you turn them on, [Phone access](#watch-from-your-phone) and the [Skua plugin](#skua-plugin).
 
@@ -59,7 +60,7 @@ After the login it follows a few of your own events (gold and experience gained,
 
 ## Watch from your phone
 
-Off by default. **Settings, "Watch my characters from my phone"** serves a small page with your characters' numbers, factions and Hard Farms, updating live, on a phone you pair. With the [Skua plugin](#skua-plugin) it can also start and stop scripts. It works as an installed web app, with a light, dark or system theme.
+Off by default. **Settings, "Watch my characters from my phone"** serves a small page with your characters' numbers, reputation and Hard Farms, updating live, on a phone you pair. With the [Skua plugin](#skua-plugin) it also shows each Skua and can start and stop scripts. It works as an installed web app, with a light, dark or system theme.
 
 **You need:** [Tailscale](https://tailscale.com/) on this PC and on your phone (same account), **MagicDNS** and **HTTPS certificates** turned on once in the Tailscale admin console (the app tells you which step is missing), and SkuaLink running on the PC. The phone reaches the page only through your own tailnet; nothing is opened to the internet.
 
@@ -74,7 +75,7 @@ Off by default. **Settings, "Watch my characters from my phone"** serves a small
 
 An optional, separate download for people who play with [Skua](https://github.com/auqw/Skua) (a third-party game client). `SkuaLink.SkuaBridge.dll` runs inside Skua and shows its state in the **Skua** tab of the phone page: what the character is doing (server, map, script running), the **active quests** (the ones ready to turn in marked) and a short **log** with filters (buys, sells, drops, map changes, script start and stop, deaths).
 
-The tab can also **start and stop scripts**: pick one from the scripts in Skua's scripts folder, set its options if it has any, and press Start. Several Skua can run at once: the tab shows one chip per Skua (a list above 5) and every action goes to the Skua you picked.
+The tab shows each Skua's **reputation** live and groups repeated drops in the log ("Drop: Blood Orb x13"). It can also **start and stop scripts**: pick one from the scripts in Skua's scripts folder (bot scripts only, with the title and description from the script's header; search by name, folder, description or tag), set its options if it has any, and press Start. Several Skua can run at once: the tab shows one chip per Skua (a list above 5) and every action goes to the Skua you picked.
 
 The plugin does exactly five things for SkuaLink: list the scripts in Skua's scripts folder, read and write the options file of one of them, start a chosen script, and stop the running one. It never accepts a file path or code from the phone, and it sends nothing to the game. Skua may open a script's options window on the PC when it starts; the plugin closes that window itself, and if it cannot, the phone says "Waiting for you on the PC".
 

@@ -37,7 +37,7 @@ public sealed class SkuaLogStore(string path) : ISkuaLogStore
                     var entry = element.Deserialize<SkuaLogEntry>(Options);
                     if (entry is { Text: not null } && Enum.IsDefined(entry.Kind))
                     {
-                        result.Add(entry);
+                        result.Add(Normalized(entry));
                     }
                 }
                 catch (JsonException)
@@ -53,6 +53,22 @@ public sealed class SkuaLogStore(string path) : ISkuaLogStore
             Log.Error("Skua log load failed: {ExceptionType}", ex.GetType().Name);
             return [];
         }
+    }
+
+    /// <summary>A count needs an item and stays within 1 to <see cref="SkuaProtocol.MaxCount"/>; the item is cut to the text cap.</summary>
+    private static SkuaLogEntry Normalized(SkuaLogEntry entry)
+    {
+        if (entry.Item is not { } item)
+        {
+            return entry.Count == 1 ? entry : entry with { Count = 1 };
+        }
+
+        if (item.Length > SkuaProtocol.MaxTextLength)
+        {
+            item = item[..(char.IsHighSurrogate(item[SkuaProtocol.MaxTextLength - 1]) ? SkuaProtocol.MaxTextLength - 1 : SkuaProtocol.MaxTextLength)];
+        }
+
+        return entry with { Item = item, Count = Math.Clamp(entry.Count, 1, SkuaProtocol.MaxCount) };
     }
 
     public void Save(IReadOnlyList<SkuaLogEntry> log)

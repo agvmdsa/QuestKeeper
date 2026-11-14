@@ -42,7 +42,7 @@ public class SkuaPhoneJsonTests
 
         var json = PhoneJson.Serialize(new PhoneState(Snapshot(), [], view));
 
-        Assert.Contains("\"runningSince\":null,\"quests\":[{\"id\":5,\"name\":\"Slay the Beast\",\"ready\":true}]}", json);
+        Assert.Contains("\"runningSince\":null,\"quests\":[{\"id\":5,\"name\":\"Slay the Beast\",\"ready\":true}],\"factions\":null}", json);
     }
 
     [Fact]
@@ -55,6 +55,42 @@ public class SkuaPhoneJsonTests
 
         Assert.Contains("\"quests\":null", absent);
         Assert.Contains("\"quests\":[]", none);
+    }
+
+    [Fact]
+    public void Factions_serialize_with_camel_case_names()
+    {
+        var view = new SkuaView(
+            SkuaConnection.Connected,
+            null,
+            new SkuaStatus(true, "Hero", null, null, null, false, null, null, [new SkuaFaction(1, "Nation", 3, 5000, 300, 1200)]),
+            []);
+
+        var json = PhoneJson.Serialize(new PhoneState(Snapshot(), [], view));
+
+        Assert.Contains("\"quests\":null,\"factions\":[{\"id\":1,\"name\":\"Nation\",\"rank\":3,\"totalRep\":5000,\"rep\":300,\"requiredRep\":1200}]}", json);
+    }
+
+    [Fact]
+    public void Factions_not_reported_serialize_as_null_and_none_as_an_empty_list()
+    {
+        var status = new SkuaStatus(true, "Hero", null, null, null, false, null);
+
+        var absent = PhoneJson.Serialize(new PhoneState(Snapshot(), [], new SkuaView(SkuaConnection.Connected, null, status, [])));
+        var none = PhoneJson.Serialize(new PhoneState(Snapshot(), [], new SkuaView(SkuaConnection.Connected, null, status with { Factions = [] }, [])));
+
+        Assert.Contains("\"factions\":null", absent);
+        Assert.Contains("\"factions\":[]", none);
+    }
+
+    [Fact]
+    public void A_merged_drop_serializes_its_item_and_count()
+    {
+        var view = new SkuaView(SkuaConnection.Connected, null, null, [new SkuaLogEntry(T0, SkuaLogKind.Dropped, "Drop: Blood Orb x13", "Blood Orb", 13)]);
+
+        var json = PhoneJson.Serialize(new PhoneState(Snapshot(), [], view));
+
+        Assert.Contains("\"kind\":\"Dropped\",\"text\":\"Drop: Blood Orb x13\",\"item\":\"Blood Orb\",\"count\":13}", json);
     }
 
     [Fact]

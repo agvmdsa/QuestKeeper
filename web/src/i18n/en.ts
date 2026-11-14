@@ -51,6 +51,7 @@ export const en = {
   'character.note.selectHere': 'Select this character in SkuaLink to see its factions and Hard Farms.',
 
   'factions.title': 'Factions',
+  'factions.fromSkua': 'Live from Skua',
   'factions.empty': 'No factions read yet.',
   'factions.maxRank': 'Max rank',
   'factions.rank': 'Rank {rank}',
@@ -89,6 +90,8 @@ export const en = {
   'skua.quests.title.other': 'Active quests · {n}',
   'skua.quests.ready': 'Ready to turn in',
   'skua.quests.none': 'No active quests.',
+  'skua.reputation.title': 'Reputation',
+  'skua.reputation.none': 'No reputation yet.',
   'skua.filter.group': 'Filter the log',
   'skua.filter.all': 'Everything',
   'skua.filter.shop': 'Shop',

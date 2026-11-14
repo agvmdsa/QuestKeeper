@@ -9,24 +9,34 @@ public static class SkuaLine
 {
     public static string ToLine(SkuaMessage message)
     {
-        if (message is not StatusMessage { Status.Quests: { Count: > 0 } quests })
+        if (message is not StatusMessage { Status: var status } || ((status.Quests?.Count ?? 0) == 0 && (status.Factions?.Count ?? 0) == 0))
         {
-            return Write(message, int.MaxValue);
+            return Write(message, int.MaxValue, int.MaxValue);
         }
 
-        // Quest names are cut, but 30 long names in escaped non-ASCII could still pass the line cap, and a line over the
-        // cap is refused whole. The last quests are left out until the line fits.
-        var count = Math.Min(quests.Count, SkuaProtocol.MaxQuests);
-        var line = Write(message, count);
-        while (count > 0 && Encoding.UTF8.GetByteCount(line) > SkuaProtocol.MaxLineBytes)
+        // Names are cut, but 30 quests and 60 factions with long names in escaped non-ASCII could still pass the line cap,
+        // and a line over the cap is refused whole. The last factions, then the last quests, are left out until the line fits.
+        var quests = Math.Min(status.Quests?.Count ?? 0, SkuaProtocol.MaxQuests);
+        var factions = Math.Min(status.Factions?.Count ?? 0, SkuaProtocol.MaxFactions);
+        var line = Write(message, quests, factions);
+        while ((quests > 0 || factions > 0) && Encoding.UTF8.GetByteCount(line) > SkuaProtocol.MaxLineBytes)
         {
-            line = Write(message, --count);
+            if (factions > 0)
+            {
+                factions--;
+            }
+            else
+            {
+                quests--;
+            }
+
+            line = Write(message, quests, factions);
         }
 
         return line;
     }
 
-    private static string Write(SkuaMessage message, int maxQuests)
+    private static string Write(SkuaMessage message, int maxQuests, int maxFactions)
     {
         using var stream = new MemoryStream();
         using (var w = new Utf8JsonWriter(stream))
@@ -72,12 +82,35 @@ public static class SkuaLine
                         w.WriteEndArray();
                     }
 
+                    if (s.Status.Factions is { } factions)
+                    {
+                        w.WriteStartArray("factions");
+                        foreach (var faction in factions.Take(Math.Min(maxFactions, SkuaProtocol.MaxFactions)))
+                        {
+                            w.WriteStartObject();
+                            w.WriteNumber("id", faction.Id);
+                            w.WriteString("name", Cut(faction.Name));
+                            w.WriteNumber("rank", faction.Rank);
+                            w.WriteNumber("totalRep", faction.TotalRep);
+                            w.WriteNumber("rep", faction.Rep);
+                            w.WriteNumber("requiredRep", faction.RequiredRep);
+                            w.WriteEndObject();
+                        }
+
+                        w.WriteEndArray();
+                    }
+
                     break;
                 case LogMessage l:
                     w.WriteString("type", "log");
                     w.WriteString("at", l.Entry.At.ToString("o", CultureInfo.InvariantCulture));
                     w.WriteString("kind", l.Entry.Kind.ToString());
                     w.WriteString("text", Cut(l.Entry.Text));
+                    if (l.Entry.Item is { } item)
+                    {
+                        w.WriteString("item", Cut(item));
+                        w.WriteNumber("count", Math.Clamp(l.Entry.Count, 1, SkuaProtocol.MaxCount));
+                    }
                     break;
                 default:
                     throw new ArgumentException("This message is never sent.", nameof(message));
@@ -169,7 +202,7 @@ public static class SkuaLine
 
         return new StatusMessage(new SkuaStatus(
             loggedIn.GetBoolean(), CutOrNull(Str(root, "character")), CutOrNull(Str(root, "server")), CutOrNull(Str(root, "map")), CutOrNull(Str(root, "script")),
-            running.GetBoolean(), since, ParseQuests(root)));
+            running.GetBoolean(), since, ParseQuests(root), ParseFactions(root)));
     }
 
     /// <summary>
@@ -221,6 +254,63 @@ public static class SkuaLine
         }
     }
 
+    /// <summary>
+    /// The factions, or null when the field is absent or not an array (an older plugin, or damage). A damaged entry (a
+    /// number that is missing, negative, fractional or outside int32, a missing or unusable name) is left out on its own; at
+    /// most <see cref="SkuaProtocol.MaxFactions"/> are kept.
+    /// </summary>
+    private static IReadOnlyList<SkuaFaction>? ParseFactions(JsonElement root)
+    {
+        if (!root.TryGetProperty("factions", out var array) || array.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var factions = new List<SkuaFaction>();
+        foreach (var entry in array.EnumerateArray())
+        {
+            if (factions.Count >= SkuaProtocol.MaxFactions)
+            {
+                break;
+            }
+
+            if (ParseFaction(entry) is { } faction)
+            {
+                factions.Add(faction);
+            }
+        }
+
+        return factions;
+    }
+
+    private static SkuaFaction? ParseFaction(JsonElement entry)
+    {
+        try
+        {
+            if (entry.ValueKind != JsonValueKind.Object
+                || Count(entry, "id") is not { } id
+                || Str(entry, "name") is not { } name
+                || Count(entry, "rank") is not { } rank
+                || Count(entry, "totalRep") is not { } totalRep
+                || Count(entry, "rep") is not { } rep
+                || Count(entry, "requiredRep") is not { } requiredRep)
+            {
+                return null;
+            }
+
+            return new SkuaFaction(id, Cut(name), rank, totalRep, rep, requiredRep);
+        }
+        catch (InvalidOperationException)
+        {
+            // An escaped lone surrogate in the name: only this entry is lost.
+            return null;
+        }
+    }
+
+    /// <summary>A whole number from 0 to <see cref="int.MaxValue"/>, or null.</summary>
+    private static int? Count(JsonElement entry, string name) =>
+        entry.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.Number && p.TryGetInt32(out var value) && value >= 0 ? value : null;
+
     private static SkuaMessage? ParseLog(JsonElement root)
     {
         if (Str(root, "at") is not { } at
@@ -233,7 +323,24 @@ public static class SkuaLine
         }
 
         var kind = Enum.Parse<SkuaLogKind>(kindText);
-        return new LogMessage(new SkuaLogEntry(time, kind, Cut(body)));
+        var item = LogItem(root);
+        var count = item is not null && root.TryGetProperty("count", out var c) && c.ValueKind == JsonValueKind.Number
+            && c.TryGetInt32(out var n) && n is >= 1 and <= SkuaProtocol.MaxCount ? n : 1;
+        return new LogMessage(new SkuaLogEntry(time, kind, Cut(body), item, count));
+    }
+
+    /// <summary>The optional drop item, or null when absent or unusable: only the item and its count are lost, never the line.</summary>
+    private static string? LogItem(JsonElement root)
+    {
+        try
+        {
+            return CutOrNull(Str(root, "item"));
+        }
+        catch (InvalidOperationException)
+        {
+            // An escaped lone surrogate in the item.
+            return null;
+        }
     }
 
     /// <summary>

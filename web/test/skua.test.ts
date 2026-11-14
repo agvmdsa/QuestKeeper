@@ -1,16 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { filterOf, formatDuration, LOG_FILTERS, parseLogFilter, parseSkua, questRows, skuaEmptyText, skuaLogRows, skuaNow, skuaSummary, type LogFilter } from '../src/skua';
+import { effectiveFactions, factionRows, filterOf, formatDuration, LOG_FILTERS, parseLogFilter, parseSkua, questRows, skuaEmptyText, skuaLogRows, skuaNow, skuaSummary, type LogFilter } from '../src/skua';
 import { isUsableState, keepState, parseRoute, parseState, recallKept } from '../src/state';
-import { listView, skuaView, type Model, type VNode } from '../src/views';
+import { characterView, listView, skuaView, type Model, type VNode } from '../src/views';
 import { plural } from '../src/i18n';
-import type { RemoteState, SkuaState } from '../src/types';
+import type { Faction, RemoteState, SkuaState } from '../src/types';
 
 const NOW = Date.parse('2026-11-11T12:12:00Z');
 const wire = {
   connection: 'Connected',
   hello: { pluginVersion: '0.1.0', skuaVersion: '1.4.5.0' },
-  status: { loggedIn: true, character: 'Hero', server: 'Artix', map: 'battleon', script: 'Farm.cs', scriptRunning: true, runningSince: '2026-11-11T12:00:00+00:00', quests: null },
+  status: { loggedIn: true, character: 'Hero', server: 'Artix', map: 'battleon', script: 'Farm.cs', scriptRunning: true, runningSince: '2026-11-11T12:00:00+00:00', quests: null, factions: null },
   log: [{ at: '2026-11-11T12:00:05+00:00', kind: 'Sold', text: 'Sold Blood Orb x50 for 2,500 gold' }],
 };
 const skua = (over: Partial<SkuaState> = {}): SkuaState => ({ ...parseSkua(wire)!, ...over });
@@ -19,6 +19,7 @@ const model = (s: SkuaState | null | undefined, skuaFilter?: LogFilter): Model =
 });
 const withStatus = (over: object, s: Partial<SkuaState> = {}) => skua({ ...s, status: { ...wire.status, ...over } });
 const quest = (id: number, name: string, ready: boolean) => ({ id, name, ready });
+const faction = (id: number, name: string, rank: number, rep: number, requiredRep: number, totalRep = 0) => ({ id, name, rank, totalRep, rep, requiredRep });
 const all = (n: VNode): VNode[] => [n, ...n.children.flatMap(all)];
 const texts = (n: VNode) => all(n).map((x) => x.text).filter((t): t is string => t !== undefined);
 
@@ -91,6 +92,150 @@ describe('parseSkua quests', () => {
   });
   it('never throws on hostile input', () => {
     expect(() => parseSkua(withQuests([{ id: 1, name: { toString: 1 }, ready: true }, Object.create(null)]))).not.toThrow();
+  });
+});
+
+describe('parseSkua factions', () => {
+  const withFactions = (factions: unknown) => ({ ...wire, status: { ...wire.status, factions } });
+  const factions = (value: unknown) => parseSkua(withFactions(value))!.status!.factions;
+  const good = faction(1, 'Nation', 3, 300, 1200, 5000);
+
+  it('reads the factions', () => {
+    expect(factions([good, faction(20, 'Good', 10, 0, 0, 302500)])).toEqual([good, faction(20, 'Good', 10, 0, 0, 302500)]);
+  });
+  it('keeps null (not reported) apart from an empty list (none)', () => {
+    expect(factions([])).toEqual([]);
+    expect(factions(null)).toBeNull();
+    const { factions: _omit, ...old } = wire.status;
+    expect(parseSkua({ ...wire, status: old })!.status!.factions).toBeNull();
+  });
+  it('treats a factions value that is not an array as not reported, keeping the rest of the status', () => {
+    for (const bad of ['x', 5, true, good]) {
+      const s = parseSkua(withFactions(bad))!;
+      expect(s.status!.factions).toBeNull();
+      expect(s.status!.character).toBe('Hero');
+    }
+  });
+  it('drops a malformed entry and keeps the others', () => {
+    const bad = [
+      null, 'f', 7, [], { ...good, id: -1 }, { ...good, rank: -1 }, { ...good, totalRep: -1 }, { ...good, rep: -1 }, { ...good, requiredRep: -1 },
+      { ...good, id: 1.5 }, { ...good, rep: 0.5 }, { ...good, id: '7' }, { ...good, rank: '3' }, { ...good, totalRep: 2_147_483_648 },
+      { ...good, rep: Number.NaN }, { ...good, requiredRep: Infinity }, { ...good, name: null }, { ...good, name: 5 },
+      { id: 1, rank: 1, totalRep: 1, rep: 1, requiredRep: 1 }, { id: 1, name: 'n', totalRep: 1, rep: 1, requiredRep: 1 }, { id: 1, name: 'n', rank: 1, rep: 1, requiredRep: 1 },
+      { id: 1, name: 'n', rank: 1, totalRep: 1, requiredRep: 1 }, { id: 1, name: 'n', rank: 1, totalRep: 1, rep: 1 },
+    ];
+    expect(factions([...bad, good])).toEqual([good]);
+  });
+  it('keeps the largest int32 values', () => {
+    const max = faction(2_147_483_647, 'Max', 2_147_483_647, 2_147_483_647, 2_147_483_647, 2_147_483_647);
+    expect(factions([max])).toEqual([max]);
+  });
+  it('keeps at most 60 factions and cuts a long name to 300 without splitting a surrogate pair', () => {
+    const list = factions(Array.from({ length: 70 }, (_, i) => faction(i, `F${i}`, 1, 1, 900)))!;
+    expect(list).toHaveLength(60);
+    expect(list[59]!.id).toBe(59);
+    expect(factions([{ ...good, name: 'n'.repeat(400) }])![0]!.name).toHaveLength(300);
+    expect(factions([{ ...good, name: 'a'.repeat(299) + '\u{1F600}tail' }])![0]!.name).toBe('a'.repeat(299));
+  });
+  it('never throws on hostile input', () => {
+    expect(() => parseSkua(withFactions([{ ...good, name: { toString: 1 } }, Object.create(null)]))).not.toThrow();
+  });
+});
+
+describe('factionRows', () => {
+  const rows = (list: unknown[], over: Partial<SkuaState> = {}) => factionRows(withStatus({ factions: list }, over));
+
+  it('orders by what is missing for the next rank, max rank last, then by name ignoring case, like the capture list', () => {
+    const list = [faction(1, 'zeta', 2, 100, 1000), faction(2, 'Good', 10, 0, 0), faction(3, 'alpha', 5, 950, 1000), faction(4, 'Beta', 3, 900, 1000), faction(5, 'Evil', 10, 0, 0), faction(6, 'gamma', 4, 50, 100)];
+    expect(rows(list)!.map((r) => r.name)).toEqual(['alpha', 'gamma', 'Beta', 'zeta', 'Evil', 'Good']);
+  });
+  it('computes rank, the share of the rank, what is left and the rank text', () => {
+    expect(rows([faction(1, 'Nation', 3, 300, 1200)])).toEqual([{ name: 'Nation', rank: 3, max: false, fraction: 0.25, toNext: 900 }]);
+  });
+  it('treats a step of 0 as the maximum rank: full bar, nothing to next rank', () => {
+    expect(rows([faction(1, 'Good', 10, 0, 0)])).toEqual([{ name: 'Good', rank: 10, max: true, fraction: 1, toNext: 0 }]);
+  });
+  it('is the maximum rank at rank 10 or with a step of 0, and otherwise not', () => {
+    expect(rows([faction(1, 'Ten', 10, 40, 500)])![0]).toMatchObject({ max: true, fraction: 1, toNext: 0 });
+    expect(rows([faction(1, 'Zero', 4, 0, 0)])![0]).toMatchObject({ max: true, fraction: 1, toNext: 0 });
+    expect(rows([faction(1, 'Nine', 9, 40, 500)])![0]).toMatchObject({ max: false, toNext: 460 });
+    expect(rows([faction(1, 'Alpha', 9, 400, 500), faction(2, 'Ten', 10, 499, 500), faction(3, 'Beta', 1, 0, 0)])!.map((r) => r.name)).toEqual(['Alpha', 'Beta', 'Ten']);
+  });
+  it('clamps rep beyond the step to a full bar with nothing left', () => {
+    expect(rows([faction(1, 'Odd', 4, 1500, 1000)])![0]).toMatchObject({ max: false, fraction: 1, toNext: 0 });
+    expect(rows([faction(1, 'Zero', 1, 0, 1000)])![0]).toMatchObject({ fraction: 0, toNext: 1000 });
+  });
+  it('never gives a NaN fraction', () => {
+    for (const f of [faction(1, 'a', 1, Number.NaN, 1000), faction(1, 'b', 1, 5, Number.NaN), faction(1, 'c', 1, Infinity, Infinity)]) {
+      const fraction = factionRows({ ...skua(), status: { ...skua().status!, factions: [f] } })![0]!.fraction;
+      expect(Number.isFinite(fraction)).toBe(true);
+      expect(fraction).toBeGreaterThanOrEqual(0);
+      expect(fraction).toBeLessThanOrEqual(1);
+    }
+  });
+  it('is null when not reported, without a status or not connected, and empty when there are none', () => {
+    expect(rows(null as unknown as unknown[])).toBeNull();
+    expect(factionRows(skua({ status: null }))).toBeNull();
+    expect(rows([faction(1, 'N', 1, 1, 2)], { connection: 'VersionMismatch' })).toBeNull();
+    expect(rows([faction(1, 'N', 1, 1, 2)], { connection: 'NotConnected' })).toBeNull();
+    expect(rows([])).toEqual([]);
+  });
+});
+
+describe('effectiveFactions', () => {
+  const capture: Faction[] = [{ name: 'Captured', rank: 2, rep: 5, toNext: 95, fraction: 0.05, max: false }];
+  const remote = (skuaState: SkuaState | null | undefined, selected: string | null = 'Hero', factions: Faction[] = capture): RemoteState => ({
+    snapshot: { contract: 1, capture: { state: 'Listening.', listening: true }, selected, characters: [], factions, hardFarms: null },
+    notices: [],
+    skua: skuaState,
+  });
+  const live = [faction(1, 'zeta', 2, 100, 1000, 5100), faction(2, 'Good', 10, 0, 0, 9000), faction(3, 'alpha', 5, 950, 1000, 4950)];
+  const connected = (over: object = {}, s: Partial<SkuaState> = {}) => withStatus({ character: 'Hero', factions: live, ...over }, s);
+
+  it('uses the Skua list, mapped and ordered like the capture list, when connected for the selected character', () => {
+    const r = effectiveFactions(remote(connected()));
+    expect(r.source).toBe('skua');
+    expect(r.factions).toEqual([
+      { name: 'alpha', rank: 5, rep: 4950, toNext: 50, fraction: 0.95, max: false },
+      { name: 'zeta', rank: 2, rep: 5100, toNext: 900, fraction: 0.1, max: false },
+      { name: 'Good', rank: 10, rep: 9000, toNext: 0, fraction: 1, max: true },
+    ]);
+  });
+  it.each([
+    ['not connected', () => connected({}, { connection: 'NotConnected' })],
+    ['a version mismatch', () => connected({}, { connection: 'VersionMismatch' })],
+    ['factions not reported', () => connected({ factions: null })],
+    ['an empty Skua list (a transient empty read must not blank the page)', () => connected({ factions: [] })],
+    ['another character in Skua', () => connected({ character: 'Other' })],
+    ['no Skua character', () => connected({ character: null })],
+    ['no status', () => skua({ status: null })],
+    ['no Skua state', () => null],
+    ['Skua absent', () => undefined],
+  ])('uses the capture list for %s', (_n, make) => {
+    const r = effectiveFactions(remote(make()));
+    expect(r).toEqual({ factions: capture, source: 'capture' });
+  });
+  it('matches the Skua character ignoring letter case', () => {
+    expect(effectiveFactions(remote(connected({ character: 'hero' }))).source).toBe('skua');
+    expect(effectiveFactions(remote(connected({ character: 'HERO' }), 'hErO')).source).toBe('skua');
+  });
+  it('uses the capture list when no character is selected', () => {
+    expect(effectiveFactions(remote(connected(), null)).source).toBe('capture');
+  });
+  it('uses the capture list when there is no snapshot', () => {
+    expect(effectiveFactions({ snapshot: null, notices: [], skua: connected() })).toEqual({ factions: [], source: 'capture' });
+  });
+  it('shows the note under the heading only for Skua, in the character view', () => {
+    const m = (st: RemoteState): Model => ({ state: st, nowMs: NOW, showAll: false, hfOpen: false, installHint: null });
+    const hero = { name: 'Hero', level: 1, live: true, savedAtUtc: '2026-11-11T12:00:00Z', lastLiveUpdateUtc: null, liveUpdates: 0, figures: { gold: 0, exp: 0, expToLevel: 1, ac: 0, classPoints: 0, daysPlayed: 0 }, lastKill: null };
+    const withHero = (st: RemoteState): RemoteState => ({ ...st, snapshot: { ...st.snapshot!, characters: [hero] } });
+    const fromSkua = texts(characterView(m(withHero(remote(connected()))), 'Hero'));
+    expect(fromSkua).toContain('Live from Skua');
+    expect(fromSkua).toContain('alpha');
+    expect(fromSkua).not.toContain('Captured');
+    const fromCapture = texts(characterView(m(withHero(remote(connected({ factions: [] })))), 'Hero'));
+    expect(fromCapture).not.toContain('Live from Skua');
+    expect(fromCapture).toContain('Captured');
   });
 });
 
@@ -256,6 +401,31 @@ describe('views', () => {
     const old = skuaView(model(withStatus({ quests: null })));
     expect(headings(old)).toEqual(['Now', 'Log']);
   });
+  it('shows the Reputation card after Active quests and before Log, one row per faction with rank, bar and what is left', () => {
+    const view = skuaView(model(withStatus({ quests: [quest(1, 'Q', false)], factions: [faction(20, 'Good', 10, 0, 0), faction(1, 'Nation', 3, 300, 1200)] })));
+    expect(headings(view)).toEqual(['Now', 'Active quests · 1', 'Reputation', 'Log']);
+    const card = sections(view)[2]!;
+    const items = all(card).filter((n) => n.tag === 'li');
+    expect(items.map((li) => texts(li))).toEqual([['Nation', 'Rank 3', '900 to next rank'], ['Good', 'Max rank']]);
+    const bars = all(card).filter((n) => n.attrs?.role === 'progressbar');
+    expect(bars.map((b) => [b.attrs!['aria-label'], b.attrs!['aria-valuenow']])).toEqual([['Nation', '25'], ['Good', '100']]);
+    expect(bars.map((b) => b.children[0]!.fraction)).toEqual([0.25, 1]);
+    expect(card.className?.split(' ')).toContain('card');
+  });
+  it('says No reputation yet. for an empty list and shows no Reputation card when not reported', () => {
+    const none = skuaView(model(withStatus({ quests: [], factions: [] })));
+    expect(headings(none)).toEqual(['Now', 'Active quests · 0', 'Reputation', 'Log']);
+    expect(texts(none)).toContain('No reputation yet.');
+    expect(headings(skuaView(model(withStatus({ quests: [], factions: null }))))).toEqual(['Now', 'Active quests · 0', 'Log']);
+  });
+  it('shows the Reputation card even when quests are not reported', () => {
+    expect(headings(skuaView(model(withStatus({ quests: null, factions: [faction(1, 'N', 1, 1, 2)] }))))).toEqual(['Now', 'Reputation', 'Log']);
+  });
+  it('shows faction names as text only', () => {
+    const view = skuaView(model(withStatus({ factions: [faction(1, '<img onerror=x>', 1, 1, 2)] })));
+    expect(texts(view)).toContain('<img onerror=x>');
+    for (const n of all(view)) for (const name of Object.keys(n.attrs ?? {})) expect(name === 'style' || name.startsWith('on')).toBe(false);
+  });
   it('builds the filter row: a labelled group of pressed-state buttons, Everything pressed by default', () => {
     const view = skuaView(model(skua()));
     const group = all(view).find((n) => n.attrs?.role === 'group')!;
@@ -309,7 +479,7 @@ describe('views', () => {
     expect(all(view).some((n) => n.className === 'muted')).toBe(false);
   });
   it('shows only the calm explanation when not connected or on a version mismatch', () => {
-    for (const s of [null, skua({ connection: 'NotConnected' }), withStatus({ quests: [quest(1, 'Q', true)] }, { connection: 'VersionMismatch' })]) {
+    for (const s of [null, skua({ connection: 'NotConnected' }), withStatus({ quests: [quest(1, 'Q', true)], factions: [faction(1, 'N', 1, 1, 2)] }, { connection: 'VersionMismatch' })]) {
       const view = skuaView(model(s));
       expect(sections(view)).toHaveLength(1);
       expect(buttons(view)).toHaveLength(0);

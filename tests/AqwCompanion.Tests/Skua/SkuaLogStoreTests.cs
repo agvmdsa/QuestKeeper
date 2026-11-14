@@ -41,6 +41,59 @@ public sealed class SkuaLogStoreTests : IDisposable
         Assert.Equal(log, new SkuaLogStore(_paths.SkuaLogPath).Load());
     }
 
+    [Fact]
+    public void A_merged_drop_round_trips_its_item_and_count()
+    {
+        var log = new List<SkuaLogEntry>
+        {
+            new(new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.Zero), SkuaLogKind.Dropped, "Drop: Blood Orb x13", "Blood Orb", 13),
+            new(new DateTimeOffset(2026, 1, 2, 3, 0, 0, TimeSpan.Zero), SkuaLogKind.Died, "Died"),
+        };
+        new SkuaLogStore(_paths.SkuaLogPath).Save(log);
+
+        Assert.Equal(log, new SkuaLogStore(_paths.SkuaLogPath).Load());
+        Assert.Contains("\"item\":\"Blood Orb\",\"count\":13", File.ReadAllText(_paths.SkuaLogPath));
+    }
+
+    [Fact]
+    public void A_file_from_before_item_and_count_loads_with_none()
+    {
+        Directory.CreateDirectory(_paths.Root);
+        File.WriteAllText(_paths.SkuaLogPath, """[{"at":"2026-01-01T00:00:00+00:00","kind":"dropped","text":"Drop: Blood Orb"}]""");
+
+        var entry = Assert.Single(new SkuaLogStore(_paths.SkuaLogPath).Load());
+
+        Assert.Equal(new SkuaLogEntry(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero), SkuaLogKind.Dropped, "Drop: Blood Orb"), entry);
+    }
+
+    [Theory]
+    [InlineData("\"item\":\"X\",\"count\":0", "X", 1)]
+    [InlineData("\"item\":\"X\",\"count\":-4", "X", 1)]
+    [InlineData("\"item\":\"X\",\"count\":100000", "X", 99999)]
+    [InlineData("\"item\":null,\"count\":9", null, 1)]
+    [InlineData("\"count\":9", null, 1)]
+    public void A_stored_count_is_kept_within_1_to_99999_and_needs_an_item(string fields, string? item, int count)
+    {
+        Directory.CreateDirectory(_paths.Root);
+        File.WriteAllText(_paths.SkuaLogPath, "[{\"at\":\"2026-01-01T00:00:00+00:00\",\"kind\":\"dropped\",\"text\":\"Drop: X\"," + fields + "}]");
+
+        var entry = Assert.Single(new SkuaLogStore(_paths.SkuaLogPath).Load());
+
+        Assert.Equal(item, entry.Item);
+        Assert.Equal(count, entry.Count);
+    }
+
+    [Fact]
+    public void A_stored_item_is_cut_to_the_text_cap()
+    {
+        Directory.CreateDirectory(_paths.Root);
+        File.WriteAllText(
+            _paths.SkuaLogPath,
+            "[{\"at\":\"2026-01-01T00:00:00+00:00\",\"kind\":\"dropped\",\"text\":\"Drop: X\",\"item\":\"" + new string('i', 400) + "\",\"count\":2}]");
+
+        Assert.Equal(SkuaProtocol.MaxTextLength, Assert.Single(new SkuaLogStore(_paths.SkuaLogPath).Load()).Item!.Length);
+    }
+
     [Theory]
     [InlineData("not json")]
     [InlineData("")]

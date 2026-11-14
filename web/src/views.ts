@@ -1,6 +1,6 @@
 import { characterHref, characterRow, characterRows, expFraction, formatNumber, hardFarmsView, noticeLine } from './state';
 import { plural, t } from './i18n';
-import { LOG_FILTERS, LOG_FILTER_LABELS, questRows, skuaEmptyText, skuaLogRows, skuaNow, skuaSummary, type LogFilter } from './skua';
+import { effectiveFactions, factionRows, LOG_FILTERS, LOG_FILTER_LABELS, questRows, skuaEmptyText, skuaLogRows, skuaNow, skuaSummary, type LogFilter } from './skua';
 import { THEMES, type ThemeChoice } from './theme';
 import type { Faction, RemoteState, SkuaState } from './types';
 
@@ -159,6 +159,18 @@ function questsCard(skua: SkuaState): VNode | null {
   );
 }
 
+/** The live reputation from the Skua plugin; hidden when the plugin does not report it. */
+function reputationCard(skua: SkuaState): VNode | null {
+  const rows = factionRows(skua);
+  if (!rows) return null;
+  return h(
+    'section',
+    { className: 'card' },
+    h('h2', { text: t('skua.reputation.title') }),
+    rows.length === 0 ? empty(t('skua.reputation.none')) : h('ul', { className: 'list' }, ...rows.map(factionRow)),
+  );
+}
+
 function filterRow(selected: LogFilter): VNode {
   return h(
     'div',
@@ -193,10 +205,11 @@ export function skuaView(model: Model): VNode {
   if (!skua || skua.connection !== 'Connected') {
     return h('div', {}, back(), h('section', { className: 'card' }, h('h2', { text: t('skua.title') }), empty(skuaEmptyText(skua))));
   }
-  return h('div', {}, back(), nowCard(skua, model.nowMs), questsCard(skua), logCard(skua, model));
+  return h('div', {}, back(), nowCard(skua, model.nowMs), questsCard(skua), reputationCard(skua), logCard(skua, model));
 }
 
-function factionRow(f: Faction): VNode {
+/** One faction: from the capture (Faction) or from Skua (FactionRow), which carry the same fields. */
+function factionRow(f: Pick<Faction, 'name' | 'rank' | 'max' | 'fraction' | 'toNext'>): VNode {
   return h(
     'li',
     {},
@@ -242,6 +255,7 @@ export function characterView(model: Model, name: string): VNode {
     return h('div', {}, back(), figures, h('p', { className: 'note', text: note }));
   }
 
+  const reputation = effectiveFactions(model.state!);
   const hf = hardFarmsView(snapshot.hardFarms, model.showAll);
   const missingCount = hf ? hf.shown.length + hf.hidden : 0;
   return h(
@@ -253,7 +267,8 @@ export function characterView(model: Model, name: string): VNode {
       'section',
       { className: 'card' },
       h('h2', { text: t('factions.title') }),
-      snapshot.factions.length === 0 ? empty(t('factions.empty')) : h('ul', { className: 'list' }, ...snapshot.factions.map(factionRow)),
+      reputation.source === 'skua' ? h('p', { className: 'muted', text: t('factions.fromSkua') }) : null,
+      reputation.factions.length === 0 ? empty(t('factions.empty')) : h('ul', { className: 'list' }, ...reputation.factions.map(factionRow)),
     ),
     h(
       'section',

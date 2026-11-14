@@ -33,6 +33,7 @@ public sealed class SkuaPipeServer(string pipeName, SkuaHub hub, Action<Exceptio
     private readonly CancellationTokenSource _cancel = new();
     private readonly HashSet<Connection> _connections = [];
     private int _listeningCount;
+    private int _active;
     private NamedPipeServerStream? _listening;
     private Task? _loop;
     private bool _disposed;
@@ -42,6 +43,9 @@ public sealed class SkuaPipeServer(string pipeName, SkuaHub hub, Action<Exceptio
 
     /// <summary>Test seam: how many pipe instances have been created so far.</summary>
     internal int ListeningCount => Volatile.Read(ref _listeningCount);
+
+    /// <summary>Test seam: connections that hold a slot. A slot is released before the hub hears that the plugin is gone.</summary>
+    internal int ActiveConnections => Volatile.Read(ref _active);
 
     public void Start()
     {
@@ -197,11 +201,12 @@ public sealed class SkuaPipeServer(string pipeName, SkuaHub hub, Action<Exceptio
         var connection = new Connection(pipe);
         lock (_lock)
         {
-            if (_connections.Count >= SkuaProtocol.MaxInstances || hub.Attach(connection) is not { } attachment)
+            if (_active >= SkuaProtocol.MaxInstances || hub.Attach(connection) is not { } attachment)
             {
                 return false;
             }
 
+            _active++;
             _connections.Add(connection);
             connection.Serving = Task.Run(() => ServeAsync(connection, attachment, ct));
             return true;
@@ -276,6 +281,13 @@ public sealed class SkuaPipeServer(string pipeName, SkuaHub hub, Action<Exceptio
         }
         finally
         {
+            // The slot goes first: the moment the hub shows the plugin as disconnected, a reconnecting plugin (or a test) may
+            // connect at once, and the waiting pipe must then find a free slot instead of refusing it as a ninth plugin.
+            lock (_lock)
+            {
+                _active--;
+            }
+
             attachment.Dispose();
             connection.Close(dropped: false);
             await stop.CancelAsync().ConfigureAwait(false);

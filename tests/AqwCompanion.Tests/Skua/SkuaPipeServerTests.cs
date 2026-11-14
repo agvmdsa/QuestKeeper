@@ -242,6 +242,77 @@ public class SkuaPipeServerTests
     }
 
     [Fact]
+    public async Task The_slot_is_free_before_the_hub_reports_the_disconnect()
+    {
+        var name = NewName();
+        var hub = NewHub();
+        await using var server = new SkuaPipeServer(name, hub);
+        server.Start();
+        await using var client = await ConnectAsync(name);
+        await WriteAsync(client, HelloLine("a") + "\n");
+        await WaitFor(hub, () => Find(hub, "a") is not null);
+        Assert.Equal(1, server.ActiveConnections);
+
+        // Seen from inside the hub's Changed event, the very moment the disconnect is announced: the slot must be free already.
+        var seen = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        hub.Changed += (_, _) =>
+        {
+            if (Find(hub, "a")?.Disconnected == true)
+            {
+                seen.TrySetResult(server.ActiveConnections);
+            }
+        };
+        await client.DisposeAsync();
+
+        Assert.Equal(0, await seen.Task.WaitAsync(Timeout));
+    }
+
+    [Fact]
+    public async Task Full_connect_and_disconnect_cycles_always_find_a_free_slot_and_a_listening_pipe()
+    {
+        var name = NewName();
+        var hub = NewHub();
+        var errors = 0;
+        await using var server = new SkuaPipeServer(name, hub, _ => Interlocked.Increment(ref errors));
+        server.Start();
+        var clients = new List<NamedPipeClientStream>();
+        try
+        {
+            for (var i = 0; i < SkuaProtocol.MaxInstances; i++)
+            {
+                var client = await ConnectAsync(name);
+                clients.Add(client);
+                await WriteAsync(client, HelloLine("c" + i) + "\n");
+            }
+
+            await WaitFor(hub, () => hub.Current.Instances.Count == SkuaProtocol.MaxInstances);
+
+            for (var round = 0; round < 25; round++)
+            {
+                var index = round % SkuaProtocol.MaxInstances;
+                var id = "c" + index;
+                await clients[index].DisposeAsync();
+                await WaitFor(hub, () => Find(hub, id)!.Disconnected);
+
+                var next = await ConnectAsync(name);
+                clients[index] = next;
+                await WriteAsync(next, HelloLine(id) + "\n" + LogLine("round " + round) + "\n");
+                await WaitFor(hub, () => Find(hub, id)!.Log.Any(e => e.Text == "round " + round) && !Find(hub, id)!.Disconnected);
+            }
+
+            Assert.Equal(SkuaProtocol.MaxInstances, hub.Current.Instances.Count);
+            Assert.Equal(0, Volatile.Read(ref errors));
+        }
+        finally
+        {
+            foreach (var client in clients)
+            {
+                await client.DisposeAsync();
+            }
+        }
+    }
+
+    [Fact]
     public async Task A_malformed_line_is_rejected_and_the_connection_keeps_working()
     {
         var name = NewName();

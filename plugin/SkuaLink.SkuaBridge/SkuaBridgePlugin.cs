@@ -126,7 +126,9 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
                 _runningSince = null;
             }
 
-            _control = new SkuaControlState(Now);
+            // Every control transition (also the options outcomes of the background watch) publishes a status at once,
+            // not on the next 3 s poll, so the phone never shows a state the plugin has already left.
+            _control = new SkuaControlState(Now, RequestStatus);
             _control.OnScriptRunningChanged(_running);
             var manager = (IScriptStatus?)registered ?? bot.Manager;
             var dispatcher = provider.GetService(typeof(IDispatcherService)) as IDispatcherService;

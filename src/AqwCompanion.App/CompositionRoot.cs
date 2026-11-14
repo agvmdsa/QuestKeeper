@@ -113,8 +113,7 @@ public static class CompositionRoot
         services.AddSingleton(sp => new PhoneHub(
             sp.GetRequiredService<IFeedSource>(), new NoticeEngine(), new NoticeLog(50), () => DateTimeOffset.UtcNow,
             ex => Log.Warning("Phone hub failed: {ExceptionType}", ex.GetType().Name),
-            skua: sp.GetRequiredService<ISkuaFeed>(),
-            schedule: (delay, action) => _ = Task.Delay(delay).ContinueWith(_ => action(), TaskScheduler.Default)));
+            skua: sp.GetRequiredService<ISkuaFeed>()));
         services.AddSingleton(sp => new SkuaScriptPrefs(
             new SkuaScriptFile(sp.GetRequiredService<AppPaths>().SkuaScriptPrefsPath), () => DateTimeOffset.UtcNow));
         services.AddSingleton(sp => new SkuaOptionCache(

@@ -421,4 +421,71 @@ public class SkuaControlStateTests
 
         Assert.Equal("settling", state.State);
     }
+    // ---- the change callback (the plugin publishes a status on it) ----------------------------------------------
+
+    private (SkuaControlState State, List<string> Seen) Watched()
+    {
+        var seen = new List<string>();
+        SkuaControlState? state = null;
+        state = new SkuaControlState(() => _now, () => seen.Add(state!.OptionsStuck ? "stuck" : state.State));
+        return (state, seen);
+    }
+
+    [Fact]
+    public void Every_transition_calls_back_once_and_a_call_that_changes_nothing_does_not()
+    {
+        var (state, seen) = Watched();
+
+        state.OnStartAccepted(hasOptions: true);
+        state.OnOptionsDialogClosed();
+        state.OnOptionsDialogClosed();
+        state.OnScriptRunningChanged(true);
+        state.OnScriptRunningChanged(true);
+        state.OnStopRequested();
+        state.OnScriptRunningChanged(false);
+        state.OnMapChanged();
+        state.Tick();
+
+        Assert.Equal(["awaitingOptions", "running", "stopping", "settling"], seen);
+    }
+
+    [Fact]
+    public void Options_stuck_and_the_options_outcomes_call_back()
+    {
+        var (state, seen) = Watched();
+
+        state.OnStartAccepted(hasOptions: true);
+        state.OnOptionsStuck();
+        state.OnOptionsStuck();
+        state.OnScriptAlive();
+        state.OnStartAccepted(hasOptions: true);
+        state.OnStartNotSeen();
+
+        Assert.Equal(["awaitingOptions", "stuck", "running", "awaitingOptions", "settling"], seen);
+    }
+
+    [Fact]
+    public void The_end_of_a_settle_by_time_calls_back_when_it_is_noticed()
+    {
+        var (state, seen) = Watched();
+        state.OnScriptRunningChanged(true);
+        state.OnScriptRunningChanged(false);
+        seen.Clear();
+
+        Wait(10);
+        state.Tick();
+        state.Tick();
+
+        Assert.Equal(["idle"], seen);
+    }
+
+    [Fact]
+    public void A_callback_that_throws_never_escapes()
+    {
+        var state = new SkuaControlState(() => _now, () => throw new InvalidOperationException("boom"));
+
+        state.OnStartAccepted(hasOptions: false);
+
+        Assert.Equal("running", state.State);
+    }
 }

@@ -5,31 +5,45 @@ namespace AqwCompanion.Skua;
 /// <c>stopping</c>; when the script stops running the state is <c>settling</c> until the map has not changed for
 /// <see cref="SettleTime"/> (each map change starts the wait again), then <c>idle</c>. A start with options waits in
 /// <c>awaitingOptions</c> until the options dialog closes or the script is seen alive, never by time alone. Pure and
-/// thread-safe: the clock is injected and every call takes one lock.
+/// thread-safe: the clock is injected and every call takes one lock. Every transition (of the state or of
+/// <see cref="OptionsStuck"/>) calls the optional <c>changed</c> callback once, after the lock is released, so the plugin
+/// publishes a status at once instead of on its next poll; a call that changes nothing does not call it.
 /// </summary>
 public sealed class SkuaControlState
 {
     public static readonly TimeSpan SettleTime = TimeSpan.FromSeconds(10);
 
     private readonly Func<DateTimeOffset> _now;
+    private readonly Action? _changed;
     private readonly object _gate = new();
     private string _state = "idle";
     private bool _scriptRunning;
     private bool _optionsStuck;
     private DateTimeOffset _settleUntil;
 
-    public SkuaControlState(Func<DateTimeOffset> now) => _now = now;
+    /// <param name="now">The clock.</param>
+    /// <param name="changed">Called after each transition, outside the lock; it may read this state. Its exceptions are swallowed.</param>
+    public SkuaControlState(Func<DateTimeOffset> now, Action? changed = null)
+    {
+        _now = now;
+        _changed = changed;
+    }
 
     /// <summary>One of <c>idle|running|stopping|settling|awaitingOptions</c>.</summary>
     public string State
     {
         get
         {
+            string state;
+            bool changed;
             lock (_gate)
             {
-                Advance();
-                return _state;
+                changed = Advance();
+                state = _state;
             }
+
+            Notify(changed);
+            return state;
         }
     }
 
@@ -38,11 +52,16 @@ public sealed class SkuaControlState
     {
         get
         {
+            int? left;
+            bool changed;
             lock (_gate)
             {
-                Advance();
-                return _state == "settling" ? (int)Math.Ceiling((_settleUntil - _now()).TotalSeconds) : null;
+                changed = Advance();
+                left = _state == "settling" ? (int)Math.Ceiling((_settleUntil - _now()).TotalSeconds) : null;
             }
+
+            Notify(changed);
+            return left;
         }
     }
 
@@ -59,13 +78,7 @@ public sealed class SkuaControlState
     }
 
     /// <summary>Skua's <c>ScriptRunning</c> changed (a repeated value changes nothing).</summary>
-    public void OnScriptRunningChanged(bool running)
-    {
-        lock (_gate)
-        {
-            ApplyRunning(running);
-        }
-    }
+    public void OnScriptRunningChanged(bool running) => Change(() => ApplyRunning(running));
 
     /// <summary>
     /// Reads Skua's <c>ScriptRunning</c> inside the state's lock and applies it like <see cref="OnScriptRunningChanged"/>:
@@ -73,13 +86,7 @@ public sealed class SkuaControlState
     /// overwrite a newer one. A read that throws changes nothing and is passed on. The read must be cheap and must not
     /// call back into this state.
     /// </summary>
-    public void OnScriptRunningRead(Func<bool> read)
-    {
-        lock (_gate)
-        {
-            ApplyRunning(read());
-        }
-    }
+    public void OnScriptRunningRead(Func<bool> read) => Change(() => ApplyRunning(read()));
 
     private void ApplyRunning(bool running)
     {
@@ -104,57 +111,45 @@ public sealed class SkuaControlState
     }
 
     /// <summary>The player's map changed; while <c>settling</c> the wait starts again.</summary>
-    public void OnMapChanged()
+    public void OnMapChanged() => Change(() =>
     {
-        lock (_gate)
+        Advance();
+        if (_state == "settling")
         {
-            Advance();
-            if (_state == "settling")
-            {
-                _settleUntil = _now() + SettleTime;
-            }
+            _settleUntil = _now() + SettleTime;
         }
-    }
+    });
 
     /// <summary>A stop was asked for; only a running script (or one awaiting its options) moves to <c>stopping</c>.</summary>
-    public void OnStopRequested()
+    public void OnStopRequested() => Change(() =>
     {
-        lock (_gate)
+        Advance();
+        if (_state is "running" or "awaitingOptions" || (_scriptRunning && _state != "stopping"))
         {
-            Advance();
-            if (_state is "running" or "awaitingOptions" || (_scriptRunning && _state != "stopping"))
-            {
-                _state = "stopping";
-                _optionsStuck = false;
-            }
-        }
-    }
-
-    /// <summary>Skua accepted a start; a script with options waits for its options dialog.</summary>
-    public void OnStartAccepted(bool hasOptions)
-    {
-        lock (_gate)
-        {
-            _state = hasOptions ? "awaitingOptions" : "running";
+            _state = "stopping";
             _optionsStuck = false;
         }
-    }
+    });
+
+    /// <summary>Skua accepted a start; a script with options waits for its options dialog.</summary>
+    public void OnStartAccepted(bool hasOptions) => Change(() =>
+    {
+        _state = hasOptions ? "awaitingOptions" : "running";
+        _optionsStuck = false;
+    });
 
     /// <summary>
     /// An accepted start was not seen running in time (Skua's running report may come and go before the start is accepted, or
     /// never come): when no script runs, a <c>running</c> or <c>awaitingOptions</c> state settles, so it never sticks.
     /// </summary>
-    public void OnStartNotSeen()
+    public void OnStartNotSeen() => Change(() =>
     {
-        lock (_gate)
+        Advance();
+        if (_state is "running" or "awaitingOptions" && !_scriptRunning)
         {
-            Advance();
-            if (_state is "running" or "awaitingOptions" && !_scriptRunning)
-            {
-                StartSettling();
-            }
+            StartSettling();
         }
-    }
+    });
 
     /// <summary>The options dialog closed; the script runs with the saved options.</summary>
     public void OnOptionsDialogClosed() => LeaveAwaitingOptions();
@@ -163,36 +158,31 @@ public sealed class SkuaControlState
     public void OnScriptAlive() => LeaveAwaitingOptions();
 
     /// <summary>The options dialog is still open after the plugin tried to close it.</summary>
-    public void OnOptionsStuck()
+    public void OnOptionsStuck() => Change(() =>
     {
-        lock (_gate)
+        if (_state == "awaitingOptions")
         {
-            if (_state == "awaitingOptions")
-            {
-                _optionsStuck = true;
-            }
+            _optionsStuck = true;
         }
-    }
+    });
 
     /// <summary>Lets time pass: ends a settle that is over, and settles a stop whose script is no longer running.</summary>
-    public void Tick()
+    public void Tick() => Change(() =>
     {
-        lock (_gate)
+        Advance();
+        if (_state == "stopping" && !_scriptRunning)
         {
-            Advance();
-            if (_state == "stopping" && !_scriptRunning)
-            {
-                StartSettling();
-            }
+            StartSettling();
         }
-    }
+    });
 
     /// <summary>True only when <c>idle</c> with no script running; otherwise the reason as the error text.</summary>
     public bool CanStart(out string error)
     {
+        bool changed;
         lock (_gate)
         {
-            Advance();
+            changed = Advance();
             error = _state switch
             {
                 "stopping" => "stopping",
@@ -200,19 +190,49 @@ public sealed class SkuaControlState
                 "idle" when !_scriptRunning => "",
                 _ => "already running",
             };
-            return error.Length == 0;
         }
+
+        Notify(changed);
+        return error.Length == 0;
     }
 
-    private void LeaveAwaitingOptions()
+    private void LeaveAwaitingOptions() => Change(() =>
     {
+        if (_state == "awaitingOptions")
+        {
+            _state = "running";
+            _optionsStuck = false;
+        }
+    });
+
+    /// <summary>Runs one step under the lock and calls back, outside it, when the state or the stuck flag moved.</summary>
+    private void Change(Action step)
+    {
+        bool changed;
         lock (_gate)
         {
-            if (_state == "awaitingOptions")
-            {
-                _state = "running";
-                _optionsStuck = false;
-            }
+            var before = (_state, _optionsStuck);
+            step();
+            changed = before != (_state, _optionsStuck);
+        }
+
+        Notify(changed);
+    }
+
+    private void Notify(bool changed)
+    {
+        if (!changed || _changed is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _changed();
+        }
+        catch (Exception)
+        {
+            // The caller (Skua's events, the poll, a command) must never see the publisher's failure.
         }
     }
 
@@ -223,11 +243,15 @@ public sealed class SkuaControlState
         _settleUntil = _now() + SettleTime;
     }
 
-    private void Advance()
+    /// <summary>Ends a settle that is over; true when it did (the caller calls back after the lock).</summary>
+    private bool Advance()
     {
         if (_state == "settling" && !_scriptRunning && _now() >= _settleUntil)
         {
             _state = "idle";
+            return true;
         }
+
+        return false;
     }
 }

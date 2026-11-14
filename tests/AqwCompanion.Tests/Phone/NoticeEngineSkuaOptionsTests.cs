@@ -22,32 +22,30 @@ public class NoticeEngineSkuaOptionsTests
     }
 
     [Fact]
-    public void Awaiting_options_for_more_than_three_seconds_raises_one_notice_on_a_tick()
+    public void Awaiting_options_alone_raises_nothing_however_long_it_lasts()
     {
+        // The plugin may stay in awaitingOptions up to its own options wait (5 s) with no dialog at all; only it knows
+        // when the dialog is really open, and it says so with optionsStuck.
         var engine = Started();
         Assert.Empty(engine.ProcessSkua(View("awaitingOptions"), T0.AddSeconds(1)));
 
-        Assert.Empty(engine.Tick(T0.AddSeconds(4)));   // exactly 3 s: not more
-        Assert.Equal(TimeSpan.Zero, engine.SkuaOptionsDueIn(T0.AddSeconds(4)));
-        var notice = Assert.Single(engine.Tick(T0.AddSeconds(4.5)));
+        Assert.Empty(engine.Tick(T0.AddSeconds(4.5)));
+        Assert.Empty(engine.ProcessSkua(View("awaitingOptions"), T0.AddSeconds(6)));
         Assert.Empty(engine.Tick(T0.AddSeconds(30)));
+    }
+
+    [Fact]
+    public void Options_stuck_raises_the_notice_with_its_words()
+    {
+        var engine = Started();
+        engine.ProcessSkua(View("awaitingOptions"), T0.AddSeconds(1));
+
+        var notice = Assert.Single(engine.ProcessSkua(View("awaitingOptions", stuck: true), T0.AddSeconds(11)));
 
         Assert.Equal(NoticeKind.SkuaOptionsWaiting, notice.Kind);
         Assert.Equal("Hero", notice.Character);
         Assert.Equal("Waiting for you on the PC", notice.Title);
         Assert.Equal("Hero: close the script's options window on the computer.", notice.Body);
-        Assert.Null(engine.SkuaOptionsDueIn(T0.AddSeconds(30)));
-    }
-
-    [Fact]
-    public void A_short_wait_raises_nothing()
-    {
-        var engine = Started();
-        engine.ProcessSkua(View("awaitingOptions"), T0.AddSeconds(1));
-
-        Assert.Empty(engine.ProcessSkua(View("running"), T0.AddSeconds(3)));
-        Assert.Empty(engine.Tick(T0.AddSeconds(10)));
-        Assert.Null(engine.SkuaOptionsDueIn(T0.AddSeconds(10)));
     }
 
     [Fact]
@@ -63,15 +61,6 @@ public class NoticeEngineSkuaOptionsTests
         // A new wait after it ended is a new notice.
         engine.ProcessSkua(View("running"), T0.AddSeconds(40));
         Assert.Single(engine.ProcessSkua(View(null, stuck: true), T0.AddSeconds(50)));
-    }
-
-    [Fact]
-    public void The_wait_raised_on_a_status_change_after_three_seconds_counts_too()
-    {
-        var engine = Started();
-        engine.ProcessSkua(View("awaitingOptions"), T0);
-
-        Assert.Single(engine.ProcessSkua(View("awaitingOptions", id: "a") with { }, T0.AddSeconds(5)));
     }
 
     [Fact]
@@ -99,45 +88,44 @@ public class NoticeEngineSkuaOptionsTests
     {
         var engine = Started();
         SkuaHubView Both(string? a, string? b) => new([.. View(a).Instances, .. View(b, id: "b", label: "Zed").Instances]);
+        SkuaHubView Stuck(bool a, bool b) => new([.. View("awaitingOptions", stuck: a).Instances, .. View("awaitingOptions", stuck: b, id: "b", label: "Zed").Instances]);
         engine.ProcessSkua(Both("awaitingOptions", "idle"), T0);
-        engine.ProcessSkua(Both("awaitingOptions", "awaitingOptions"), T0.AddSeconds(2));
 
-        Assert.Equal("Hero", Assert.Single(engine.Tick(T0.AddSeconds(4))).Character);
-        Assert.Equal("Zed", Assert.Single(engine.Tick(T0.AddSeconds(6))).Character);
+        Assert.Equal("Hero", Assert.Single(engine.ProcessSkua(Stuck(true, false), T0.AddSeconds(10))).Character);
+        Assert.Equal("Zed", Assert.Single(engine.ProcessSkua(Stuck(true, true), T0.AddSeconds(12))).Character);
     }
 
     [Fact]
     public void Reset_forgets_the_waits()
     {
         var engine = Started();
-        engine.ProcessSkua(View("awaitingOptions"), T0);
+        engine.ProcessSkua(View("awaitingOptions", stuck: true), T0);
 
         engine.Reset();
 
-        Assert.Empty(engine.Tick(T0.AddSeconds(10)));
-        Assert.Null(engine.SkuaOptionsDueIn(T0.AddSeconds(10)));
+        // After a reset the next view is a baseline again: a wait in it is not announced.
+        Assert.Empty(engine.ProcessSkua(View("awaitingOptions", stuck: true), T0.AddSeconds(10)));
+        Assert.Empty(engine.Tick(T0.AddSeconds(20)));
     }
 
     [Fact]
-    public void The_hub_asks_for_a_look_when_a_wait_is_due_and_publishes_the_notice()
+    public void The_hub_publishes_the_notice_when_a_status_says_options_stuck()
     {
         var clock = new ManualClock(T0);
         var skua = new FakeSkua { Current = View("idle") };
-        var scheduled = new List<(TimeSpan Delay, Action Action)>();
-        using var hub = new PhoneHub(new FakeFeedSource(), new NoticeEngine(), new NoticeLog(50), clock.GetUtcNow, skua: skua, schedule: (d, a) => scheduled.Add((d, a)));
+        using var hub = new PhoneHub(new FakeFeedSource(), new NoticeEngine(), new NoticeLog(50), clock.GetUtcNow, skua: skua);
         using var subscription = hub.Subscribe();
 
         skua.Current = View("awaitingOptions");
         skua.Raise();
-        skua.Raise();   // one look pending at most
+        clock.Advance(TimeSpan.FromSeconds(6));
+        hub.Tick();
+        Assert.DoesNotContain(hub.Current.Notices, n => n.Kind == NoticeKind.SkuaOptionsWaiting);
 
-        var (delay, action) = Assert.Single(scheduled);
-        Assert.Equal(TimeSpan.FromSeconds(3.1), delay);
-        clock.Advance(delay);
-        action();
+        skua.Current = View("awaitingOptions", stuck: true);
+        skua.Raise();
 
         Assert.Contains(hub.Current.Notices, n => n.Kind == NoticeKind.SkuaOptionsWaiting);
-        Assert.Single(scheduled);
         var messages = new List<HubMessage>();
         while (subscription.Reader.TryRead(out var message))
         {
@@ -145,20 +133,5 @@ public class NoticeEngineSkuaOptionsTests
         }
 
         Assert.Contains(messages, m => m.Event == "notice" && m.Json.Contains("\"kind\":\"SkuaOptionsWaiting\"", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void Without_a_scheduler_the_regular_tick_finds_the_wait()
-    {
-        var clock = new ManualClock(T0);
-        var skua = new FakeSkua { Current = View("idle") };
-        using var hub = new PhoneHub(new FakeFeedSource(FeedSnapshot.Empty), new NoticeEngine(), new NoticeLog(50), clock.GetUtcNow, skua: skua);
-
-        skua.Current = View("awaitingOptions");
-        skua.Raise();
-        clock.Advance(TimeSpan.FromSeconds(15));
-        hub.Tick();
-
-        Assert.Contains(hub.Current.Notices, n => n.Kind == NoticeKind.SkuaOptionsWaiting);
     }
 }

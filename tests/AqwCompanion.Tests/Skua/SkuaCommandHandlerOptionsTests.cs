@@ -59,12 +59,13 @@ public class SkuaCommandHandlerOptionsTests
 
     private static IReadOnlyList<SkuaOptionDef> ButlerDefs => SkuaScriptOptions.Definitions(ButlerOptions);
 
-    private (SkuaCommandHandler Handler, FakeHost Host, FakeOptions Options, SkuaControlState Control) NewHandler()
+    private (SkuaCommandHandler Handler, FakeHost Host, FakeOptions Options, SkuaControlState Control) NewHandler(Action<SkuaControlState>? onControlChanged = null)
     {
         var host = new FakeHost();
         var options = new FakeOptions(host);
         var catalog = new SkuaScriptCatalog(Root, _ => new[] { "Tools/Butler.cs", "Farm/Gold.cs" }.Select(At).ToList(), _ => false);
-        var control = new SkuaControlState(Now);
+        SkuaControlState? made = null;
+        var control = made = new SkuaControlState(Now, onControlChanged is null ? null : () => onControlChanged(made!));
         host.Clock = Now;
         options.Clock = Now;
         host.OptionsFor = path => path == At("Tools/Butler.cs") ? new SkuaLoadedOptions(path, ButlerFile, ButlerOptions) : new SkuaLoadedOptions(path, Path.Combine(OptionsRoot, "default.cfg"), []);
@@ -590,6 +591,86 @@ public class SkuaCommandHandlerOptionsTests
         Assert.Equal("running", control.State);
         Assert.InRange(Now() - started, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(6));
         Assert.Empty(options.Closes);
+    }
+
+    /// <summary>A handler whose control state records each change as the plugin would publish it (state, or "stuck").</summary>
+    private (SkuaCommandHandler Handler, FakeHost Host, FakeOptions Options, SkuaControlState Control, List<string> Published) Publishing()
+    {
+        var published = new List<string>();
+        var made = NewHandler(control =>
+        {
+            lock (published)
+            {
+                published.Add(control.OptionsStuck ? "stuck" : control.State);
+            }
+        });
+        return (made.Handler, made.Host, made.Options, made.Control, published);
+    }
+
+    private static List<string> Since(List<string> published, int from)
+    {
+        lock (published)
+        {
+            return published.Skip(from).ToList();
+        }
+    }
+
+    [Fact]
+    public async Task A_later_start_with_no_dialog_publishes_when_it_leaves_awaiting_options()
+    {
+        var (handler, host, options, control, published) = Publishing();
+        await Discover(handler, host, options, control);
+        var from = Since(published, 0).Count;
+
+        await handler.HandleAsync(new StartCommand("r1", Butler));
+        await handler.PendingOptions.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(["awaitingOptions", "running"], Since(published, from));
+    }
+
+    [Fact]
+    public async Task A_later_start_whose_dialog_closes_publishes_when_it_runs()
+    {
+        var (handler, host, options, control, published) = Publishing();
+        await Discover(handler, host, options, control);
+        options.Window = options.ClosableDialog(appearsAfterSeconds: 1);
+        var from = Since(published, 0).Count;
+
+        await handler.HandleAsync(new StartCommand("r1", Butler));
+        await handler.PendingOptions.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(["awaitingOptions", "running"], Since(published, from));
+    }
+
+    [Fact]
+    public async Task A_stuck_dialog_publishes_stuck_then_running_when_the_owner_closes_it()
+    {
+        var (handler, host, options, control, published) = Publishing();
+        await Discover(handler, host, options, control);
+        var started = Now();
+        options.Window = () => Now() - started < TimeSpan.FromSeconds(30) ? SkuaOptionsWindow.Open : SkuaOptionsWindow.None;
+        var from = Since(published, 0).Count;
+
+        await handler.HandleAsync(new StartCommand("r1", Butler));
+        await handler.PendingOptions.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(["awaitingOptions", "stuck", "running"], Since(published, from));
+    }
+
+    [Fact]
+    public async Task A_discovery_publishes_each_step_of_its_start_and_stop()
+    {
+        var (handler, host, options, _, published) = Publishing();
+        options.Window = options.ClosableDialog();
+
+        await handler.HandleAsync(new StartCommand("r1", Butler));
+        await handler.PendingStop.WaitAsync(TimeSpan.FromSeconds(5));
+        host.Running = false;
+        handler.Tick();
+        Wait(10);
+        handler.Tick();
+
+        Assert.Equal(["awaitingOptions", "stopping", "settling", "idle"], Since(published, 0));
     }
 
     [Fact]

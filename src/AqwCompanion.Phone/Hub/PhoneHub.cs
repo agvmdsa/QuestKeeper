@@ -37,21 +37,12 @@ public sealed class PhoneHub : IDisposable
     private readonly ISkuaFeed? _skua;
     private readonly object _lock = new();
     private readonly List<HubSubscription> _subscribers = [];
-    private readonly Action<TimeSpan, Action>? _schedule;
     private FeedSnapshot _snapshot;
     private string _snapshotJson;
-    private bool _checkScheduled;
 
-    /// <param name="schedule">
-    /// Runs an action once after a delay; used to look again when a Skua waits for its options window (a notice is due
-    /// after <see cref="NoticeEngine.OptionsWaitingAfter"/>, sooner than the regular <see cref="Tick"/>). Null: only
-    /// <see cref="Tick"/> looks.
-    /// </param>
     public PhoneHub(
-        IFeedSource source, NoticeEngine engine, NoticeLog log, Func<DateTimeOffset> now, Action<Exception>? onError = null, ISkuaFeed? skua = null,
-        Action<TimeSpan, Action>? schedule = null)
+        IFeedSource source, NoticeEngine engine, NoticeLog log, Func<DateTimeOffset> now, Action<Exception>? onError = null, ISkuaFeed? skua = null)
     {
-        _schedule = schedule;
         _source = source;
         _engine = engine;
         _log = log;
@@ -115,7 +106,6 @@ public sealed class PhoneHub : IDisposable
             try
             {
                 PublishNotices(_engine.Tick(_now()));
-                ScheduleOptionsCheck();
             }
             catch (Exception ex)
             {
@@ -209,35 +199,12 @@ public sealed class PhoneHub : IDisposable
                 var view = _skua!.Current;
                 PublishNotices(_engine.ProcessSkua(view, _now()));
                 PublishState(view);
-                ScheduleOptionsCheck();
             }
         }
         catch (Exception ex)
         {
             Report(ex);
         }
-    }
-
-    /// <summary>Under the lock: asks for one look when a Skua's options wait becomes due (at most one look pending).</summary>
-    private void ScheduleOptionsCheck()
-    {
-        if (_schedule is null || _checkScheduled || _engine.SkuaOptionsDueIn(_now()) is not { } due)
-        {
-            return;
-        }
-
-        _checkScheduled = true;
-        _schedule(due + TimeSpan.FromMilliseconds(100), OptionsCheck);
-    }
-
-    private void OptionsCheck()
-    {
-        lock (_lock)
-        {
-            _checkScheduled = false;
-        }
-
-        Tick();
     }
 
     private void Report(Exception ex)

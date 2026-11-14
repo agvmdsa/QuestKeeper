@@ -79,6 +79,8 @@ function loadControl(): void {
       loadingControl = false;
     });
 }
+// The floating dock, once its chunk has loaded.
+let dock: { draw: () => void; close: () => void } | null = null;
 let source: EventSource | null = null;
 let attempts = 0;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -148,13 +150,14 @@ function tree(): VNode {
   const shown = ui && control ? { draw: ui.controlCard, control } : null;
   const controlCard = shown ? (i: SkuaInstance) => shown.draw(i, shown.control, nowMs) : undefined;
   const model: Model = { state: state && { ...state, notices }, nowMs, showAll, hfOpen, installHint, theme, skuaFilter, skuaInstance, skuaInstanceId, controlCard };
+  // The Appearance choice lives in the dock's Settings panel; the Not paired screen has no dock, so it keeps it as a footer.
   if (unpaired) return withFooter(pairNeededView(pairReason, installHint), model);
   const route = parseRoute(location.hash);
   if (route.view === 'skua') {
     loadControl();
-    return withFooter(skuaView(model), model);
+    return skuaView(model);
   }
-  return withFooter(route.view === 'character' ? characterView(model, route.name) : listView(model), model);
+  return route.view === 'character' ? characterView(model, route.name) : listView(model);
 }
 
 function keyOf(el: HTMLElement): string | null {
@@ -184,6 +187,7 @@ function draw(): boolean {
   let next: VNode;
   try {
     drawBanner();
+    dock?.draw();
     next = tree();
   } catch {
     ok = false;
@@ -426,15 +430,19 @@ async function start(): Promise<void> {
   }
 }
 
-app.addEventListener('click', (event) => {
+/** The Appearance buttons: on the Not paired screen and in the dock's Settings panel. */
+function chooseTheme(event: Event): boolean {
   const themeButton = (event.target as HTMLElement).closest('[data-action="theme"]');
-  if (themeButton) {
-    theme = parseTheme(themeButton.getAttribute('data-value'));
-    saveTheme(storage(), theme);
-    applyTheme(document.documentElement, theme);
-    draw();
-    return;
-  }
+  if (!themeButton) return false;
+  theme = parseTheme(themeButton.getAttribute('data-value'));
+  saveTheme(storage(), theme);
+  applyTheme(document.documentElement, theme);
+  draw();
+  return true;
+}
+
+app.addEventListener('click', (event) => {
+  if (chooseTheme(event)) return;
   const instanceButton = (event.target as HTMLElement).closest('[data-action="skua-instance"]');
   if (instanceButton) {
     chooseInstance(instanceButton.getAttribute('data-value'));
@@ -514,6 +522,7 @@ window.addEventListener('hashchange', () => {
   showAll = false;
   hfOpen = false;
   if (control?.sheet) control.close();
+  dock?.close();
   draw();
 });
 
@@ -606,6 +615,19 @@ function onSheetField(event: Event): void {
 // Both: an older browser may not send input for a switch or a choice; the second call changes nothing.
 sheet.addEventListener('input', onSheetField);
 sheet.addEventListener('change', onSheetField);
+
+// The floating dock: after the page content, sticky at the bottom. Its view and behaviour are a chunk of their own, loaded right
+// after the first draw (the first load has no room for them); offline with nothing cached, the page works without the dock.
+const dockHost = document.createElement('div');
+dockHost.className = 'dock-host';
+dockHost.hidden = true;
+app.after(dockHost);
+import('./dockUi')
+  .then((loaded) => {
+    dock = loaded.startDock({ host: dockHost, unpaired: () => unpaired, theme: () => theme, chooseTheme, focusedKey, restoreFocus });
+    dock.draw();
+  })
+  .catch(() => undefined);
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => undefined);

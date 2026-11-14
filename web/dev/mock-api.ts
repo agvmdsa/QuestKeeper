@@ -1,5 +1,5 @@
 import type { Plugin } from 'vite';
-import type { RemoteState } from '../src/types';
+import type { RemoteState, SkuaInstance } from '../src/types';
 
 function state(): RemoteState {
   const now = new Date().toISOString();
@@ -25,6 +25,20 @@ function state(): RemoteState {
       hardFarms: { owned: 1, total: 138, missing: Array.from({ length: 40 }, (_, i) => `Hard Farm item ${i + 1}`) },
     },
     notices: [{ id: 'rank:Shake the babe:Yokai:8', kind: 'RankUp', character: 'Shake the babe', title: 'Rank up', body: 'Yokai reached rank 8.', atUtc: now }],
+    // MOCK=skua adds one connected Skua playing the selected character, so the Skua tab and its reputation link can be seen.
+    ...(process.env.MOCK === 'skua' ? { skuaInstances: [skua(now)] } : {}),
+  };
+}
+
+function skua(now: string): SkuaInstance {
+  return {
+    instanceId: 'mock-1', label: 'Shake the babe', disconnected: false, connection: 'Connected', hello: { pluginVersion: '0.5.0', skuaVersion: '1.4.5.0' },
+    status: {
+      loggedIn: true, character: 'Shake the babe', server: 'Artix', map: 'battleon', script: 'Farm.cs', scriptRunning: true, runningSince: now, control: 'running',
+      quests: [{ id: 1, name: 'Slay the Beast', ready: true }],
+      factions: [{ id: 1, name: 'Yokai', rank: 8, totalRep: 192600, rep: 30000, requiredRep: 39900 }, { id: 2, name: 'Good', rank: 10, totalRep: 302500, rep: 0, requiredRep: 0 }],
+    },
+    log: [{ at: now, kind: 'Sold', text: 'Sold Blood Orb x50 for 2,500 gold' }],
   };
 }
 

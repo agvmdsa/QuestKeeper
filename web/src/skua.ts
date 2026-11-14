@@ -335,6 +335,26 @@ export function effectiveFactions(state: RemoteState): { factions: Faction[]; so
   return capture;
 }
 
+/**
+ * The captured character whose screen shows this Skua's reputation, or null. The character screen shows reputation only for the
+ * selected character (live from Skua when it matches), so a Skua points there only when its character is captured and selected,
+ * ignoring letter case; otherwise the Skua tab keeps the full list so nothing is lost.
+ */
+export function reputationHome(state: RemoteState | null, skua: SkuaState): string | null {
+  const snapshot = state?.snapshot;
+  const who = skua.status?.character;
+  if (!snapshot || !who || snapshot.selected === null || snapshot.selected.toUpperCase() !== who.toUpperCase()) return null;
+  return snapshot.characters.find((c) => c.name === snapshot.selected)?.name ?? null;
+}
+
+/**
+ * A reputation list in one line: how many factions, and the one closest to its next rank, if any. Both lists effectiveFactions
+ * gives are ordered closest first (the maximum rank last), so that is the first one not at the maximum rank.
+ */
+export function reputationSummary<F extends Pick<Faction, 'max'>>(factions: readonly F[]): { count: number; closest: F | null } {
+  return { count: factions.length, closest: factions.find((f) => !f.max) ?? null };
+}
+
 export function skuaLogRows(s: SkuaState, nowMs: number, filter: LogFilter = 'all'): { when: string; text: string }[] {
   return s.log.filter((e) => filter === 'all' || filterOf(e.kind) === filter).map((e) => ({ when: relativeTime(e.at, nowMs), text: e.text }));
 }

@@ -1,6 +1,6 @@
 import { characterHref, characterRow, characterRows, expFraction, formatNumber, hardFarmsView, noticeLine } from './state';
 import { plural, t } from './i18n';
-import { effectiveFactions, factionRows, instanceState, LOG_FILTERS, LOG_FILTER_LABELS, questRows, selectInstance, skuaEmptyText, skuaLogRows, skuaNow, skuaSummary, type LogFilter } from './skua';
+import { effectiveFactions, factionRows, instanceState, LOG_FILTERS, LOG_FILTER_LABELS, questRows, reputationHome, reputationSummary, selectInstance, skuaEmptyText, skuaLogRows, skuaNow, skuaSummary, type LogFilter } from './skua';
 import { THEMES, type ThemeChoice } from './theme';
 import type { Faction, RemoteState, SkuaInstance, SkuaState } from './types';
 
@@ -38,9 +38,12 @@ export function h(tag: string, props: Omit<Partial<VNode>, 'tag' | 'children'> =
   return { tag, ...props, children: children.filter((c): c is VNode => Boolean(c)) };
 }
 
+const SVG = new Set(['svg', 'path']);
+
 export function mount(node: VNode): HTMLElement {
-  const el = document.createElement(node.tag);
-  if (node.className) el.className = node.className;
+  // The dock's icons are SVG: they need the SVG namespace, and their class is set as an attribute.
+  const el = SVG.has(node.tag) ? (document.createElementNS('http://www.w3.org/2000/svg', node.tag) as unknown as HTMLElement) : document.createElement(node.tag);
+  if (node.className) el.setAttribute('class', node.className);
   if (node.text !== undefined) el.textContent = node.text;
   for (const [name, value] of Object.entries(node.attrs ?? {})) {
     if (name === 'style' || name.startsWith('on')) throw new Error(`The attribute ${name} is not allowed.`);
@@ -165,15 +168,45 @@ function questsCard(skua: SkuaState): VNode | null {
   );
 }
 
-/** The live reputation from the Skua plugin; hidden when the plugin does not report it. */
-function reputationCard(skua: SkuaState): VNode | null {
-  const rows = factionRows(skua);
-  if (!rows) return null;
+/** The one way a reputation list is drawn, on the character screen and (for a character not captured) on the Skua tab. */
+function reputationCard(factions: Pick<Faction, 'name' | 'rank' | 'max' | 'fraction' | 'toNext'>[], note: string | null = null): VNode {
   return h(
     'section',
     { className: 'card' },
-    h('h2', { text: t('skua.reputation.title') }),
-    rows.length === 0 ? empty(t('skua.reputation.none')) : h('ul', { className: 'list' }, ...rows.map(factionRow)),
+    h('h2', { text: t('factions.title') }),
+    note ? h('p', { className: 'muted', text: note }) : null,
+    factions.length === 0 ? empty(t('factions.empty')) : h('ul', { className: 'list' }, ...factions.map(factionRow)),
+  );
+}
+
+/**
+ * The Skua tab's reputation: a one-line link to the character screen when that screen shows it (the character is captured and
+ * selected), else the full list here. Hidden when the plugin does not report reputation.
+ */
+function skuaReputation(skua: SkuaState, state: RemoteState | null): VNode | null {
+  const rows = factionRows(skua);
+  if (!rows) return null;
+  const home = reputationHome(state, skua);
+  if (home === null || !state) return reputationCard(rows);
+  // What the character screen shows: the live list, or the capture list when the live one is empty.
+  const sum = reputationSummary(effectiveFactions(state).factions);
+  return h(
+    'section',
+    { className: 'card' },
+    h('h2', { text: t('factions.title') }),
+    h(
+      'a',
+      { className: 'row', attrs: { href: characterHref(home) } },
+      h('span', { className: 'name', text: plural('factions.count', sum.count, { character: home }) }),
+      h(
+        'span',
+        { className: 'row-status' },
+        h('span', {
+          className: 'muted',
+          text: sum.closest ? t('factions.closest', { name: sum.closest.name, n: formatNumber(sum.closest.toNext) }) : t(sum.count ? 'factions.allMax' : 'factions.empty'),
+        }),
+      ),
+    ),
   );
 }
 
@@ -244,10 +277,10 @@ export function skuaView(model: Model): VNode {
   // A disconnected instance keeps its last status, which must not be shown as live.
   const live = skua && chosen?.disconnected ? { ...skua, connection: 'NotConnected' as const } : skua;
   if (!live || live.connection !== 'Connected') {
-    return h('div', {}, back(), selector, h('section', { className: 'card' }, h('h2', { text: t('skua.title') }), empty(skuaEmptyText(live))));
+    return h('div', {}, selector, h('section', { className: 'card' }, h('h2', { text: t('skua.title') }), empty(skuaEmptyText(live))));
   }
   const control = chosen && model.controlCard ? model.controlCard(chosen) : null;
-  return h('div', {}, back(), selector, nowCard(live, model.nowMs), control, questsCard(live), reputationCard(live), logCard(live, model));
+  return h('div', {}, selector, nowCard(live, model.nowMs), control, questsCard(live), skuaReputation(live, model.state), logCard(live, model));
 }
 
 /** One faction: from the capture (Faction) or from Skua (FactionRow), which carry the same fields. */
@@ -305,13 +338,7 @@ export function characterView(model: Model, name: string): VNode {
     {},
     back(),
     figures,
-    h(
-      'section',
-      { className: 'card' },
-      h('h2', { text: t('factions.title') }),
-      reputation.source === 'skua' ? h('p', { className: 'muted', text: t('factions.fromSkua') }) : null,
-      reputation.factions.length === 0 ? empty(t('factions.empty')) : h('ul', { className: 'list' }, ...reputation.factions.map(factionRow)),
-    ),
+    reputationCard(reputation.factions, reputation.source === 'skua' ? t('factions.fromSkua') : null),
     h(
       'section',
       { className: 'card' },
@@ -372,11 +399,11 @@ export function drawFailedView(): VNode {
   );
 }
 
-/** The Appearance control: three toggle buttons, exactly one pressed. */
-export function themeFooter(model: Pick<Model, 'theme'>): VNode {
+/** The Appearance control: three toggle buttons, exactly one pressed. A footer on the Not paired screen, a group in the dock's Settings panel. */
+export function themeFooter(model: Pick<Model, 'theme'>, tag = 'footer'): VNode {
   const current = model.theme ?? 'system';
   return h(
-    'footer',
+    tag,
     { className: 'appearance', attrs: { role: 'group', 'aria-labelledby': 'appearance-label' } },
     h('p', { className: 'muted', text: t('theme.group'), attrs: { id: 'appearance-label' } }),
     h(

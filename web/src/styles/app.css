@@ -90,3 +90,25 @@ button { min-height: 3rem; margin-top: 0.5rem; padding: 0 1rem; font: inherit; f
 .filters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
 .filter-btn { min-width: 3rem; margin-top: 0; color: var(--text); background: var(--surface); }
 .filter-btn[aria-pressed="true"] { color: var(--on-accent); background: var(--accent); border-width: 3px; }
+
+.chip-wrap { position: relative; margin-bottom: 0.75rem; }
+.chip-wrap::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 1.5rem; background: linear-gradient(90deg, transparent, var(--bg)); pointer-events: none; }
+.chips { display: flex; gap: 0.5rem; overflow-x: auto; padding: 0.25rem 0.25rem 0.5rem; scroll-snap-type: x proximity; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { flex: 0 0 auto; display: grid; align-content: center; gap: 0.125rem; min-width: 7rem; max-width: 11rem; min-height: 3rem; margin-top: 0; padding: 0.375rem 0.75rem; text-align: left; scroll-snap-align: start; color: var(--text); background: var(--surface); }
+.chip-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-state { display: flex; align-items: center; gap: 0.375rem; font-size: 0.8125rem; font-weight: 400; color: var(--muted); }
+.chip-state .dot { width: 0.625rem; height: 0.625rem; border-width: 1px; }
+.chip[aria-selected="true"] { color: var(--on-top); background: var(--top); border-color: var(--top); box-shadow: 0 0 0 2px var(--accent); }
+.chip[aria-selected="true"] .chip-state { color: var(--on-top); }
+.chip.off, .inst-btn.off { border-style: dashed; }
+
+.inst-list { display: grid; gap: 0.5rem; margin-bottom: 0.75rem; }
+.inst-btn { display: grid; align-content: center; gap: 0.125rem; width: 100%; margin-top: 0; text-align: left; color: var(--text); background: var(--surface); }
+.inst-btn .chip-name { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+.inst-btn[aria-pressed="true"] { color: var(--on-top); background: var(--top); border-color: var(--top); box-shadow: 0 0 0 2px var(--accent); }
+.inst-btn[aria-pressed="true"] .chip-state { color: var(--on-top); }
+
+@media (prefers-reduced-motion: reduce) {
+  .chips { scroll-behavior: auto; scroll-snap-type: none; }
+}

@@ -8,7 +8,7 @@ import {
   parseState,
   recallKept, reconnectDelay, streamErrorStep, takePairingToken, UNREACHABLE_AFTER_MS, type PairProbe,
 } from './state';
-import { parseLogFilter, type LogFilter } from './skua';
+import { loadInstance, neighbourLabel, parseLogFilter, saveInstance, selectInstance, type LogFilter } from './skua';
 import { detectLocale, setLocale, t } from './i18n';
 import type { Notice, RemoteState } from './types';
 import { characterView, drawFailedView, listView, mount, pairNeededView, skuaView, withFooter, type Model, type VNode } from './views';
@@ -50,6 +50,8 @@ let showAll = false;
 let hfOpen = false;
 // The Skua log filter lives in memory only: a reload starts at Everything.
 let skuaFilter: LogFilter = 'all';
+// The Skua last chosen, by its label; remembered across visits.
+let skuaInstance: string | null = loadInstance(storage());
 let source: EventSource | null = null;
 let attempts = 0;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -115,7 +117,7 @@ function drawBanner(): void {
 }
 
 function tree(): VNode {
-  const model: Model = { state: state && { ...state, notices }, nowMs: Date.now(), showAll, hfOpen, installHint, theme, skuaFilter };
+  const model: Model = { state: state && { ...state, notices }, nowMs: Date.now(), showAll, hfOpen, installHint, theme, skuaFilter, skuaInstance };
   if (unpaired) return withFooter(pairNeededView(pairReason, installHint), model);
   const route = parseRoute(location.hash);
   if (route.view === 'skua') return withFooter(skuaView(model), model);
@@ -156,6 +158,7 @@ function draw(): boolean {
   const signature = JSON.stringify(next);
   if (signature === lastTree) return ok;
   const key = focusedKey();
+  const chipScroll = app.querySelector('.chips')?.scrollLeft ?? 0;
   try {
     app.replaceChildren(mount(next));
     lastTree = signature;
@@ -165,7 +168,24 @@ function draw(): boolean {
     lastTree = '';
   }
   restoreFocus(key);
+  keepChipVisible(chipScroll);
   return ok;
+}
+
+let shownChip: string | null = null;
+
+/** A redraw makes a new chip row: it gets its scroll position back, and a newly chosen chip is scrolled into view. */
+function keepChipVisible(scrollLeft: number): void {
+  const row = app.querySelector<HTMLElement>('.chips');
+  const chip = row?.querySelector<HTMLElement>('[aria-selected="true"]');
+  if (!row || !chip) {
+    shownChip = null;
+    return;
+  }
+  row.scrollLeft = scrollLeft;
+  const value = chip.getAttribute('data-value');
+  if (value !== shownChip && typeof chip.scrollIntoView === 'function') chip.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  shownChip = value;
 }
 
 function setState(text: string): void {
@@ -354,6 +374,11 @@ app.addEventListener('click', (event) => {
     draw();
     return;
   }
+  const instanceButton = (event.target as HTMLElement).closest('[data-action="skua-instance"]');
+  if (instanceButton) {
+    chooseInstance(instanceButton.getAttribute('data-value'));
+    return;
+  }
   const filterButton = (event.target as HTMLElement).closest('[data-action="skua-filter"]');
   if (filterButton) {
     skuaFilter = parseLogFilter(filterButton.getAttribute('data-value'));
@@ -370,7 +395,23 @@ app.addEventListener('click', (event) => {
     draw();
   }
 });
+function chooseInstance(label: string | null): void {
+  if (label === null) return;
+  skuaInstance = label;
+  saveInstance(storage(), label);
+  draw();
+}
+
 app.addEventListener('keydown', (event) => {
+  const tab = (event.target as HTMLElement).closest<HTMLElement>('[role="tab"]');
+  if (tab && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
+    event.preventDefault();
+    const list = state?.skuaInstances ?? [];
+    const label = neighbourLabel(list, selectInstance(list, skuaInstance)?.label ?? '', event.key === 'ArrowRight' ? 1 : -1);
+    chooseInstance(label);
+    app.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+    return;
+  }
   if (event.key === 'Enter' && (event.target as HTMLElement).id === 'pair-link') {
     event.preventDefault();
     pairFromPaste();

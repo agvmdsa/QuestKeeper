@@ -1,8 +1,8 @@
 import { characterHref, characterRow, characterRows, expFraction, formatNumber, hardFarmsView, noticeLine } from './state';
 import { plural, t } from './i18n';
-import { effectiveFactions, factionRows, LOG_FILTERS, LOG_FILTER_LABELS, questRows, skuaEmptyText, skuaLogRows, skuaNow, skuaSummary, type LogFilter } from './skua';
+import { effectiveFactions, factionRows, instanceState, LOG_FILTERS, LOG_FILTER_LABELS, questRows, selectInstance, skuaEmptyText, skuaLogRows, skuaNow, skuaSummary, type LogFilter } from './skua';
 import { THEMES, type ThemeChoice } from './theme';
-import type { Faction, RemoteState, SkuaState } from './types';
+import type { Faction, RemoteState, SkuaInstance, SkuaState } from './types';
 
 export interface VNode {
   tag: string;
@@ -24,6 +24,8 @@ export interface Model {
   theme?: ThemeChoice;
   /** The selected Skua log filter; Everything when absent. */
   skuaFilter?: LogFilter;
+  /** The label (character name) of the Skua last chosen, or null; the first connected one when absent or gone. */
+  skuaInstance?: string | null;
 }
 
 type Child = VNode | null | false;
@@ -200,12 +202,47 @@ function logCard(skua: SkuaState, model: Model): VNode {
   );
 }
 
-export function skuaView(model: Model): VNode {
-  const skua = model.state?.skua ?? null;
-  if (!skua || skua.connection !== 'Connected') {
-    return h('div', {}, back(), h('section', { className: 'card' }, h('h2', { text: t('skua.title') }), empty(skuaEmptyText(skua))));
+const MANY_INSTANCES = 5;
+
+function instanceLabel(i: SkuaInstance, selected: boolean, role: 'chip' | 'list'): VNode {
+  const st = instanceState(i);
+  const common = { 'data-action': 'skua-instance', 'data-value': i.label, type: 'button' };
+  const inner = [
+    h('span', { className: 'chip-name', text: i.label }),
+    h('span', { className: 'chip-state' }, h('span', { className: 'dot', attrs: { 'data-kind': st.tone === 'run' ? 'live' : st.tone === 'warn' ? 'idle' : 'saved', 'aria-hidden': 'true' } }), h('span', { text: st.text })),
+  ];
+  const off = i.disconnected || i.connection === 'NotConnected';
+  if (role === 'list') {
+    return h('li', {}, h('button', { className: off ? ['inst-btn', 'off'].join(' ') : 'inst-btn', attrs: { ...common, 'aria-pressed': String(selected) } }, ...inner));
   }
-  return h('div', {}, back(), nowCard(skua, model.nowMs), questsCard(skua), reputationCard(skua), logCard(skua, model));
+  return h('button', { className: off ? ['chip', 'off'].join(' ') : 'chip', attrs: { ...common, role: 'tab', 'aria-selected': String(selected), tabindex: selected ? '0' : '-1' } }, ...inner);
+}
+
+/** Which Skua the tab shows: nothing for one, a chip row for two to five, a list of buttons above that. */
+function instanceSelector(instances: SkuaInstance[], selected: SkuaInstance): VNode | null {
+  if (instances.length < 2) return null;
+  if (instances.length > MANY_INSTANCES) {
+    return h('ul', { className: 'inst-list', attrs: { 'aria-label': t('skua.instances.label') } }, ...instances.map((i) => instanceLabel(i, i === selected, 'list')));
+  }
+  return h(
+    'div',
+    { className: 'chip-wrap' },
+    h('div', { className: 'chips', attrs: { role: 'tablist', 'aria-label': t('skua.instances.label') } }, ...instances.map((i) => instanceLabel(i, i === selected, 'chip'))),
+  );
+}
+
+export function skuaView(model: Model): VNode {
+  const instances = model.state?.skuaInstances ?? [];
+  const chosen = selectInstance(instances, model.skuaInstance ?? null);
+  // An older app sends no list: the single Skua is shown as before, with no selector.
+  const skua: SkuaState | null = chosen ?? model.state?.skua ?? null;
+  const selector = chosen ? instanceSelector(instances, chosen) : null;
+  // A disconnected instance keeps its last status, which must not be shown as live.
+  const live = skua && chosen?.disconnected ? { ...skua, connection: 'NotConnected' as const } : skua;
+  if (!live || live.connection !== 'Connected') {
+    return h('div', {}, back(), selector, h('section', { className: 'card' }, h('h2', { text: t('skua.title') }), empty(skuaEmptyText(live))));
+  }
+  return h('div', {}, back(), selector, nowCard(live, model.nowMs), questsCard(live), reputationCard(live), logCard(live, model));
 }
 
 /** One faction: from the capture (Faction) or from Skua (FactionRow), which carry the same fields. */

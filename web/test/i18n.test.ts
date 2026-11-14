@@ -173,6 +173,8 @@ const ALLOWED = new Set([
   'href:${t.href}', // focusKey(): an internal id used to restore keyboard focus, never shown
   '${height}px', // a CSS length for --chrome-h, not text
   'Enter', // KeyboardEvent.key value, not text
+  'ArrowRight', // KeyboardEvent.key value, not text
+  'ArrowLeft', // KeyboardEvent.key value, not text
 ]);
 
 /** Source files the guard skips; every other .ts file under src/ is scanned, so a new module cannot escape. */

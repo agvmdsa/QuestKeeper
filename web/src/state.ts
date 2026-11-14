@@ -1,7 +1,7 @@
 import { STATE_TIMEOUT_MS, type PairOutcome } from './api';
 import { formatNumberLocale, t, type MessageKey } from './i18n';
-import { parseSkua } from './skua';
-import type { Character, Figures, HardFarms, Notice, RemoteState } from './types';
+import { parseSkua, parseSkuaInstances } from './skua';
+import type { Character, Figures, HardFarms, Notice, NoticeKind, RemoteState } from './types';
 
 export interface Banner {
   tone: 'warn' | 'neutral';
@@ -152,7 +152,7 @@ export function focusKey(t: FocusTarget): string | null {
 function toState(value: unknown): RemoteState | null {
   if (!isObject(value) || !('snapshot' in value)) return null;
   const notices: unknown[] = Array.isArray(value.notices) ? value.notices : [];
-  const state = { snapshot: value.snapshot ?? null, notices: notices.filter(isNotice), skua: parseSkua(value.skua) } as RemoteState;
+  const state = { snapshot: value.snapshot ?? null, notices: notices.filter(isNotice), skua: parseSkua(value.skua), skuaInstances: parseSkuaInstances(value.skuaInstances) } as RemoteState;
   return isUsableState(state) ? state : null;
 }
 
@@ -271,7 +271,16 @@ export function hardFarmsView(hf: HardFarms | null, showAll: boolean): HardFarms
   return { owned: hf.owned, total: hf.total, fraction: hf.total > 0 ? hf.owned / hf.total : 0, shown, hidden: hf.missing.length - shown.length };
 }
 
+/** The Skua notices are worded by the page, with the label of the Skua they are about; the PC's own text is the fallback. */
+const SKUA_NOTICES: Partial<Record<NoticeKind, readonly [title: MessageKey, body: MessageKey]>> = {
+  SkuaDisconnected: ['notice.skuaDisconnected.title', 'notice.skuaDisconnected.body'],
+  SkuaReconnected: ['notice.skuaReconnected.title', 'notice.skuaReconnected.body'],
+  SkuaOptionsWaiting: ['notice.skuaOptionsWaiting.title', 'notice.skuaOptionsWaiting.body'],
+};
+
 export function noticeLine(n: Notice, nowMs: number): { title: string; body: string; when: string } {
+  const own = Object.hasOwn(SKUA_NOTICES, n.kind) && n.character ? SKUA_NOTICES[n.kind] : undefined;
+  if (own) return { title: t(own[0]), body: t(own[1], { label: n.character! }), when: relativeTime(n.atUtc, nowMs) };
   return { title: n.title, body: n.body, when: relativeTime(n.atUtc, nowMs) };
 }
 

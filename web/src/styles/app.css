@@ -131,8 +131,11 @@ dialog.sheet::backdrop { background: rgb(0 0 0 / 0.55); }
 .sheet-body button { width: 100%; margin-top: 0; }
 .sheet h3 { margin: 0.5rem 0 0.25rem; font-size: 0.9375rem; color: var(--muted); overflow-wrap: anywhere; }
 .script-list { display: grid; gap: 0.5rem; }
-.script-btn { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; text-align: left; font-weight: 400; color: var(--text); background: var(--surface); }
+.script-btn { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding-block: 0.5rem; text-align: left; font-weight: 400; color: var(--text); background: var(--surface); }
+.script-text { display: grid; gap: 0.125rem; min-width: 0; }
 .script-name { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.script-desc { font-size: 0.875rem; color: var(--muted); overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+.script-file { font-size: 0.75rem; color: var(--muted); overflow-wrap: anywhere; }
 .fields { display: grid; gap: 0.75rem; }
 .field-label { display: block; font-weight: 600; overflow-wrap: anywhere; }
 .field-value { overflow-wrap: anywhere; }

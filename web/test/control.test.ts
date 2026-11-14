@@ -505,6 +505,118 @@ describe('the first run of a never-seen script', () => {
   });
 });
 
+describe('script titles, descriptions and tags', () => {
+  const RUN_ALL = { id: ID_A, name: '0RunAll', folder: 'Hollowborn/HollowbornChaosEnvoy', title: 'Hollowborn Chaos Envy Run all', description: 'does all of hollowborn chaos envoy', tags: 'hollowborn chaos envoy, hollowborn, do all', askOptions: true };
+  const PLAIN = { id: ID_B, name: 'Plain', folder: 'Hollowborn/HollowbornChaosEnvoy', askOptions: true };
+  const SAME = { id: ID_C, name: 'Butler', folder: 'Other', title: 'butler', description: 'Waits.', askOptions: true };
+  const open = async (scripts: unknown[]) => {
+    const s = setup();
+    s.answers.push(ok({ scripts, truncated: false }));
+    s.control.openStart(inst());
+    await flush();
+    return s;
+  };
+
+  it('parses title, description and tags, cutting them like the PC and leaving null or non-strings out', () => {
+    const r = parseScripts({
+      scripts: [
+        { id: ID_A, name: 'A', folder: '', title: 'T', description: 'D', tags: 'G' },
+        { id: ID_B, name: 'B', folder: '', title: null, description: 5, tags: {} },
+        { id: ID_C, name: 'C', folder: '', title: 't'.repeat(500), description: '', tags: '  ' },
+      ],
+    })!;
+    expect(r.scripts).toHaveLength(3);
+    expect(r.scripts[0]).toMatchObject({ title: 'T', description: 'D', tags: 'G' });
+    expect(r.scripts[1]!.title).toBeUndefined();
+    expect(r.scripts[1]!.description).toBeUndefined();
+    expect(r.scripts[1]!.tags).toBeUndefined();
+    expect(r.scripts[2]!.title!.length).toBe(300);
+    expect(r.scripts[2]!.description).toBeUndefined();
+    expect(r.scripts[2]!.tags).toBeUndefined();
+  });
+
+  it('shows the title as the main text, the description under it and the file name as a small hint', async () => {
+    const s = await open([RUN_ALL]);
+    const row = byAction(sheetView(s.control), 'script-pick')[0]!;
+    const cls = (c: string) => all(row).filter((n) => n.className === c);
+    expect(cls('script-name').map((n) => n.text)).toEqual(['Hollowborn Chaos Envy Run all']);
+    expect(cls('script-desc').map((n) => n.text)).toEqual(['does all of hollowborn chaos envoy']);
+    expect(cls('script-file').map((n) => n.text)).toEqual(['0RunAll.cs']);
+  });
+
+  it('shows the file name as the main text and no description or hint for a script without a header', async () => {
+    const s = await open([PLAIN]);
+    const row = byAction(sheetView(s.control), 'script-pick')[0]!;
+    expect(all(row).filter((n) => n.className === 'script-name').map((n) => n.text)).toEqual(['Plain']);
+    expect(all(row).some((n) => n.className === 'script-desc' || n.className === 'script-file')).toBe(false);
+  });
+
+  it('leaves out the file hint when the title is the file name (any case) and keeps a description without a title', async () => {
+    const s = await open([SAME, { ...PLAIN, id: ID_A, description: 'Only text' }]);
+    const rows = byAction(sheetView(s.control), 'script-pick');
+    const butler = rows.find((r) => r.attrs!['data-value'] === ID_C)!;
+    expect(all(butler).some((n) => n.className === 'script-file')).toBe(false);
+    expect(all(butler).filter((n) => n.className === 'script-desc').map((n) => n.text)).toEqual(['Waits.']);
+    const plain = rows.find((r) => r.attrs!['data-value'] === ID_A)!;
+    expect(all(plain).filter((n) => n.className === 'script-name').map((n) => n.text)).toEqual(['Plain']);
+    expect(all(plain).filter((n) => n.className === 'script-desc').map((n) => n.text)).toEqual(['Only text']);
+  });
+
+  it('keeps hostile text as plain text nodes, never markup', async () => {
+    const evil = '<img src=x onerror=alert(1)>';
+    const s = await open([{ ...PLAIN, title: evil, description: evil }]);
+    const row = byAction(sheetView(s.control), 'script-pick')[0]!;
+    expect(texts(row)).toContain(evil);
+    expect(all(row).some((n) => n.tag === 'img')).toBe(false);
+  });
+
+  it('finds a script by title, description or tags as well as folder and name, every word required', () => {
+    const list = [RUN_ALL, PLAIN, SAME] as ScriptItem[];
+    const ids = (q: string) => scriptGroups(list, q).flatMap((g) => g.scripts.map((x) => x.id));
+    expect(ids('run all')).toEqual([ID_A]);
+    expect(ids('hollowborn envoy')).toEqual([ID_A, ID_B]);
+    expect(ids('envy')).toEqual([ID_A]);
+    expect(ids('does all')).toEqual([ID_A]);
+    expect(ids('do all')).toEqual([ID_A]);
+    expect(ids('waits')).toEqual([ID_C]);
+    expect(ids('envy waits')).toEqual([]);
+    expect(ids('hollowborn plain')).toEqual([ID_B]);
+  });
+
+  it('shows and filters 2000 described scripts quickly', async () => {
+    const many = Array.from({ length: 2000 }, (_, i) => ({
+      id: i.toString(16).padStart(16, '0'), name: `Script${i}`, folder: `F${i % 20}`, title: `Title number ${i}`, description: `Farms thing ${i} and then sells it all`, tags: `tag${i}, farm`, askOptions: true,
+    }));
+    const s = await open(many);
+    expect(byAction(sheetView(s.control), 'script-pick')).toHaveLength(2000);
+    const started = performance.now();
+    s.control.setQuery('thing 1999 sells');
+    expect(byAction(sheetView(s.control), 'script-pick').map((b) => b.attrs!['data-value'])).toEqual([(1999).toString(16).padStart(16, '0')]);
+    s.control.setQuery('farm');
+    expect(byAction(sheetView(s.control), 'script-pick')).toHaveLength(2000);
+    s.control.setQuery('');
+    expect(performance.now() - started).toBeLessThan(1500);
+  });
+
+  it('names the script by its title in the options step and the stop confirmation, falling back to the file name', async () => {
+    const s = await open([RUN_ALL, PLAIN]);
+    s.answers.push(ok(optionsBody()));
+    s.control.pick(ID_A);
+    await flush();
+    expect(texts(sheetView(s.control))).toContain('Hollowborn Chaos Envy Run all options');
+  });
+
+  it('names the running script by its title in the stop confirmation when the list is known', async () => {
+    const s = setup();
+    s.answers.push(ok({ scripts: [{ ...RUN_ALL, name: 'Farm' }], truncated: false }));
+    const i = running();
+    s.control.track(i);
+    await flush();
+    s.control.openStop(i);
+    expect(texts(sheetView(s.control))).toContain('Stop Hollowborn Chaos Envy Run all on Hero?');
+  });
+});
+
 describe('the stop confirmation', () => {
   it('names the character and the script, offers Stop script and Cancel', () => {
     const s = setup();

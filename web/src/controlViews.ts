@@ -112,7 +112,13 @@ function scriptsSheet(sheet: Extract<Sheet, { kind: 'scripts' }>, pending: boole
               h(
                 'button',
                 { className: 'script-btn', attrs: { type: 'button', 'data-action': 'script-pick', 'data-value': s.id, ...busy } },
-                h('span', { className: 'script-name', text: s.name }),
+                h(
+                  'span',
+                  { className: 'script-text' },
+                  h('span', { className: 'script-name', text: s.title || s.name }),
+                  s.description ? h('span', { className: 'script-desc', text: s.description }) : null,
+                  s.title && s.title.toLowerCase() !== s.name.toLowerCase() ? h('span', { className: 'script-file', text: t('control.fileHint', { file: s.name }) }) : null,
+                ),
                 h('span', { className: 'muted', text: sheet.pick === s.id && sheet.pickText ? t(sheet.pickText) : startItem }),
               ),
             ),
@@ -131,7 +137,7 @@ function optionsSheet(sheet: Extract<Sheet, { kind: 'options' }>, pending: boole
   const start = h('button', { text: t('control.startWithOptions'), attrs: { type: 'button', 'data-action': 'options-start', ...flag(pending) } });
   if (blocked) Object.assign(start.attrs!, { disabled: '', 'aria-describedby': 'options-reason' });
   return [
-    title(t('control.optionsTitle', { script: sheet.script.name }), true),
+    title(t('control.optionsTitle', { script: sheet.script.title || sheet.script.name }), true),
     h('p', { className: 'muted', text: t('control.optionsOn', { character: sheet.character }) }),
     sheet.firstRun ? h('p', { className: 'note', text: t('control.firstRun') }) : null,
     sheet.editable ? null : h('p', { className: 'note', text: t('control.unknownDefs') }),

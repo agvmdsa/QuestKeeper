@@ -26,6 +26,10 @@ export interface ScriptItem {
   id: string;
   name: string;
   folder: string;
+  /** From the script's header comment; absent when it has none. */
+  title?: string;
+  description?: string;
+  tags?: string;
   /** Show the options step before a start (the default); false once the owner chose "Don't ask again". */
   askOptions: boolean;
 }
@@ -103,7 +107,12 @@ export function parseScripts(v: unknown): { scripts: ScriptItem[]; truncated: bo
       cutHere = true;
       break;
     }
-    scripts.push({ id: s.id, name: cut(s.name), folder: text(s.folder), askOptions: s.askOptions !== false });
+    const item: ScriptItem = { id: s.id, name: cut(s.name), folder: text(s.folder), askOptions: s.askOptions !== false };
+    for (const key of ['title', 'description', 'tags'] as const) {
+      const value = typeof s[key] === 'string' ? cut(s[key]).trim() : '';
+      if (value !== '') item[key] = value;
+    }
+    scripts.push(item);
   }
   return { scripts, truncated: v.truncated === true || cutHere };
 }
@@ -167,7 +176,7 @@ export function controlBanner(nowMs: number, until: number): Banner | null {
 const squash = (s: string): string => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 
 /**
- * The scripts matching every word of the search text (AND) in their folder plus name, ignoring case, spaces and
+ * The scripts matching every word of the search text (AND) in their folder, name, title, description and tags, ignoring case, spaces and
  * punctuation ("chaos envoy" and "chaosenvoy" both find Hollowborn/HollowbornChaosEnvoy/0RunAll); grouped by folder in the
  * order they came. An empty search lists everything.
  */
@@ -176,7 +185,7 @@ export function scriptGroups(scripts: readonly ScriptItem[], query: string): { f
   const groups = new Map<string, ScriptItem[]>();
   for (const s of scripts) {
     if (words.length > 0) {
-      const hay = squash(`${s.folder} ${s.name}`);
+      const hay = squash(`${s.folder} ${s.name} ${s.title ?? ''} ${s.description ?? ''} ${s.tags ?? ''}`);
       if (!words.every((w) => hay.includes(w))) continue;
     }
     const list = groups.get(s.folder) ?? [];
@@ -350,7 +359,7 @@ export class Control {
 
   openStop(i: SkuaInstance): void {
     if (this.isPending(i.instanceId)) return;
-    this.sheet = { kind: 'stop', instanceId: i.instanceId, character: i.label, script: i.status?.script || t('skua.defaultScript'), error: null };
+    this.sheet = { kind: 'stop', instanceId: i.instanceId, character: i.label, script: this.runningItem(i)?.title || i.status?.script || t('skua.defaultScript'), error: null };
     this.changed();
   }
 

@@ -30,6 +30,19 @@ describe('app.css', () => {
   });
 });
 
+describe('script list rows', () => {
+  it('clamps the description to two lines and keeps the row at least 3rem tall', () => {
+    const desc = css.match(/\.script-desc\s*\{([^}]*)\}/)![1]!;
+    expect(desc).toMatch(/-webkit-line-clamp:\s*2/);
+    expect(desc).toMatch(/line-clamp:\s*2/);
+    expect(desc).toMatch(/overflow:\s*hidden/);
+    expect(desc).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(css).toMatch(/(^|\n)button\s*\{[^}]*min-height:\s*3rem/);
+    expect(css.match(/\.script-btn\s*\{([^}]*)\}/)![1]!).not.toMatch(/(^|[;\s])height:/);
+  });
+  it('wraps long text of the file hint', () => expect(css).toMatch(/\.script-file\s*\{[^}]*overflow-wrap:\s*anywhere/));
+});
+
 describe('skua tab styles', () => {
   it('wraps every server-provided line of the Skua tab', () => {
     for (const sel of ['\\.skua-line', '\\.skua-log p', '\\.now-name', '\\.name']) {

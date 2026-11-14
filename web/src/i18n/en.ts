@@ -147,6 +147,7 @@ export const en = {
   'control.noMatch': 'No script matches your search.',
   'control.truncated': 'The list was cut, so some scripts are not shown.',
   'control.rootFolder': 'Main scripts folder',
+  'control.fileHint': '{file}.cs',
   'control.startItem': 'Start',
   'control.loadingOptions': 'Loading options...',
   'control.starting': 'Starting...',

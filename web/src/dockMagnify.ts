@@ -20,31 +20,52 @@ export function approach(current: number, target: number, share = 0.25): number 
 }
 
 /**
+ * The centres of `count` buttons at rest: the bar is centred on the screen, so its centre stays put while buttons grow, and at rest
+ * the buttons sit one size and one gap apart around it. Distances are measured from these, never from the grown buttons, so a
+ * growing button does not move its neighbours' targets (which made the sizes jitter).
+ */
+export function restCentres(centre: number, count: number, size = DOCK_BASE, gap = 12): number[] {
+  return Array.from({ length: count }, (_, i) => centre + (i - (count - 1) / 2) * (size + gap));
+}
+
+/** One frame: each size a step closer to its target; with the motion off, every button back at rest at once. */
+export function magnifyFrame(sizes: readonly number[], centres: readonly number[], pointerX: number, on: boolean): { sizes: number[]; moving: boolean } {
+  if (!on) return { sizes: centres.map(() => DOCK_BASE), moving: false };
+  let moving = false;
+  const next = centres.map((c, i) => {
+    const target = magnify(pointerX - c);
+    const size = approach(sizes[i] ?? DOCK_BASE, target);
+    if (size !== target) moving = true;
+    return size;
+  });
+  return { sizes: next, moving };
+}
+
+/**
  * Follows the mouse over the dock and writes each button's size as --dock-size. Does nothing while the desktop layout is off or
- * motion is reduced. Returns a function to call after the dock was drawn anew, so the new buttons take their sizes at once.
+ * motion is reduced, and puts the buttons back at rest the moment either changes. Returns a function to call after the dock was
+ * drawn anew, so the new buttons take their sizes at once.
  */
 export function startMagnify(host: HTMLElement, desktop: MediaQueryList, reduced: MediaQueryList): () => void {
   let pointerX = Number.POSITIVE_INFINITY;
   let frame = 0;
   // By position, not by element: the dock is drawn anew when the page changes.
-  const sizes: number[] = [];
+  let sizes: number[] = [];
 
   const schedule = () => {
     if (!frame) frame = requestAnimationFrame(step);
   };
   function step(): void {
     frame = 0;
-    const on = desktop.matches && !reduced.matches;
-    let moving = false;
-    host.querySelectorAll<HTMLElement>('.dock-btn').forEach((button, i) => {
-      const box = button.getBoundingClientRect();
-      const target = on ? magnify(pointerX - (box.left + box.width / 2)) : DOCK_BASE;
-      const size = on ? approach(sizes[i] ?? DOCK_BASE, target) : DOCK_BASE;
-      sizes[i] = size;
-      if (size !== target) moving = true;
-      button.style.setProperty('--dock-size', String(size));
-    });
-    if (moving) schedule();
+    const bar = host.querySelector<HTMLElement>('.dock-items');
+    const buttons = host.querySelectorAll<HTMLElement>('.dock-btn');
+    if (!bar) return;
+    const box = bar.getBoundingClientRect();
+    const gap = parseFloat(getComputedStyle(bar).columnGap) || 12;
+    const f = magnifyFrame(sizes, restCentres(box.left + box.width / 2, buttons.length, DOCK_BASE, gap), pointerX, desktop.matches && !reduced.matches);
+    sizes = f.sizes;
+    buttons.forEach((button, i) => button.style.setProperty('--dock-size', String(sizes[i])));
+    if (f.moving) schedule();
   }
   host.addEventListener('pointermove', (event) => {
     pointerX = event.clientX;
@@ -54,5 +75,7 @@ export function startMagnify(host: HTMLElement, desktop: MediaQueryList, reduced
     pointerX = Number.POSITIVE_INFINITY;
     schedule();
   });
+  desktop.addEventListener?.('change', schedule);
+  reduced.addEventListener?.('change', schedule);
   return schedule;
 }

@@ -2,6 +2,8 @@ import { controlCardModel, startBlocked, type Control, type OptionDef, type Shee
 import { t } from './i18n';
 import type { SkuaInstance } from './types';
 import { bar, h, type VNode } from './views';
+import { addRules, pageSheet } from './cssom';
+import controlCss from './styles/control.css?inline';
 
 // The Control card and the sheets, loaded with the Skua tab: the characters view does not need them.
 
@@ -163,5 +165,8 @@ export function sheetView(control: Control, live?: SkuaInstance | null): VNode |
   const children = sheet.kind === 'stop' ? stopSheet(sheet, pending) : sheet.kind === 'scripts' ? scriptsSheet(sheet, pending) : optionsSheet(sheet, pending, startBlocked(live));
   return h('div', { className: 'sheet-body' }, ...children);
 }
+
+/** Adds the Control card's and the sheets' rules to the page; called once, when this chunk has loaded. */
+export const addControlRules = (): void => addRules(pageSheet(), controlCss);
 
 export { Control, controlBanner } from './control';

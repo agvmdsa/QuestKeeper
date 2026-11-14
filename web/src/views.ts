@@ -1,5 +1,5 @@
-import { characterHref, characterRow, characterRows, expFraction, formatNumber, hardFarmsView, noticeLine } from './state';
-import { plural, t } from './i18n';
+import { characterHref, characterRow, characterRows, expFraction, formatNumber, hardFarmsView, noticeLine, type Route } from './state';
+import { plural, t, type MessageKey } from './i18n';
 import { effectiveFactions, factionRows, instanceState, LOG_FILTERS, LOG_FILTER_LABELS, questRows, reputationHome, reputationSummary, selectInstance, skuaEmptyText, skuaLogRows, skuaNow, skuaSummary, type LogFilter } from './skua';
 import { THEMES, type ThemeChoice } from './theme';
 import type { Faction, RemoteState, SkuaInstance, SkuaState } from './types';
@@ -418,6 +418,17 @@ export function themeFooter(model: Pick<Model, 'theme'>, tag = 'footer'): VNode 
       ),
     ),
   );
+}
+
+/**
+ * Plain links to the two pages, shown where the dock goes until its chunk has loaded (or when it cannot load): the page is never
+ * left without a way to Skua and back. Null where the dock would be hidden too.
+ */
+export function fallbackNav(route: Route, unpaired: boolean): VNode | null {
+  if (unpaired || route.view === 'pair') return null;
+  const link = (href: string, key: MessageKey, current: boolean) => h('a', { className: 'back', text: t(key), attrs: current ? { href, 'aria-current': 'page' } : { href } });
+  const skua = route.view === 'skua';
+  return h('nav', { className: 'fallback-nav', attrs: { 'aria-label': t('dock.label') } }, link('#/', 'list.title', !skua), link('#/skua', 'skua.title', skua));
 }
 
 /** Puts the Appearance footer under a view, inside the same column and grid. */

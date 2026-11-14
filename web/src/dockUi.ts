@@ -1,9 +1,12 @@
-import { currentDockItem, DESKTOP_QUERY, DOCK_ITEMS, dockMotion, dockVisible, MENU_ICON, menuStep, REDUCED_MOTION_QUERY, type DockId, type MenuEvent } from './dock';
+import { currentDockItem, DESKTOP_QUERY, DOCK_ITEMS, dockMotion, dockPlan, dockStep, dockVisible, focusLeaves, MENU_ICON, REDUCED_MOTION_QUERY, type DockEvent, type DockFocus, type DockId, type DockState } from './dock';
 import { t } from './i18n';
 import { parseRoute } from './state';
 import type { ThemeChoice } from './theme';
 import { h, mount, themeFooter, type VNode } from './views';
 import dockCss from './styles/dock.css?inline';
+import { addRules, pageSheet } from './cssom';
+
+export { addRules };
 
 // The floating dock's view and behaviour: a chunk of its own, imported by main.ts right after the first draw, so the page's first
 // load stays within its budget. The pure rules live in dock.ts; the desktop magnification in dockMagnify.ts (loaded only there).
@@ -22,11 +25,15 @@ export function dockView(current: DockId | null, open: boolean, settings: ThemeC
       'ul',
       { className: 'dock-items', attrs: { id: 'dock-items' } },
       ...DOCK_ITEMS.map((item) => {
-        const inner = [icon(item.icon), h('span', { className: 'dock-label', text: t(item.label) })];
+        // The name is given outright: on a desktop the label shows only on hover, and a hidden label names nothing.
+        const label = t(item.label);
+        const inner = [icon(item.icon), h('span', { className: 'dock-label', text: label })];
         if (item.href === null) {
-          return h('li', {}, h('button', { className: 'dock-btn', attrs: { type: 'button', 'data-action': 'settings', 'aria-expanded': String(Boolean(settings)) } }, ...inner));
+          return h('li', {}, h('button', { className: 'dock-btn', attrs: { type: 'button', 'data-action': 'settings', 'aria-expanded': String(Boolean(settings)), 'aria-label': label } }, ...inner));
         }
-        return h('li', {}, h('a', { className: 'dock-btn', attrs: item.id === current ? { href: item.href, 'aria-current': 'page' } : { href: item.href } }, ...inner));
+        const attrs: Record<string, string> = { href: item.href, 'aria-label': label };
+        if (item.id === current) attrs['aria-current'] = 'page';
+        return h('li', {}, h('a', { className: 'dock-btn', attrs }, ...inner));
       }),
     ),
     h(
@@ -40,17 +47,10 @@ export function dockView(current: DockId | null, open: boolean, settings: ThemeC
   );
 }
 
-/**
- * Adds the dock's rules (minified by the build) to the end of the page's own stylesheet, wrapped in one always-true media block so a
- * single insertRule takes them all; inside it a rule a browser does not understand is dropped on its own. CSSOM, not a style
- * element: the strict CSP allows no inline style.
- */
-export function addRules(sheet: Pick<CSSStyleSheet, 'insertRule' | 'cssRules'> | undefined, css: string): void {
-  try {
-    sheet?.insertRule('@media (min-width:0){' + css + '}', sheet.cssRules.length);
-  } catch {
-    // No stylesheet to add to: the dock shows unstyled but works.
-  }
+/** Flips the menu's open state on the dock already shown, the same attributes dockView draws, so the items animate from where they are. */
+export function setOpen(root: { querySelector(selector: string): { setAttribute(name: string, value: string): void } | null }, open: boolean): void {
+  root.querySelector('.dock')?.setAttribute('data-open', String(open));
+  root.querySelector('.dock-toggle')?.setAttribute('aria-expanded', String(open));
 }
 
 export interface DockContext {
@@ -63,14 +63,14 @@ export interface DockContext {
   restoreFocus: (key: string | null, root: HTMLElement) => boolean;
 }
 
+const FOCUS: Record<Exclude<DockFocus, null>, string> = { first: '.dock-btn', theme: '[aria-pressed="true"]', toggle: '.dock-toggle', settings: '[data-action="settings"]' };
+
 /** Starts the dock in its host. draw() redraws when the page, the menu, the Settings panel or the theme changed; close() shuts the menu and the panel. */
 export function startDock(ctx: DockContext): { draw: () => void; close: () => void } {
   const { host } = ctx;
-  const sheets = document.styleSheets;
-  addRules(sheets[sheets.length - 1], dockCss);
-  let menuOpen = false;
-  let settingsOpen = false;
-  let last = '';
+  addRules(pageSheet(), dockCss);
+  let state: DockState = { menu: false, settings: false };
+  let shown: { sig: string; open: boolean } | null = null;
   const desktop = matchMedia(DESKTOP_QUERY);
   const reduced = matchMedia(REDUCED_MOTION_QUERY);
   let refreshMagnify: (() => void) | null = null;
@@ -78,57 +78,53 @@ export function startDock(ctx: DockContext): { draw: () => void; close: () => vo
   function draw(): void {
     const route = parseRoute(location.hash);
     const visible = dockVisible(ctx.unpaired(), route);
-    if (!visible) menuOpen = settingsOpen = false;
+    if (!visible) state = { menu: false, settings: false };
     host.hidden = !visible;
-    const view = dockView(currentDockItem(route), menuOpen, settingsOpen ? ctx.theme() : null);
-    const signature = JSON.stringify(view);
-    if (signature === last) return;
-    last = signature;
+    const current = currentDockItem(route);
+    const theme = state.settings ? ctx.theme() : null;
+    // The signature of the view drawn closed: a change of the menu alone only flips its state on the nodes shown.
+    const next = { sig: JSON.stringify(dockView(current, false, theme)), open: state.menu };
+    const plan = dockPlan(shown, next);
+    shown = next;
+    if (plan === 'open') setOpen(host, state.menu);
+    if (plan !== 'mount') return;
     const key = ctx.focusedKey(host);
-    host.replaceChildren(mount(view));
+    host.replaceChildren(mount(dockView(current, state.menu, theme)));
     ctx.restoreFocus(key, host);
     refreshMagnify?.();
   }
 
-  /**
-   * One step of the phone menu or of the Settings panel (the same rules: its button opens and closes it; a choice, Escape and a
-   * tap outside close it), then focus goes where the step says. Back from the panel it goes to Settings, or to the menu button on a phone.
-   */
-  function step(event: MenuEvent, panel = false): void {
-    const next = menuStep(panel ? settingsOpen : menuOpen, event);
-    if (panel) settingsOpen = next.open;
-    else menuOpen = next.open;
+  /** One step of the dock (dock.ts), then focus goes where the step says. */
+  function apply(event: DockEvent): void {
+    const next = dockStep(state, event, desktop.matches);
+    state = next.state;
     draw();
-    // The phone menu exists only where its button shows; on the desktop only the panel moves focus.
-    if (!next.focus || (!panel && desktop.matches)) return;
-    const target = next.focus === 'first' ? (panel ? '[aria-pressed="true"]' : '.dock-btn') : desktop.matches ? '[data-action="settings"]' : '.dock-toggle';
-    host.querySelector<HTMLElement>(target)?.focus();
+    if (next.focus) host.querySelector<HTMLElement>(FOCUS[next.focus])?.focus();
   }
 
   host.addEventListener('click', (event) => {
     const target = event.target as HTMLElement;
     if (ctx.chooseTheme(event)) return;
-    if (target.closest('[data-action="dock-toggle"]')) {
-      step('toggle');
-    } else if (target.closest('[data-action="settings"]')) {
-      // From the phone menu: the menu closes and the panel opens in its place.
-      if (menuOpen) menuOpen = settingsOpen = false;
-      step('toggle', true);
-    } else if (target.closest('a.dock-btn')) {
-      // A page link: the hash change draws the page; the menu closes and gives focus back to its button.
-      settingsOpen = false;
-      step('select');
-    }
+    if (target.closest('[data-action="dock-toggle"]')) apply('menu');
+    else if (target.closest('[data-action="settings"]')) apply('settings');
+    // A page link: the hash change draws the page; the menu closes and gives focus back to its button.
+    else if (target.closest('a.dock-btn')) apply('select');
+  });
+  // Tabbing out of the menu or the Settings panel closes it. Handled after focus has moved, so a redraw keeps it where it went.
+  host.addEventListener('focusout', (event) => {
+    const from = event.target as Node;
+    const to = event.relatedTarget as Node | null;
+    setTimeout(() => {
+      const panel = host.querySelector('#dock-settings');
+      if (state.settings && panel?.contains(from) && focusLeaves([panel, host.querySelector('[data-action="settings"]')], to)) apply('panel-left');
+      if (state.menu && focusLeaves([host], to)) apply('menu-left');
+    });
   });
   document.addEventListener('pointerdown', (event) => {
-    if (host.contains(event.target as Node)) return;
-    if (menuOpen) step('outside');
-    if (settingsOpen) step('outside', true);
+    if (!host.contains(event.target as Node) && (state.menu || state.settings)) apply('outside');
   });
   document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return;
-    if (settingsOpen) step('escape', true);
-    else if (menuOpen) step('escape');
+    if (event.key === 'Escape' && (state.menu || state.settings)) apply('escape');
   });
 
   // The magnification: loaded only for a wide screen with a hovering pointer and full motion.
@@ -143,14 +139,18 @@ export function startDock(ctx: DockContext): { draw: () => void; close: () => vo
         refreshMagnify = null; // offline with nothing cached: the dock works without growing; the next change tries again
       });
   }
-  desktop.addEventListener?.('change', loadMagnify);
+  // Switching between the phone and the desktop layout closes what was open: the menu of one is not the menu of the other.
+  desktop.addEventListener?.('change', () => {
+    apply('mode');
+    loadMagnify();
+  });
   reduced.addEventListener?.('change', loadMagnify);
   loadMagnify();
 
   return {
     draw,
     close: () => {
-      menuOpen = settingsOpen = false;
+      state = { menu: false, settings: false };
       draw();
     },
   };

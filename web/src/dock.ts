@@ -58,3 +58,54 @@ export function menuStep(open: boolean, event: MenuEvent): MenuStep {
 
 /** The desktop buttons grow with the pointer only for people who have not asked for less motion. */
 export const dockMotion = (reducedMotion: boolean): 'magnify' | 'still' => (reducedMotion ? 'still' : 'magnify');
+
+/** What is open: the phone menu and the Settings panel; at most one at a time. */
+export interface DockState {
+  menu: boolean;
+  settings: boolean;
+}
+
+/**
+ * menu / settings: their button was pressed; select: a page link was chosen; outside: a tap outside the dock; menu-left /
+ * panel-left: keyboard focus left the menu or the panel; mode: the layout switched between phone and desktop.
+ */
+export type DockEvent = 'menu' | 'settings' | 'select' | 'escape' | 'outside' | 'menu-left' | 'panel-left' | 'mode';
+
+/** Where focus goes after a step: the first menu item, the pressed theme, the menu button, the Settings button, or nowhere. */
+export type DockFocus = 'first' | 'theme' | 'toggle' | 'settings' | null;
+
+const CLOSED: DockState = { menu: false, settings: false };
+
+/**
+ * One step of the dock. The menu follows menuStep; Settings opens in place of the menu and closes back onto its opener (the
+ * Settings button on a desktop, the menu button on a phone). The menu has no button on a desktop, so there it never moves focus.
+ */
+export function dockStep(state: DockState, event: DockEvent, desktop: boolean): { state: DockState; focus: DockFocus } {
+  const back: DockFocus = desktop ? 'settings' : 'toggle';
+  if (event === 'menu') {
+    const next = menuStep(state.menu, 'toggle');
+    return { state: { menu: next.open, settings: false }, focus: desktop ? null : next.focus };
+  }
+  if (event === 'settings') return state.settings ? { state: CLOSED, focus: back } : { state: { menu: false, settings: true }, focus: 'theme' };
+  if (event === 'escape') {
+    if (state.settings) return { state: CLOSED, focus: back };
+    return { state: CLOSED, focus: state.menu && !desktop ? 'toggle' : null };
+  }
+  if (event === 'select') return { state: CLOSED, focus: state.menu && !desktop ? 'toggle' : null };
+  if (event === 'menu-left') return { state: { ...state, menu: false }, focus: null };
+  if (event === 'panel-left') return { state: { ...state, settings: false }, focus: null };
+  return { state: CLOSED, focus: null };
+}
+
+/** Focus left when it went to an element outside every area; focus going nowhere (the window losing it) does not count. */
+export const focusLeaves = (areas: ReadonlyArray<{ contains(node: Node): boolean } | null>, next: Node | null): boolean =>
+  next !== null && !areas.some((area) => area?.contains(next));
+
+/**
+ * How to bring the dock up to date: mount it anew when anything but the menu changed (`sig` is the view drawn closed), flip only
+ * the open state on the nodes already shown when just the menu changed (so its CSS transition runs), or do nothing.
+ */
+export function dockPlan(shown: { sig: string; open: boolean } | null, next: { sig: string; open: boolean }): 'mount' | 'open' | 'none' {
+  if (!shown || shown.sig !== next.sig) return 'mount';
+  return shown.open === next.open ? 'none' : 'open';
+}

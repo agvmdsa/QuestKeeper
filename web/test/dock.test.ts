@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { currentDockItem, DESKTOP_QUERY, DOCK_ITEMS, dockMotion, dockVisible, menuStep, type DockId } from '../src/dock';
-import { approach, DOCK_BASE, DOCK_MAX, DOCK_RANGE, magnify } from '../src/dockMagnify';
+import { currentDockItem, DESKTOP_QUERY, DOCK_ITEMS, dockMotion, dockPlan, dockStep, dockVisible, focusLeaves, menuStep, type DockEvent, type DockId, type DockState } from '../src/dock';
+import { approach, DOCK_BASE, DOCK_MAX, DOCK_RANGE, magnify, magnifyFrame, restCentres } from '../src/dockMagnify';
 import { en } from '../src/i18n/en';
 import { parseRoute } from '../src/state';
-import { addRules, dockView } from '../src/dockUi';
+import { addRules, dockView, setOpen } from '../src/dockUi';
 import type { VNode } from '../src/views';
 
 const all = (n: VNode): VNode[] => [n, ...n.children.flatMap(all)];
@@ -266,5 +266,134 @@ describe('adding the dock rules', () => {
   it('never throws, without a stylesheet or when the browser refuses', () => {
     expect(() => addRules(undefined, '.a{x:1}')).not.toThrow();
     expect(() => addRules(sheet(true), '.a{x:1}')).not.toThrow();
+  });
+});
+
+describe('dock state', () => {
+  const closed: DockState = { menu: false, settings: false };
+  const menu: DockState = { menu: true, settings: false };
+  const panel: DockState = { menu: false, settings: true };
+  const step = (s: DockState, e: DockEvent, desktop = false) => dockStep(s, e, desktop);
+  it('opens the phone menu with focus on the first item and closes it back onto its button', () => {
+    expect(step(closed, 'menu')).toEqual({ state: menu, focus: 'first' });
+    expect(step(menu, 'menu')).toEqual({ state: closed, focus: 'toggle' });
+  });
+  it('opening the menu shuts the Settings panel (both float in the same place on a phone)', () => expect(step(panel, 'menu').state).toEqual(menu));
+  it('opens Settings in place of the menu, focus on the pressed theme', () => {
+    expect(step(menu, 'settings')).toEqual({ state: panel, focus: 'theme' });
+    expect(step(closed, 'settings', true)).toEqual({ state: panel, focus: 'theme' });
+  });
+  it('closes Settings back onto the Settings button on a desktop and onto the menu button on a phone', () => {
+    expect(step(panel, 'settings', true)).toEqual({ state: closed, focus: 'settings' });
+    expect(step(panel, 'settings')).toEqual({ state: closed, focus: 'toggle' });
+  });
+  it('closes Settings with Escape, back onto its opener', () => {
+    expect(step(panel, 'escape', true)).toEqual({ state: closed, focus: 'settings' });
+    expect(step(panel, 'escape')).toEqual({ state: closed, focus: 'toggle' });
+  });
+  it('closes the menu with Escape and a choice, back onto its button', () => {
+    expect(step(menu, 'escape')).toEqual({ state: closed, focus: 'toggle' });
+    expect(step(menu, 'select')).toEqual({ state: closed, focus: 'toggle' });
+  });
+  it('leaves focus alone when nothing was open, and on a desktop for the menu (it has no button there)', () => {
+    expect(step(closed, 'escape')).toEqual({ state: closed, focus: null });
+    expect(step(closed, 'select')).toEqual({ state: closed, focus: null });
+    expect(step(closed, 'menu', true).focus).toBeNull();
+  });
+  it.each(['outside', 'mode'] as const)('closes everything without moving focus on %s', (e) => {
+    expect(step(menu, e)).toEqual({ state: closed, focus: null });
+    expect(step(panel, e)).toEqual({ state: closed, focus: null });
+  });
+  it('closes only the part that focus left', () => {
+    expect(step(menu, 'menu-left')).toEqual({ state: closed, focus: null });
+    expect(step(panel, 'panel-left')).toEqual({ state: closed, focus: null });
+    expect(step(panel, 'menu-left').state).toEqual(panel);
+    expect(step(menu, 'panel-left').state).toEqual(menu);
+  });
+});
+
+describe('focus leaving', () => {
+  const box = (...inside: object[]) => ({ contains: (n: object) => inside.includes(n) });
+  const a = {};
+  const b = {};
+  const out = {};
+  it('counts as leaving only when focus goes to an element outside every area', () => {
+    expect(focusLeaves([box(a), box(b)], out as Node)).toBe(true);
+    expect(focusLeaves([box(a), box(b)], b as Node)).toBe(false);
+    expect(focusLeaves([null, box(a)], a as Node)).toBe(false);
+  });
+  it('ignores focus going nowhere (the window losing focus, a tap on the page)', () => expect(focusLeaves([box(a)], null)).toBe(false));
+});
+
+describe('redrawing the dock', () => {
+  it('mounts the first time and when anything but the menu changed', () => {
+    expect(dockPlan(null, { sig: 'a', open: false })).toBe('mount');
+    expect(dockPlan({ sig: 'a', open: false }, { sig: 'b', open: false })).toBe('mount');
+    expect(dockPlan({ sig: 'a', open: true }, { sig: 'b', open: false })).toBe('mount');
+  });
+  it('only flips the open state on the nodes already shown when just the menu changed, so its animation runs', () => {
+    expect(dockPlan({ sig: 'a', open: false }, { sig: 'a', open: true })).toBe('open');
+    expect(dockPlan({ sig: 'a', open: true }, { sig: 'a', open: false })).toBe('open');
+    expect(dockPlan({ sig: 'a', open: true }, { sig: 'a', open: true })).toBe('none');
+  });
+  it('flips exactly the attributes the view would draw for the open state', () => {
+    const attrs: Record<string, Record<string, string>> = { '.dock': {}, '.dock-toggle': {} };
+    const host = { querySelector: (sel: string) => (attrs[sel] ? { setAttribute: (k: string, v: string) => { attrs[sel]![k] = v; } } : null) };
+    for (const open of [true, false]) {
+      setOpen(host, open);
+      const v = dockView('characters', open);
+      const toggle = all(v).find((n) => n.className === 'dock-toggle')!;
+      expect(attrs['.dock']!['data-open']).toBe(v.attrs!['data-open']);
+      expect(attrs['.dock-toggle']!['aria-expanded']).toBe(toggle.attrs!['aria-expanded']);
+    }
+  });
+});
+
+describe('accessible names of the dock items', () => {
+  it('names every page link and the Settings button from the catalog, whether or not the label is shown', () => {
+    const v = dockView('characters', false);
+    const items = all(v).filter((n) => n.className === 'dock-btn');
+    expect(items.map((n) => n.attrs!['aria-label'])).toEqual(DOCK_ITEMS.map((i) => en[i.label]));
+    for (const n of items) expect(n.attrs!['aria-label']!.trim()).not.toBe('');
+  });
+});
+
+describe('magnification frames', () => {
+  it('places the buttons at rest around the bar centre, one size and gap apart', () => {
+    expect(restCentres(500, 3, 40, 12)).toEqual([448, 500, 552]);
+    expect(restCentres(100, 1, 40, 12)).toEqual([100]);
+  });
+  it('sizes from the rest positions, so a growing button never moves the target of its neighbours', () => {
+    const centres = restCentres(500, 3, 40, 12);
+    let sizes = [40, 40, 40];
+    const seen: number[][] = [];
+    for (let i = 0; i < 80; i += 1) {
+      const f = magnifyFrame(sizes, centres, 500, true);
+      sizes = f.sizes;
+      seen.push(sizes);
+      if (!f.moving) break;
+    }
+    expect(sizes).toEqual([magnify(52), 80, magnify(52)]);
+    // Never back and forth: each button only grows on the way there.
+    for (let i = 1; i < seen.length; i += 1) for (let b = 0; b < 3; b += 1) expect(seen[i]![b]!).toBeGreaterThanOrEqual(seen[i - 1]![b]!);
+  });
+  it('goes straight back to rest and stops when the motion is off (reduced motion turned on)', () => {
+    expect(magnifyFrame([80, 70, 50], [448, 500, 552], 500, false)).toEqual({ sizes: [40, 40, 40], moving: false });
+  });
+});
+
+describe('room for the dock', () => {
+  const css = readFileSync(new URL('../src/styles/dock.css', import.meta.url), 'utf8');
+  const desktop = css.match(/@media \(hover: hover\) and \(pointer: fine\) and \(min-width: 48rem\)\s*\{([\s\S]*?)\n\}/)![1]!;
+  const rem = (block: string, sel: string, prop: string) => Number(block.match(new RegExp(`(?:^|\\n)\\s*${sel}\\s*\\{[^}]*${prop}:\\s*calc\\(([\\d.]+)rem`))![1]) * 16;
+  it('reserves at least the height of the fully magnified bar on a desktop, so the last card is never covered', () => {
+    // The bar: its bottom offset, its padding, its 1 px edges and the biggest button.
+    const bar = rem(desktop, '\\.dock-items', 'bottom') + 2 * 0.5 * 16 + 2 + DOCK_MAX;
+    expect(rem(desktop, '\\.dock-host', 'height')).toBeGreaterThanOrEqual(bar);
+  });
+  it('reserves the phone button and its margin on a phone', () => expect(rem(css, '\\.dock-host', 'height')).toBeGreaterThanOrEqual(44 + 16));
+  it('places the labels with explicit offsets, not by their static position', () => {
+    expect(css).toMatch(/(?:^|\n)\.dock-label\s*\{[^}]*top:/);
+    expect(desktop).toMatch(/\.dock-label\s*\{[^}]*left:\s*50%/);
   });
 });

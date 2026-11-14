@@ -117,6 +117,18 @@ export function reconnectDelay(attempt: number): number {
   return RECONNECT_MS[Math.min(attempt, RECONNECT_MS.length - 1)]!;
 }
 
+/** Loads a chunk, trying again after 0.5 s and 1 s; rejects with the last error after the third failure. */
+export async function retryImport<T>(load: () => Promise<T>, tries = 3): Promise<T> {
+  for (let i = 1; ; i += 1) {
+    try {
+      return await load();
+    } catch (error) {
+      if (i >= tries) throw error;
+      await new Promise((done) => setTimeout(done, 250 * 2 ** i));
+    }
+  }
+}
+
 /**
  * What to do when the event stream reports an error. While the browser still retries by itself (a dropped connection) the page waits.
  * Once it gave up (any answer other than 200, such as 401 or the 503 the PC gives a ninth stream) the page asks /api/state.

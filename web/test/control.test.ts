@@ -906,7 +906,8 @@ describe('hostile text', () => {
 });
 
 describe('control styles', () => {
-  const css = readFileSync(new URL('../src/styles/app.css', import.meta.url), 'utf8');
+  // The control rules live in control.css (loaded with the control chunk); the generic button rules stay in app.css.
+  const css = ['app.css', 'control.css'].map((f) => readFileSync(new URL(`../src/styles/${f}`, import.meta.url), 'utf8')).join('\n');
   const rule = (sel: string) => css.match(new RegExp(`(?:^|\\n)${sel}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
   it('gives the loud waiting card an accent border thicker than a card edge', () => expect(rule('\\.control-waiting')).toMatch(/border:\s*3px solid var\(--accent\)/));
   it('draws the danger button with its own text colour', () => {
@@ -933,7 +934,8 @@ describe('control styles', () => {
 
 describe('contrast of the control styles', () => {
   const tokens = readFileSync(new URL('../src/styles/tokens.css', import.meta.url), 'utf8');
-  const css = readFileSync(new URL('../src/styles/app.css', import.meta.url), 'utf8');
+  // The control rules live in control.css (loaded with the control chunk); the generic button rules stay in app.css.
+  const css = ['app.css', 'control.css'].map((f) => readFileSync(new URL(`../src/styles/${f}`, import.meta.url), 'utf8')).join('\n');
   const block = (t: string) => Object.fromEntries([...t.matchAll(/--([a-z-]+):\s*(#[0-9A-Fa-f]{6})\s*;/g)].map((m) => [m[1]!, m[2]!]));
   const body = (re: RegExp) => tokens.match(re)![1]!;
   const light = block(body(/^:root\s*\{([^}]*)\}/m));

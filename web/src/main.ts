@@ -7,12 +7,12 @@ import type { Control } from './control';
 import {
   afterStreamCheck, deviceName, focusKey, iosInstallHint, keepState, KEPT_KEY, linkAfterFreshData, linkBanner, pairFailureText, pairingStep, parseNotice, parsePairingInput, parseRoute,
   parseState,
-  recallKept, reconnectDelay, streamErrorStep, takePairingToken, UNREACHABLE_AFTER_MS, type PairProbe,
+  recallKept, reconnectDelay, retryImport, streamErrorStep, takePairingToken, UNREACHABLE_AFTER_MS, type PairProbe,
 } from './state';
 import { followSelection, loadInstance, neighbourId, parseLogFilter, saveInstance, type LogFilter } from './skua';
 import { detectLocale, setLocale, t } from './i18n';
 import type { Notice, RemoteState, SkuaInstance } from './types';
-import { characterView, drawFailedView, listView, mount, pairNeededView, skuaView, withFooter, type Model, type VNode } from './views';
+import { characterView, drawFailedView, fallbackNav, listView, mount, pairNeededView, skuaView, withFooter, type Model, type VNode } from './views';
 
 // First thing: CSP forbids an inline script, so the page may flash the system theme until this runs.
 function storage(): Storage | null {
@@ -31,6 +31,10 @@ setLocale(detectLocale(navigator.languages?.length ? navigator.languages : [navi
 
 const app = document.getElementById('app')!;
 const banner = document.getElementById('banner')!;
+// The floating dock's place: after the page content, sticky at the bottom (dock.css). Until the dock's chunk is in, it holds plain links.
+const dockHost = document.createElement('div');
+dockHost.className = 'dock-host';
+app.after(dockHost);
 // What an earlier page on this address may have left: removed, never read.
 const OLD_KEYS = ['qkr-last-state', 'qkr-last-state-v1'];
 const standalone = (navigator as Navigator & { standalone?: boolean }).standalone === true || matchMedia('(display-mode: standalone)').matches;
@@ -66,6 +70,7 @@ function loadControl(): void {
   loadingControl = true;
   import('./controlViews')
     .then((loaded) => {
+      loaded.addControlRules();
       ui = loaded;
       control = new loaded.Control(skuaApi, () => {
         draw();
@@ -81,6 +86,41 @@ function loadControl(): void {
 }
 // The floating dock, once its chunk has loaded.
 let dock: { draw: () => void; close: () => void } | null = null;
+let dockLoading = false;
+let lastFallback = '';
+
+/**
+ * The dock's view and behaviour are a chunk of their own, loaded right after the first draw (the first load has no room for them).
+ * Three tries, then again on the next page change or when the device is back online; until then the fallback links stand in.
+ */
+function loadDock(): void {
+  if (dock || dockLoading) return;
+  dockLoading = true;
+  retryImport(() => import('./dockUi'))
+    .then((loaded) => {
+      dock = loaded.startDock({ host: dockHost, unpaired: () => unpaired, theme: () => theme, chooseTheme, focusedKey, restoreFocus });
+      dock.draw();
+    })
+    .catch(() => {
+      dockLoading = false;
+    });
+}
+
+/** The dock, or the plain links standing in for it. */
+function drawDock(): void {
+  if (dock) {
+    dock.draw();
+    return;
+  }
+  const view = fallbackNav(parseRoute(location.hash), unpaired);
+  dockHost.hidden = !view;
+  const signature = view ? JSON.stringify(view) : '';
+  if (signature === lastFallback) return;
+  lastFallback = signature;
+  const key = focusedKey(dockHost);
+  dockHost.replaceChildren(...(view ? [mount(view)] : []));
+  restoreFocus(key, dockHost);
+}
 let source: EventSource | null = null;
 let attempts = 0;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -185,9 +225,14 @@ function restoreFocus(key: string | null, root: HTMLElement = app): boolean {
 function draw(): boolean {
   let ok = true;
   let next: VNode;
+  // A dock that fails to draw is logged and left as it was: it never blanks the page.
+  try {
+    drawDock();
+  } catch (error) {
+    console.error(error);
+  }
   try {
     drawBanner();
-    dock?.draw();
     next = tree();
   } catch {
     ok = false;
@@ -523,8 +568,10 @@ window.addEventListener('hashchange', () => {
   hfOpen = false;
   if (control?.sheet) control.close();
   dock?.close();
+  loadDock();
   draw();
 });
+window.addEventListener('online', loadDock);
 
 // The sheets (stop confirmation, script list, options) live in one native dialog: modal, so focus stays inside and Escape closes it.
 const sheet = document.createElement('dialog');
@@ -616,21 +663,10 @@ function onSheetField(event: Event): void {
 sheet.addEventListener('input', onSheetField);
 sheet.addEventListener('change', onSheetField);
 
-// The floating dock: after the page content, sticky at the bottom. Its view and behaviour are a chunk of their own, loaded right
-// after the first draw (the first load has no room for them); offline with nothing cached, the page works without the dock.
-const dockHost = document.createElement('div');
-dockHost.className = 'dock-host';
-dockHost.hidden = true;
-app.after(dockHost);
-import('./dockUi')
-  .then((loaded) => {
-    dock = loaded.startDock({ host: dockHost, unpaired: () => unpaired, theme: () => theme, chooseTheme, focusedKey, restoreFocus });
-    dock.draw();
-  })
-  .catch(() => undefined);
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => undefined);
 }
 draw();
+loadDock();
 void start();

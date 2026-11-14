@@ -31,6 +31,8 @@ describe('app.css', () => {
 });
 
 describe('script list rows', () => {
+  // The script rules live in control.css (loaded with the control chunk); the generic button rule stays in app.css.
+  const css = ['app.css', 'control.css'].map((f) => readFileSync(new URL(`../src/styles/${f}`, import.meta.url), 'utf8')).join('\n');
   it('clamps the description to two lines and keeps the row at least 3rem tall', () => {
     const desc = css.match(/\.script-desc\s*\{([^}]*)\}/)![1]!;
     expect(desc).toMatch(/-webkit-line-clamp:\s*2/);

@@ -16,18 +16,20 @@
 .dock[data-open="true"] li { visibility: visible; transform: none; transition: transform 200ms cubic-bezier(0.25, 1, 0.5, 1); }
 .dock[data-open="true"] li:nth-last-child(2) { transition-delay: 40ms; }
 .dock[data-open="true"] li:nth-last-child(3) { transition-delay: 80ms; }
-.dock-label { position: absolute; right: calc(100% + 0.5rem); padding: 0 0.5rem; font-weight: 600; white-space: nowrap; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 0.5rem; }
+.dock-label { position: absolute; top: 50%; right: calc(100% + 0.5rem); transform: translateY(-50%); padding: 0 0.5rem; font-weight: 600; white-space: nowrap; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 0.5rem; }
 /* The Settings panel is a card (text on the paper surface, the gold edge) floating above the dock. */
 #dock-settings { width: 18rem; pointer-events: auto; }
 
 @media (hover: hover) and (pointer: fine) and (min-width: 48rem) {
+  /* Room for the fully grown bar (0.75rem offset, 1rem padding, 2 px edges, 80 px button: 110 px), so it never covers the last card. */
+  .dock-host { height: calc(7rem + env(safe-area-inset-bottom)); }
   .dock-toggle { display: none; }
   .dock-items { right: auto; left: 50%; bottom: calc(0.75rem + env(safe-area-inset-bottom)); grid-auto-flow: column; align-items: end; padding: 0.5rem 0.75rem; background: var(--raised); border: 1px solid var(--border); border-radius: 1rem; transform: translateX(-50%); pointer-events: auto; }
   .dock-items li { visibility: visible; transform: none; }
   .dock-btn { width: calc(var(--dock-size, 40) * 1px); height: calc(var(--dock-size, 40) * 1px); }
   .dock-icon { width: 50%; height: 50%; }
   #dock-settings { bottom: 5.5rem; }
-  .dock-label { right: auto; bottom: calc(100% + 0.5rem); visibility: hidden; }
+  .dock-label { top: auto; right: auto; bottom: calc(100% + 0.5rem); left: 50%; transform: translateX(-50%); visibility: hidden; }
   .dock-btn:hover .dock-label, .dock-btn:focus-visible .dock-label { visibility: visible; }
 }
 

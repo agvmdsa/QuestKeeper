@@ -151,6 +151,7 @@ export const en = {
   'control.loadingScripts': 'Loading scripts...',
   'control.noScripts': "No scripts in Skua's scripts folder.",
   'control.noMatch': 'No script matches your search.',
+  'control.partialMatch': 'No script matches every word. Showing partial matches.',
   'control.truncated': 'The list was cut, so some scripts are not shown.',
   'control.rootFolder': 'Main scripts folder',
   'control.fileHint': '{file}.cs',

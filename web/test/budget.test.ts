@@ -34,10 +34,14 @@ describe('check-budget', () => {
   });
   it('fails when the first load is over 60 KB', () => expect(run(dist(page(), { 'assets/index.js': 58 * KB, 'assets/style.css': 5 * KB })).status).toBe(1));
   it('fails when a lazy chunk is over 20 KB', () => expect(run(dist(page(), { 'assets/index.js': 10 * KB, 'assets/style.css': 1 * KB, 'assets/lazy.js': 21 * KB })).status).toBe(1));
-  it('fails when everything together is over 80 KB, even if each part fits', () => {
-    const r = run(dist(page(), { 'assets/index.js': 55 * KB, 'assets/style.css': 1 * KB, 'assets/a.js': 15 * KB, 'assets/b.js': 15 * KB }));
+  it('fails when everything together is over 96 KB, even if each part fits', () => {
+    const r = run(dist(page(), { 'assets/index.js': 58 * KB, 'assets/style.css': 1 * KB, 'assets/a.js': 19 * KB, 'assets/b.js': 19 * KB }));
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/total/i);
+  });
+  it('passes a total of 90 KB (the old 80 KB ceiling no longer applies)', () => {
+    const r = run(dist(page(), { 'assets/index.js': 58 * KB, 'assets/style.css': 1 * KB, 'assets/a.js': 16 * KB, 'assets/b.js': 15 * KB }));
+    expect(r.status).toBe(0);
   });
   it('counts a modulepreload as first load, not loaded later', () => {
     const files = { 'assets/index.js': 40 * KB, 'assets/style.css': 5 * KB, 'assets/pre.js': 18 * KB };

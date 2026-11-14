@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import type { CallResult, ControlApi } from '../src/api';
 import {
-  Control, controlBanner, controlCardModel, failureText, parseOptions, parseScripts, parseStart, scriptGroups, type ScriptItem,
+  Control, controlBanner, controlCardModel, failureText, parseOptions, parseScripts, parseStart, scriptGroups, searchScripts, type ScriptItem,
 } from '../src/control';
 import { parseSkuaInstances } from '../src/skua';
 import { controlCard, sheetView } from '../src/controlViews';
@@ -234,7 +234,8 @@ describe('the script list sheet', () => {
       expect(names(q), q).toContain(ID_A);
     }
     expect(names('hollowborn envoy')).toEqual([ID_A]);
-    expect(names('envoy farm')).toEqual([]);
+    expect(names('envoy zzz')).toEqual([ID_A]); // partial: only one word matches anywhere
+    expect(names('zzz qqq')).toEqual([]);
     expect(names('hollowborn')).toEqual([ID_A, ID_B]);
     expect(names('')).toEqual([ID_A, ID_B, ID_C]);
     expect(names('   ')).toEqual([ID_A, ID_B, ID_C]);
@@ -258,10 +259,6 @@ describe('the script list sheet', () => {
     expect(texts(sheetView(s.control))).not.toContain('The list was cut, so some scripts are not shown.');
     s.control.setQuery('script 1999');
     expect(byAction(sheetView(s.control), 'script-pick').map((b) => b.attrs!['data-value'])).toEqual([(1999).toString(16).padStart(16, '0')]);
-    s.control.setQuery('f19 1999');
-    expect(byAction(sheetView(s.control), 'script-pick')).toHaveLength(1);
-    s.control.setQuery('');
-    expect(byAction(sheetView(s.control), 'script-pick')).toHaveLength(2000);
     s.control.setQuery('f19 1999');
     expect(byAction(sheetView(s.control), 'script-pick')).toHaveLength(1);
     s.control.setQuery('');
@@ -579,8 +576,62 @@ describe('script titles, descriptions and tags', () => {
     expect(ids('does all')).toEqual([ID_A]);
     expect(ids('do all')).toEqual([ID_A]);
     expect(ids('waits')).toEqual([ID_C]);
-    expect(ids('envy waits')).toEqual([]);
+    expect(ids('envy waits')).toEqual([ID_A, ID_C]); // no script has both: partial matches
     expect(ids('hollowborn plain')).toEqual([ID_B]);
+  });
+
+  describe('partial matches when no script has every word', () => {
+    const ENVOY = RUN_ALL as ScriptItem;
+    const rest: ScriptItem[] = [
+      { id: ID_B, name: 'FarmGold', folder: 'Farm', title: 'Farm gold', askOptions: true },
+      { id: ID_C, name: 'Butler', folder: 'Other', description: 'Waits for all', askOptions: true },
+      { id: 'bbbbbbbbbbbbbbbb', name: 'FarmAllAround', folder: 'Zed', askOptions: true },
+    ];
+    const ids = (q: string, list: ScriptItem[] = [ENVOY, ...rest]) => searchScripts(list, q).groups.flatMap((g) => g.scripts.map((x) => x.id));
+    it('finds the Envoy script for "farm all" and flags the result as partial', () => {
+      const r = searchScripts([ENVOY, rest[0]!, rest[1]!], 'farm all');
+      expect(r.partial).toBe(true);
+      expect(r.groups.flatMap((g) => g.scripts.map((x) => x.id))).toContain(ID_A);
+    });
+    it('ranks by matched words, then keeps the list order', () => {
+      expect(ids('farm gold all')).toEqual([ID_B, 'bbbbbbbbbbbbbbbb', ID_A, ID_C]);
+    });
+    it('lets an exact match suppress partial ones', () => {
+      const r = searchScripts([ENVOY, ...rest], 'farm all');
+      expect(r.partial).toBe(false);
+      expect(r.groups.flatMap((g) => g.scripts.map((x) => x.id))).toEqual(['bbbbbbbbbbbbbbbb']);
+    });
+    it('leaves single words and empty searches as they were', () => {
+      expect(searchScripts([ENVOY, ...rest], 'zzz')).toEqual({ groups: [], partial: false });
+      expect(searchScripts([ENVOY, ...rest], 'farm').partial).toBe(false);
+      expect(searchScripts([ENVOY, ...rest], '').partial).toBe(false);
+      expect(ids('zzz qqq')).toEqual([]);
+      expect(searchScripts([ENVOY, ...rest], 'zzz qqq').partial).toBe(false);
+    });
+    it('does not let a word match across two fields', () => {
+      const one: ScriptItem[] = [{ id: ID_A, name: 'Alpha', folder: 'Beta', askOptions: true }];
+      expect(ids('alphabeta', one)).toEqual([]);
+    });
+    it('counts a repeated word once', () => expect(ids('farm farm zzz')).not.toEqual([]));
+    it('shows the note above the list only for partial matches', async () => {
+      const s = await open([RUN_ALL, PLAIN, SAME]);
+      s.control.setQuery('farm all');
+      expect(texts(sheetView(s.control))).toContain('No script matches every word. Showing partial matches.');
+      expect(byAction(sheetView(s.control), 'script-pick').map((b) => b.attrs!['data-value'])).toEqual([ID_A]);
+      s.control.setQuery('run all');
+      expect(texts(sheetView(s.control))).not.toContain('No script matches every word. Showing partial matches.');
+      s.control.setQuery('zzz qqq');
+      expect(texts(sheetView(s.control))).toContain('No script matches your search.');
+    });
+    it('keeps hostile text in the search as plain text', () => {
+      expect(ids('<img onerror=alert(1)> all')).toEqual([ID_A, ID_C, 'bbbbbbbbbbbbbbbb']);
+    });
+    it('searches 2000 scripts quickly with the words made once per script', () => {
+      const many = Array.from({ length: 2000 }, (_, i) => ({ id: i.toString(16).padStart(16, '0'), name: `Script${i}`, folder: `F${i % 20}`, title: `Title ${i}`, description: `Does thing ${i}`, tags: 'farm', askOptions: true }));
+      const started = performance.now();
+      for (let k = 0; k < 20; k++) expect(searchScripts(many, 'farm zzz').partial).toBe(true);
+      expect(performance.now() - started).toBeLessThan(1500);
+    });
   });
 
   it('shows and filters 2000 described scripts quickly', async () => {

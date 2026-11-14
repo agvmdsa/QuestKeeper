@@ -1,4 +1,4 @@
-import { controlCardModel, scriptGroups, startBlocked, type Control, type OptionDef, type Sheet } from './control';
+import { controlCardModel, startBlocked, type Control, type OptionDef, type Sheet } from './control';
 import { t } from './i18n';
 import type { SkuaInstance } from './types';
 import { bar, h, type VNode } from './views';
@@ -80,7 +80,7 @@ function stopSheet(sheet: Extract<Sheet, { kind: 'stop' }>, pending: boolean): V
 }
 
 function scriptsSheet(sheet: Extract<Sheet, { kind: 'scripts' }>, pending: boolean): VNode[] {
-  const groups = scriptGroups(sheet.scripts, sheet.query);
+  const { groups, partial } = sheet.shown;
   // Up to 2000 rows: the words and the flag are made once, not per row.
   const startItem = t('control.startItem');
   const busy = flag(pending);
@@ -97,6 +97,7 @@ function scriptsSheet(sheet: Extract<Sheet, { kind: 'scripts' }>, pending: boole
       },
     }),
     status ? h('p', { className: 'muted', text: status, attrs: { role: 'status' } }) : null,
+    partial ? h('p', { className: 'muted', text: t('control.partialMatch'), attrs: { role: 'status' } }) : null,
     ...groups.map((g) =>
       h(
         'section',

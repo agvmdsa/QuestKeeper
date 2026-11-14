@@ -175,24 +175,70 @@ export function controlBanner(nowMs: number, until: number): Banner | null {
 
 const squash = (s: string): string => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 
+/** The squashed folder, name, title, description and tags of a script; made once per script, so a keystroke only compares words. */
+const fieldCache = new WeakMap<ScriptItem, string[]>();
+function fieldsOf(s: ScriptItem): string[] {
+  let f = fieldCache.get(s);
+  if (!f) {
+    f = [s.folder, s.name, s.title ?? '', s.description ?? '', s.tags ?? ''].map(squash).filter((x) => x !== '');
+    fieldCache.set(s, f);
+  }
+  return f;
+}
+
+export interface ScriptSearch {
+  groups: { folder: string; scripts: ScriptItem[] }[];
+  /** True when no script matched every word, so the groups hold scripts matching some of them (best first). */
+  partial: boolean;
+}
+
 /**
  * The scripts matching every word of the search text (AND) in their folder, name, title, description and tags, ignoring case, spaces and
- * punctuation ("chaos envoy" and "chaosenvoy" both find Hollowborn/HollowbornChaosEnvoy/0RunAll); grouped by folder in the
- * order they came. An empty search lists everything.
+ * punctuation ("chaos envoy" and "chaosenvoy" both find Hollowborn/HollowbornChaosEnvoy/0RunAll). A word matches inside one field, never across two.
+ * When no script matches every word, the ones matching at least one are listed instead, the most words first (`partial`).
+ * Grouped by folder in the order they came; a partial list keeps its ranking, so a folder may appear again later. An empty search lists everything.
  */
-export function scriptGroups(scripts: readonly ScriptItem[], query: string): { folder: string; scripts: ScriptItem[] }[] {
-  const words = query.split(/\s+/).map(squash).filter((w) => w !== '');
-  const groups = new Map<string, ScriptItem[]>();
-  for (const s of scripts) {
-    if (words.length > 0) {
-      const hay = squash(`${s.folder} ${s.name} ${s.title ?? ''} ${s.description ?? ''} ${s.tags ?? ''}`);
-      if (!words.every((w) => hay.includes(w))) continue;
+export function searchScripts(scripts: readonly ScriptItem[], query: string): ScriptSearch {
+  const words = [...new Set(query.split(/\s+/).map(squash).filter((w) => w !== ''))];
+  let chosen: readonly ScriptItem[] = scripts;
+  let partial = false;
+  if (words.length > 0) {
+    const ranked: { item: ScriptItem; hits: number }[] = [];
+    for (const item of scripts) {
+      const fields = fieldsOf(item);
+      let hits = 0;
+      for (const w of words) if (fields.some((f) => f.includes(w))) hits++;
+      if (hits > 0) ranked.push({ item, hits });
     }
-    const list = groups.get(s.folder) ?? [];
-    list.push(s);
-    groups.set(s.folder, list);
+    const all = ranked.filter((r) => r.hits === words.length);
+    if (all.length > 0 || words.length === 1) {
+      chosen = all.map((r) => r.item);
+    } else {
+      partial = ranked.length > 0;
+      chosen = ranked.map((r, i) => ({ r, i })).sort((x, y) => y.r.hits - x.r.hits || x.i - y.i).map((x) => x.r.item);
+    }
   }
-  return [...groups].map(([folder, list]) => ({ folder, scripts: list }));
+  const groups: ScriptSearch['groups'] = [];
+  if (partial) {
+    for (const s of chosen) {
+      const last = groups[groups.length - 1];
+      if (last && last.folder === s.folder) last.scripts.push(s);
+      else groups.push({ folder: s.folder, scripts: [s] });
+    }
+  } else {
+    const byFolder = new Map<string, ScriptItem[]>();
+    for (const s of chosen) {
+      const list = byFolder.get(s.folder) ?? [];
+      list.push(s);
+      byFolder.set(s.folder, list);
+    }
+    for (const [folder, list] of byFolder) groups.push({ folder, scripts: list });
+  }
+  return { groups, partial };
+}
+
+export function scriptGroups(scripts: readonly ScriptItem[], query: string): ScriptSearch['groups'] {
+  return searchScripts(scripts, query).groups;
 }
 
 export interface CardModel {
@@ -275,6 +321,8 @@ export type Sheet =
       scripts: ScriptItem[];
       truncated: boolean;
       query: string;
+      /** What the search shows now; made when the list or the search text changes, not on every redraw. */
+      shown: ScriptSearch;
       /** The script being loaded or started, and what is happening to it. */
       pick: string | null;
       pickText: MessageKey | null;
@@ -365,7 +413,7 @@ export class Control {
 
   openStart(i: SkuaInstance): void {
     if (this.isPending(i.instanceId)) return;
-    const sheet: Sheet = { kind: 'scripts', instanceId: i.instanceId, character: i.label, loading: true, scripts: [], truncated: false, query: '', pick: null, pickText: null, error: null };
+    const sheet: Sheet = { kind: 'scripts', instanceId: i.instanceId, character: i.label, loading: true, scripts: [], truncated: false, query: '', shown: { groups: [], partial: false }, pick: null, pickText: null, error: null };
     this.sheet = sheet;
     this.changed();
     void this.api.listScripts(i.instanceId).then((r) => {
@@ -375,6 +423,7 @@ export class Control {
       if (list) {
         sheet.scripts = list.scripts;
         sheet.truncated = list.truncated;
+        sheet.shown = searchScripts(sheet.scripts, sheet.query);
         this.lists.set(i.instanceId, list.scripts);
       } else {
         sheet.error = this.noteFailure(r, 'list');
@@ -391,6 +440,7 @@ export class Control {
   setQuery(query: string): void {
     if (this.sheet?.kind !== 'scripts') return;
     this.sheet.query = query.slice(0, MAX_QUERY);
+    this.sheet.shown = searchScripts(this.sheet.scripts, this.sheet.query);
     this.changed();
   }
 

@@ -64,7 +64,7 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Tasks: deskto
 
 [Run]
 ; Only offered when Npcap is missing; the player decides by leaving the box checked or not.
-Filename: "{#NpcapUrl}"; Description: "Open the Npcap download page (needed to read the game data)"; Flags: shellexec postinstall skipifsilent; Check: not NpcapInstalled
+Filename: "{#NpcapUrl}"; Description: "Open the Npcap download page (optional: only to read the game data)"; Flags: shellexec postinstall skipifsilent; Check: not NpcapInstalled
 ; shellexec: the app asks for administrator rights, and only ShellExecute can show that prompt (CreateProcess fails with code 740).
 Filename: "{app}\{#MyAppExe}"; Description: "Start {#MyAppName}"; Flags: shellexec nowait postinstall skipifsilent
 
@@ -89,14 +89,14 @@ procedure RefreshNpcap;
 begin
   if NpcapInstalled then
   begin
-    NpcapStatus.Caption := 'Npcap is installed. SkuaLink can read the game data.';
+    NpcapStatus.Caption := 'Npcap is installed. SkuaLink can also read the game data.';
     NpcapOpenButton.Visible := False;
     NpcapCheckButton.Visible := False;
   end
   else
   begin
-    NpcapStatus.Caption := 'Npcap was not found on this computer. You can finish this setup now and install Npcap afterwards, ' +
-      'but SkuaLink shows nothing until it is installed.';
+    NpcapStatus.Caption := 'Npcap was not found on this computer. That is fine: the Skua features work without it. ' +
+      'Install it only if you want SkuaLink to read the game data as well.';
     NpcapOpenButton.Visible := True;
     NpcapCheckButton.Visible := True;
   end;
@@ -118,8 +118,8 @@ procedure InitializeWizard;
 var
   Intro: TNewStaticText;
 begin
-  NpcapPage := CreateCustomPage(wpSelectDir, 'Npcap',
-    'SkuaLink reads the game data with the Npcap packet capture driver.');
+  NpcapPage := CreateCustomPage(wpSelectDir, 'Game data (optional)',
+    'Only needed to read the game data. The Skua controls do not use it.');
 
   Intro := TNewStaticText.Create(NpcapPage);
   Intro.Parent := NpcapPage.Surface;
@@ -128,9 +128,9 @@ begin
   Intro.Left := 0;
   Intro.Top := 0;
   Intro.Width := NpcapPage.SurfaceWidth;
-  Intro.Height := ScaleY(60);
+  Intro.Height := ScaleY(78);
   Intro.Caption :=
-    'Npcap is a separate program with its own license, so it is not included in this setup. ' +
+    'SkuaLink can read the game data with the Npcap packet capture driver. Npcap is a separate program with its own license, so it is not included in this setup. ' +
     'You install it yourself from the official site: it is free for personal use on up to five computers.';
 
   NpcapStatus := TNewStaticText.Create(NpcapPage);

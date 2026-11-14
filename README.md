@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/agvmdsa/SkuaLink/releases/latest"><img src="docs/download-windows.svg" width="368" alt="Download the latest SkuaLink for Windows"></a>
+  <a href="https://github.com/agvmdsa/SkuaLink/releases/latest"><img src="docs/download-windows.svg" width="368" alt="Download SkuaLink for Windows"></a>
 </p>
 
 <p align="center">

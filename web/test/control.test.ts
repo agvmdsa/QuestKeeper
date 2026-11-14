@@ -762,3 +762,68 @@ describe('contrast of the control styles', () => {
     it('the danger fill stands out from the card as a shape (3:1)', () => expect(ratio(t.danger!, t.surface!)).toBeGreaterThanOrEqual(3));
   });
 });
+
+describe('fix round 1', () => {
+  const field = (v: VNode | null, i: number) => all(v).find((n) => n.attrs?.['data-action'] === 'opt' && n.attrs['data-value'] === String(i));
+  it('an enum with no saved value and no default takes its first choice, shown and sent alike', async () => {
+    const s = setup();
+    s.answers.push(ok(scriptsBody()), ok(optionsBody({ defs: [def('Mode', 'enum', { default: '', choices: ['Fast Farm', 'Slow'] })], values: [] })));
+    s.control.openStart(inst());
+    await flush();
+    s.control.pick(ID_A);
+    await flush();
+    const select = field(sheetView(s.control), 0)!;
+    expect(select.children.map((o) => [o.text, o.attrs!.selected])).toEqual([['Fast Farm', ''], ['Slow', undefined]]);
+    s.answers.push(ok(optionsBody()), ok({ hasOptions: true, firstRun: false, defs: null, values: [] }));
+    s.control.submitOptions();
+    await flush();
+    expect(s.calls[2]!.args[2]).toEqual([{ category: 'Options', name: 'Mode', value: 'Fast Farm' }]);
+  });
+
+  async function firstRunForm() {
+    const s = setup();
+    s.answers.push(ok(scriptsBody()), ok({ hasOptions: true, firstRun: true, defs: [def('Player', 'string')], values: [] }));
+    s.control.openStart(inst());
+    await flush();
+    s.control.pick(ID_B);
+    await flush();
+    return s;
+  }
+  it.each([
+    [{ control: 'settling', settleSecondsLeft: 6 }, 'The script stopped. Waiting for the bot to finish going back (about 6 s) before another script can start.'],
+    [{ control: 'settling' }, 'The script stopped. Waiting for the bot to finish going back before another script can start.'],
+    [{ control: 'stopping' }, 'Wait until the script has stopped.'],
+  ])('the first-run form disables Start with the reason while the Skua is %j', async (st, reason) => {
+    const s = await firstRunForm();
+    const v = sheetView(s.control, inst(st))!;
+    const button = byAction(v, 'options-start')[0]!;
+    expect(button.attrs!.disabled).toBe('');
+    const why = all(v).find((n) => n.attrs?.id === button.attrs!['aria-describedby'])!;
+    expect(why.text).toBe(reason);
+  });
+  it('the first-run form enables Start once the Skua is idle', async () => {
+    const s = await firstRunForm();
+    const button = byAction(sheetView(s.control, inst()), 'options-start')[0]!;
+    expect(button.attrs!.disabled).toBeUndefined();
+    expect(button.attrs!['aria-describedby']).toBeUndefined();
+  });
+  it('a start on one Skua does not touch the list sheet of another', async () => {
+    const s = setup();
+    const other = inst({}, { instanceId: 'i-2', label: 'Mule' });
+    s.answers.push(ok(scriptsBody()));
+    s.control.openStart(inst());
+    await flush();
+    s.control.pick(ID_A); // getOptions for i-1 is now waiting
+    s.control.close();
+    s.answers.push(ok(scriptsBody()));
+    s.control.openStart(other);
+    await flush();
+    s.answers.push(ok({ hasOptions: false, firstRun: false, defs: [], values: [] }));
+    s.waiting.shift()!.resolve(ok(optionsBody({ defs: [], values: [], hasOptions: false })));
+    await flush();
+    expect(s.names()).toEqual(['listScripts', 'getOptions', 'listScripts', 'start']);
+    const sheet = s.control.sheet!;
+    expect(sheet.kind === 'scripts' && sheet.instanceId === 'i-2' && sheet.pickText).toBe(null);
+    expect(texts(sheetView(s.control))).not.toContain('Starting...');
+  });
+});

@@ -146,6 +146,14 @@ export function failureText(r: CallResult, action: Action): string {
   return t('control.error.generic');
 }
 
+/** Why a script cannot start on this Skua right now (stopping or settling), or null; from its live status. */
+export function startBlocked(i: SkuaInstance | null | undefined): string | null {
+  const st = i?.status;
+  if (st?.control === 'stopping') return t('control.stoppingHint');
+  if (st?.control !== 'settling') return null;
+  return st.settleSecondsLeft === undefined ? t('control.settlingHintNoTime') : t('control.settlingHint', { n: st.settleSecondsLeft });
+}
+
 /** "Skua did not answer" in the page's banner, for a while after a 504. */
 export function controlBanner(nowMs: number, until: number): Banner | null {
   return nowMs < until ? { tone: 'warn', text: t('control.error.noAnswer') } : null;
@@ -382,13 +390,13 @@ export class Control {
     this.run(id, async () => {
       sheet.pick = item.id;
       try {
-        if (!item.askOptions) return await this.start(id, item, sheet.character);
+        if (!item.askOptions) return await this.start(id, item, sheet.character, sheet);
         sheet.pickText = 'control.loadingOptions';
         const r = await this.api.getOptions(id, item.id);
         const info = r.status === 200 ? parseOptions(r.data) : null;
         if (!info) return this.fail(id, r, 'load');
         if (info.defs?.length) return this.openOptions(id, sheet.character, item, info.defs, info.values, true, false, !info.askOptions);
-        if (info.defs || info.values.length === 0) return await this.start(id, item, sheet.character);
+        if (info.defs || info.values.length === 0) return await this.start(id, item, sheet.character, sheet);
         // Saved values without definitions: shown, not editable, until the next start teaches SkuaLink the definitions.
         const shown = info.values.map((v): OptionDef => ({ category: v.category, name: v.name, displayName: v.name, description: '', type: 'other', default: v.value, choices: null }));
         return this.openOptions(id, sheet.character, item, shown, info.values, false, false, !info.askOptions);
@@ -422,7 +430,7 @@ export class Control {
         this.remember(id, sheet.script.id, !sheet.dontAsk);
         sheet.initialDontAsk = sheet.dontAsk;
       }
-      await this.start(id, sheet.script, sheet.character);
+      await this.start(id, sheet.script, sheet.character, sheet);
     });
   }
 
@@ -461,12 +469,17 @@ export class Control {
   }
 
   private openOptions(id: string, character: string, script: ScriptItem, defs: OptionDef[], saved: OptionValue[], editable: boolean, firstRun: boolean, dontAsk: boolean): void {
-    const values = defs.map((d) => saved.find((v) => v.category === d.category && v.name === d.name)?.value ?? d.default);
+    const values = defs.map((d) => {
+      const value = saved.find((v) => v.category === d.category && v.name === d.name)?.value ?? d.default;
+      // A choice with nothing saved and no default shows its first member; the same is sent.
+      return d.type === 'enum' && !value && d.choices?.length ? d.choices[0]! : value;
+    });
     this.sheet = { kind: 'options', instanceId: id, character, script, defs, values, editable, firstRun, dontAsk, initialDontAsk: dontAsk, error: null };
   }
 
-  private async start(id: string, item: ScriptItem, character: string): Promise<void> {
-    if (this.sheet?.kind === 'scripts') this.sheet.pickText = 'control.starting';
+  /** Starts a script; `from` is the sheet the start came from, the only one whose text it changes. */
+  private async start(id: string, item: ScriptItem, character: string, from: Sheet | null): Promise<void> {
+    if (from?.kind === 'scripts') from.pickText = 'control.starting';
     const r = await this.api.start(id, item.id);
     if (r.status !== 200) return this.fail(id, r, 'start');
     const result = parseStart(r.data);

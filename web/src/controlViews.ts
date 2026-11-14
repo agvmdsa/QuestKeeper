@@ -1,4 +1,4 @@
-import { controlCardModel, scriptGroups, type Control, type OptionDef, type Sheet } from './control';
+import { controlCardModel, scriptGroups, startBlocked, type Control, type OptionDef, type Sheet } from './control';
 import { t } from './i18n';
 import type { SkuaInstance } from './types';
 import { bar, h, type VNode } from './views';
@@ -124,7 +124,9 @@ function scriptsSheet(sheet: Extract<Sheet, { kind: 'scripts' }>, pending: boole
   ].filter((n): n is VNode => n !== null);
 }
 
-function optionsSheet(sheet: Extract<Sheet, { kind: 'options' }>, pending: boolean): VNode[] {
+function optionsSheet(sheet: Extract<Sheet, { kind: 'options' }>, pending: boolean, blocked: string | null): VNode[] {
+  const start = h('button', { text: t('control.startWithOptions'), attrs: { type: 'button', 'data-action': 'options-start', ...flag(pending) } });
+  if (blocked) Object.assign(start.attrs!, { disabled: '', 'aria-describedby': 'options-reason' });
   return [
     title(t('control.optionsTitle', { script: sheet.script.name }), true),
     h('p', { className: 'muted', text: t('control.optionsOn', { character: sheet.character }) }),
@@ -134,17 +136,21 @@ function optionsSheet(sheet: Extract<Sheet, { kind: 'options' }>, pending: boole
     sheet.editable ? h('p', { className: 'muted', text: t('control.optionsHint') }) : null,
     toggle(t('control.dontAsk'), { 'data-action': 'dont-ask' }, sheet.dontAsk),
     alert(sheet.error),
-    h('button', { text: t('control.startWithOptions'), attrs: { type: 'button', 'data-action': 'options-start', ...flag(pending) } }),
+    blocked ? h('p', { className: 'muted', text: blocked, attrs: { id: 'options-reason' } }) : null,
+    start,
     quiet(t('control.cancel')),
   ].filter((n): n is VNode => n !== null);
 }
 
-/** The open sheet (stop confirmation, script list or options step), drawn by the page into its dialog; null when none is open. */
-export function sheetView(control: Control): VNode | null {
+/**
+ * The open sheet (stop confirmation, script list or options step), drawn by the page into its dialog; null when none is open.
+ * `live` is the sheet's Skua as the last state shows it: while it stops or settles, the options step cannot start.
+ */
+export function sheetView(control: Control, live?: SkuaInstance | null): VNode | null {
   const sheet = control.sheet;
   if (!sheet) return null;
   const pending = control.isPending(sheet.instanceId);
-  const children = sheet.kind === 'stop' ? stopSheet(sheet, pending) : sheet.kind === 'scripts' ? scriptsSheet(sheet, pending) : optionsSheet(sheet, pending);
+  const children = sheet.kind === 'stop' ? stopSheet(sheet, pending) : sheet.kind === 'scripts' ? scriptsSheet(sheet, pending) : optionsSheet(sheet, pending, startBlocked(live));
   return h('div', { className: 'sheet-body' }, ...children);
 }
 

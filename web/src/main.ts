@@ -257,6 +257,7 @@ function setState(text: string): void {
   armUnreachableTimer();
   // Kept only once it has been drawn, so data that breaks the page is never stored and replayed on the next load.
   if (draw()) remember(parsed, lastUpdateMs);
+  drawSheet();
 }
 
 function addNotice(text: string): void {
@@ -529,7 +530,8 @@ let modal = false;
 let opener: string | null = null;
 
 function drawSheet(): void {
-  const view = ui && control ? ui.sheetView(control) : null;
+  const live = state?.skuaInstances?.find((i) => i.instanceId === control?.sheet?.instanceId);
+  const view = ui && control ? ui.sheetView(control, live) : null;
   if (!view) {
     if (!lastSheet) return;
     lastSheet = '';

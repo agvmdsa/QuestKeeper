@@ -235,15 +235,22 @@ public sealed class SkuaScriptCatalog : IDisposable
 
     private void Work()
     {
+        var left = false;
         try
         {
             while (!_cancel.IsCancellationRequested)
             {
+                BeforeNextLook?.Invoke();
                 string next;
                 lock (_gate)
                 {
                     if (!_pending.TryDequeue(out var path))
                     {
+                        // Leaving and no longer counting as the worker is one step under the lock, so a Defer either
+                        // lands before it (and is read here) or after it (and starts a new worker).
+                        _worker = false;
+                        _idle.Set();
+                        left = true;
                         return;
                     }
 
@@ -259,14 +266,21 @@ public sealed class SkuaScriptCatalog : IDisposable
         }
         finally
         {
-            lock (_gate)
+            if (!left)
             {
-                _worker = false;
-                _pending = new Queue<string>();
-                _idle.Set();
+                // Cancelled or failed: drop what is left, the next scan reads it.
+                lock (_gate)
+                {
+                    _worker = false;
+                    _pending = new Queue<string>();
+                    _idle.Set();
+                }
             }
         }
     }
+
+    /// <summary>Test seam: runs on the worker each time before it looks for the next file.</summary>
+    internal Action? BeforeNextLook { get; set; }
 
     /// <summary>Waits until the background reading is done (or stopped); false on timeout. For tests and shutdown.</summary>
     public bool WaitForBackground(TimeSpan timeout) => _idle.Wait(timeout);

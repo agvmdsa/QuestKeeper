@@ -2,4 +2,7 @@
   <PropertyGroup>
     <RootNamespace>AqwCompanion.Skua</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AqwCompanion.Tests" />
+  </ItemGroup>
 </Project>

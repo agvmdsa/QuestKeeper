@@ -120,6 +120,3 @@ button { min-height: 3rem; margin-top: 0.5rem; padding: 0 1rem; font: inherit; f
 
 button:disabled { cursor: not-allowed; color: var(--muted); background: var(--raised); border-style: dashed; }
 .card > button, .control-waiting > button { width: 100%; }
-
-
-

@@ -428,6 +428,52 @@ public class SkuaScriptCatalogTests
     }
 
     [Fact]
+    public void Files_deferred_while_the_worker_is_leaving_are_still_read()
+    {
+        var reading = new Reading();
+        var files = Five.Select(At).ToList();
+        using var catalog = new SkuaScriptCatalog(Root, _ => files, _ => false, null, reading.Read,
+            new SkuaScriptFactsOptions { Cached = reading.Peek, ClockMs = () => Interlocked.Read(ref reading.Now) });
+        var once = 0;
+        catalog.BeforeNextLook = () =>
+        {
+            if (Interlocked.Increment(ref once) == 1)
+            {
+                files.AddRange(new[] { "e.cs", "f.cs", "g.cs", "h.cs" }.Select(At));
+                catalog.Scan(); // reads e-g inside its budget, defers h: the worker is about to look for more
+            }
+        };
+
+        catalog.Scan();
+
+        Assert.True(catalog.WaitForBackground(TimeSpan.FromSeconds(10)));
+        Assert.NotNull(reading.Peek(At("h.cs")));
+    }
+
+    [Fact]
+    public void Many_scans_deferring_files_leave_every_file_cached()
+    {
+        var all = Enumerable.Range(0, 40).Select(i => At($"s{i:D2}.cs")).ToList();
+        for (var round = 0; round < 100; round++)
+        {
+            var reading = new Reading { CostMs = 0 };
+            using var catalog = new SkuaScriptCatalog(Root, _ => all, _ => false, null, reading.Read,
+                new SkuaScriptFactsOptions { Cached = reading.Peek, Budget = TimeSpan.Zero, ClockMs = () => 0 }); // every uncached file is deferred
+
+            Parallel.For(0, 8, new ParallelOptions { MaxDegreeOfParallelism = 8 }, _ =>
+            {
+                for (var i = 0; i < 5; i++)
+                {
+                    catalog.Scan();
+                }
+            });
+
+            Assert.True(catalog.WaitForBackground(TimeSpan.FromSeconds(10)));
+            Assert.All(all, f => Assert.NotNull(reading.Peek(f)));
+        }
+    }
+
+    [Fact]
     public void Disposing_stops_the_background_work_and_never_throws()
     {
         var reading = new Reading();

@@ -32,6 +32,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
 
     /// <summary>How long Unload waits for the worker to leave. Unload may run on Skua's UI thread, so the wait stays short.</summary>
     private static readonly TimeSpan WorkerStopWait = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan CatalogStopWait = TimeSpan.FromSeconds(2);
 
     private readonly object _subscriptionLock = new();
     private readonly object _stateLock = new();
@@ -184,6 +185,7 @@ public sealed class SkuaBridgePlugin : ISkuaPlugin
             _commandQueue?.Writer.TryComplete();
             _stop?.Cancel();
             _catalog?.Dispose(); // Stops the background reading of script files.
+            _catalog?.WaitForBackground(CatalogStopWait); // One bounded wait, so an in-flight read does not outlive Unload.
             StopWorker();
             _client?.Dispose(); // Waits up to 2 s for the pipe loop.
             _stop?.Dispose();

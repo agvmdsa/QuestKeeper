@@ -93,11 +93,18 @@ describe('parsing the answers', () => {
     expect(parseScripts(null)).toBeNull();
     expect(parseScripts({ scripts: 'x' })).toBeNull();
   });
-  it('caps the list at 500 and long texts at 300', () => {
-    const many = Array.from({ length: 600 }, (_, i) => ({ id: i.toString(16).padStart(16, '0'), name: 'n'.repeat(400), folder: 'f' }));
-    const r = parseScripts({ scripts: many })!;
-    expect(r.scripts).toHaveLength(500);
+  it('caps the list at 2000 like the PC, says it was cut, and cuts long texts at 300', () => {
+    const many = Array.from({ length: 2001 }, (_, i) => ({ id: i.toString(16).padStart(16, '0'), name: 'n'.repeat(400), folder: 'f' }));
+    const r = parseScripts({ scripts: many, truncated: false })!;
+    expect(r.scripts).toHaveLength(2000);
+    expect(r.truncated).toBe(true);
     expect(r.scripts[0]!.name.length).toBe(300);
+  });
+  it('keeps all 2000 scripts the PC may send without calling the list cut', () => {
+    const many = Array.from({ length: 2000 }, (_, i) => ({ id: i.toString(16).padStart(16, '0'), name: `s${i}`, folder: 'f' }));
+    const r = parseScripts({ scripts: many, truncated: false })!;
+    expect(r.scripts).toHaveLength(2000);
+    expect(r.truncated).toBe(false);
   });
   it('reads options with every type and keeps unknown types read-only', () => {
     const r = parseOptions(optionsBody({ defs: [def('A', 'bool'), def('B', 'weird'), { name: 'no category' }, def('', 'int')] }))!;
@@ -221,7 +228,18 @@ describe('the script list sheet', () => {
     s.answers.push(ok({ ...scriptsBody(), truncated: true }));
     s.control.openStart(inst());
     await flush();
-    expect(texts(sheetView(s.control))).toContain('The list was cut at 500 scripts, so some are not shown.');
+    expect(texts(sheetView(s.control))).toContain('The list was cut, so some scripts are not shown.');
+  });
+  it('shows and filters a list of 2000 scripts', async () => {
+    const s = setup();
+    const many = Array.from({ length: 2000 }, (_, i) => ({ id: i.toString(16).padStart(16, '0'), name: `Script ${i}`, folder: `F${i % 20}`, askOptions: true }));
+    s.answers.push(ok({ scripts: many, truncated: false }));
+    s.control.openStart(inst());
+    await flush();
+    expect(byAction(sheetView(s.control), 'script-pick')).toHaveLength(2000);
+    expect(texts(sheetView(s.control))).not.toContain('The list was cut, so some scripts are not shown.');
+    s.control.setQuery('script 1999');
+    expect(byAction(sheetView(s.control), 'script-pick').map((b) => b.attrs!['data-value'])).toEqual([(1999).toString(16).padStart(16, '0')]);
   });
   it('says when Skua has no scripts', async () => {
     const s = setup();

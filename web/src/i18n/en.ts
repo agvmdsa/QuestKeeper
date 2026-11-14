@@ -145,7 +145,7 @@ export const en = {
   'control.loadingScripts': 'Loading scripts...',
   'control.noScripts': "No scripts in Skua's scripts folder.",
   'control.noMatch': 'No script matches your search.',
-  'control.truncated': 'The list was cut at 500 scripts, so some are not shown.',
+  'control.truncated': 'The list was cut, so some scripts are not shown.',
   'control.rootFolder': 'Main scripts folder',
   'control.startItem': 'Start',
   'control.loadingOptions': 'Loading options...',

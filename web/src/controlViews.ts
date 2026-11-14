@@ -81,6 +81,9 @@ function stopSheet(sheet: Extract<Sheet, { kind: 'stop' }>, pending: boolean): V
 
 function scriptsSheet(sheet: Extract<Sheet, { kind: 'scripts' }>, pending: boolean): VNode[] {
   const groups = scriptGroups(sheet.scripts, sheet.query);
+  // Up to 2000 rows: the words and the flag are made once, not per row.
+  const startItem = t('control.startItem');
+  const busy = flag(pending);
   const status = sheet.loading
     ? t('control.loadingScripts')
     : sheet.error ? null : sheet.scripts.length === 0 ? t('control.noScripts') : groups.length === 0 ? t('control.noMatch') : null;
@@ -108,9 +111,9 @@ function scriptsSheet(sheet: Extract<Sheet, { kind: 'scripts' }>, pending: boole
               {},
               h(
                 'button',
-                { className: 'script-btn', attrs: { type: 'button', 'data-action': 'script-pick', 'data-value': s.id, ...flag(pending) } },
+                { className: 'script-btn', attrs: { type: 'button', 'data-action': 'script-pick', 'data-value': s.id, ...busy } },
                 h('span', { className: 'script-name', text: s.name }),
-                h('span', { className: 'muted', text: sheet.pick === s.id && sheet.pickText ? t(sheet.pickText) : t('control.startItem') }),
+                h('span', { className: 'muted', text: sheet.pick === s.id && sheet.pickText ? t(sheet.pickText) : startItem }),
               ),
             ),
           ),

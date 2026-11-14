@@ -6,7 +6,8 @@ import type { SkuaInstance } from './types';
 
 /** A script id as the PC makes it: 16 lowercase hex characters, nothing else. */
 const SCRIPT_ID = /^[0-9a-f]{16}$/;
-const MAX_SCRIPTS = 500;
+/** The most scripts the PC sends (SkuaProtocol.MaxScripts on the PC); the page keeps the same number. */
+const MAX_SCRIPTS = 2000;
 const MAX_DEFS = 500;
 const MAX_CHOICES = 200;
 const MAX_TEXT = 300;
@@ -95,12 +96,16 @@ function cut(s: string): string {
 export function parseScripts(v: unknown): { scripts: ScriptItem[]; truncated: boolean } | null {
   if (!isObject(v) || !Array.isArray(v.scripts)) return null;
   const scripts: ScriptItem[] = [];
+  let cutHere = false;
   for (const s of v.scripts as unknown[]) {
-    if (scripts.length >= MAX_SCRIPTS) break;
     if (!isObject(s) || typeof s.id !== 'string' || !SCRIPT_ID.test(s.id) || typeof s.name !== 'string') continue;
+    if (scripts.length >= MAX_SCRIPTS) {
+      cutHere = true;
+      break;
+    }
     scripts.push({ id: s.id, name: cut(s.name), folder: text(s.folder), askOptions: s.askOptions !== false });
   }
-  return { scripts, truncated: v.truncated === true };
+  return { scripts, truncated: v.truncated === true || cutHere };
 }
 
 function parseDefs(v: unknown): OptionDef[] | null {
